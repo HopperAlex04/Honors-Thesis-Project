@@ -1,6 +1,8 @@
 #Defines the Zone type while also defining the functionality of the individual zone subclasses.
 import random
 
+from Card import Card
+
 
 
 
@@ -19,8 +21,11 @@ class Deck(Zone):
         super().__init__(0, 0, [])
         #Once cards exist initialize the deck and shuffle here.
         #print(self.privacy)
-        for x in range(0, 52):
-            self.cards.append(x)
+        for x in range(1, 14):
+            for y in range(1, 5):
+                self.cards.append(Card(x,y))
+            pass
+            
         random.shuffle(self.cards)
         
 class Hand(Zone):
