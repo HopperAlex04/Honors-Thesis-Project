@@ -18,7 +18,7 @@ class Deck(Zone):
     def __init__(self):
         super().__init__(0, 0, [])
         #Once cards exist initialize the deck and shuffle here.
-        print(self.privacy)
+        #print(self.privacy)
         for x in range(0, 52):
             self.cards.append(x)
         random.shuffle(self.cards)
