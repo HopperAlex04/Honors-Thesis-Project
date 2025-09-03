@@ -16,6 +16,7 @@ class Player():
         #print(cast(Deck, deck).cards)
         
     def turn(self):
+        #compute moves
         pass
     
     def cleanUp(self) -> bool:
