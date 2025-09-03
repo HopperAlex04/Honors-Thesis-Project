@@ -11,18 +11,6 @@ from Zone import Deck, Hand, Zone
 
 class Cuttle():
     
-    player: Player
-    dealer: Player
-    deck: Deck
-    yardD: Zone
-    yardP: Zone
-    dHand: Hand
-    pHand: Hand
-    pfield: Zone
-    dfield: Zone
-    
-    zones: list
-    
     def __init__(self, d: Player, p: Player):
         self.dealer = d
         self.player = p
@@ -52,9 +40,16 @@ class Cuttle():
         over = False
         
         while (not over):
+            self.zones = [self.pHand, self.pfield, self.yardP, self.dHand, self.dfield, self.yardD, self.deck]
+            #print(self.zones)
             self.player.turn(self.zones)
-            over = self.player.cleanUp()
+            over = self.player.cleanUp(self.zones)
+            self.zones = [self.dHand, self.dfield, self.yardD, self.deck, self.pHand, self.pfield, self.yardP]
+            #print(self.zones)
             self.dealer.turn(self.zones)
-            over = self.dealer.cleanUp()
+            over = self.dealer.cleanUp(self.zones)
+            
+        #print(self.pfield.cards[0])
+        #print(self.dfield.cards[0])
             
         
