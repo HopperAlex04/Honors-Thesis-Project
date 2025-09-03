@@ -1,0 +1,13 @@
+player.play
+
+    compute all possible moves
+
+    make a choice
+        agent selects from computed moves
+        human player constructs a move through prompting (terminal) or buttons (gui)
+
+    compare choice to values in computed moves:
+        a move is of the form [ActionType, Card, targets[]]
+        targets is empty if no targets such as when scoring or if targets are random
+
+    Note:Need to figure out how to handle response windows.
