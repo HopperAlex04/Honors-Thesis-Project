@@ -1,13 +1,15 @@
 player.play
 
-    compute all possible moves
+    DONE: compute all possible moves
 
     make a choice
         agent selects from computed moves
         human player constructs a move through prompting (terminal) or buttons (gui)
 
     compare choice to values in computed moves:
-        a move is of the form [ActionType, Card, targets[]]
-        targets is empty if no targets such as when scoring or if targets are random
+        DONE: a move is one of three subclasses of Move superclass
+        DONE: Implement a simple score move, altering player score during cleanup
+        TODO: Implement Scuttle
+        TODO: Implement Special Actions
 
     Note:Need to figure out how to handle response windows.
