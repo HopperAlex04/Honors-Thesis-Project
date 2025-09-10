@@ -1,14 +1,16 @@
+import random
 from typing import cast
 from Card import Card
-from Moves import ScorePlay
+from Moves import Draw, Move, ScorePlay, ScuttlePlay
 import Moves
 from Zone import Deck, Hand, Zone
 
 
 class Player(): 
     
-    def __init__(self, hand: Hand):
+    def __init__(self, hand: Hand, name: str):
         self.hand = hand
+        self.name = name
         self.score = 0
         self.moves = []
         #self.zones = []
@@ -20,19 +22,25 @@ class Player():
         #print((cast(Hand, self.hand)).cards)
         #print(cast(Deck, deck).cards)
         
-    def computeMoves(self, card: Card, state: list):
+    def computeMoves(self, card: Card, zones: list):
         #add scoring moves to moves
         #due to the construction of turn ordering, the owners hand will always be 0, and field will always be 1
-        self.moves.append(ScorePlay(card, cast(Hand, state[0]), cast(Zone, state[1])))
-        pass
+        self.moves.append(ScorePlay(card, cast(Hand, zones[0]), cast(Zone, zones[1])))
+        
+        for x in zones[3].cards:
+            if x.number < card.number & x.suit < card.suit:
+                scuttle = ScuttlePlay(card, x, self.hand, zones[3], zones[4])
+                self.moves.append(scuttle)
         
     def turn(self, zones: list):
         self.moves = []
         
         for x in self.hand.cards:
             self.computeMoves(x, zones)
-        cast(ScorePlay, self.moves[0]).execute()
-        pass
+        #print(self.moves.__len__())
+        self.moves.append(Draw(self.hand, zones[5]))
+        select = random.randint(0, self.moves.__len__() - 1)
+        self.moves[select].execute()
     
     def cleanUp(self, zones:list) -> bool:
         self.score = 0
