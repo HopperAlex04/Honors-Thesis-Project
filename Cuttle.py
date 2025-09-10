@@ -15,8 +15,7 @@ class Cuttle():
         self.dealer = d
         self.player = p
         
-        self.yardD = Zone(2, self.dealer, [])
-        self.yardP = Zone(1, self.player, [])
+        self.scrap = Zone(0, None, [])
         
         self.player.hand = Hand(self.player)
         self.dealer.hand = Hand(self.dealer)
@@ -28,7 +27,7 @@ class Cuttle():
         self.pfield = Zone(2, self.player, [])
         self.dfield = Zone(2, self.dealer, [])
         
-        self.zones = [self.deck, self.yardD, self.yardP, self.dHand, self.pHand, self.pfield, self.dfield]
+        self.zones = [self.deck, self.scrap, self.dHand, self.pHand, self.pfield, self.dfield]
     
     def gameStart(self):
         for x in range(0,6):
@@ -40,11 +39,13 @@ class Cuttle():
         over = False
         
         while (not over):
-            self.zones = [self.pHand, self.pfield, self.yardP, self.dHand, self.dfield, self.yardD, self.deck]
+            self.zones = [self.pHand, self.pfield, self.dHand, self.dfield, self.scrap, self.deck]
             #print(self.zones)
             self.player.turn(self.zones)
             over = self.player.cleanUp(self.zones)
-            self.zones = [self.dHand, self.dfield, self.yardD, self.deck, self.pHand, self.pfield, self.yardP]
+            if over: continue
+            
+            self.zones = [self.dHand, self.dfield, self.pHand, self.pfield, self.scrap, self.deck]
             #print(self.zones)
             self.dealer.turn(self.zones)
             over = self.dealer.cleanUp(self.zones)
