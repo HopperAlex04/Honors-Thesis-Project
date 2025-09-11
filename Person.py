@@ -39,6 +39,9 @@ class Player():
             self.computeMoves(x, zones)
         #print(self.moves.__len__())
         self.moves.append(Draw(self.hand, zones[5]))
+        
+        #Here we need to figure out how to handle input
+        
         select = random.randint(0, self.moves.__len__() - 1)
         self.moves[select].execute()
     
