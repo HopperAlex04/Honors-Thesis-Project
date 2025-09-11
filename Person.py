@@ -40,10 +40,6 @@ class Player():
         #print(self.moves.__len__())
         self.moves.append(Draw(self.hand, zones[5]))
         
-        #Here we need to figure out how to handle input
-        
-        select = random.randint(0, self.moves.__len__() - 1)
-        self.moves[select].execute()
     
     def cleanUp(self, zones:list) -> bool:
         self.score = 0
@@ -51,5 +47,8 @@ class Player():
             self.score += cast(Card, x).number
         print(self.score)
         return self.score >= 21
+    
+    def getInput(self) -> str:
+        return ""
     
     
