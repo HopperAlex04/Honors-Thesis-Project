@@ -1,10 +1,41 @@
+import random
+from Moves import Draw, Move, ScorePlay, ScuttlePlay
 from Person import Player
 from Zone import Hand
 
 
 class Manual(Player):
     def __init__(self, hand: Hand, name: str) -> None:
-        pass
+        super().__init__(hand, name)
+        
+    def getInput(self, zones:list) -> Move:
+        finalMove: Move
+        inOne = input("Select a card to play, or draw")
+        handSize = range(self.hand.cards.__len__())
+        if inOne == "draw": 
+            finalMove = Draw(self.hand, zones[5]) 
+        elif int(inOne) in handSize:
+            selected = self.hand.cards[int(inOne)]
+            inTwo = input("scuttle or score?")
+            if inTwo == "scuttle":
+                inThree = input("target?")
+                try:
+                    targ = zones[3].cards[inThree]
+                    finalMove = ScuttlePlay(selected, targ, self.hand, zones[3], zones[4])
+                except IndexError:
+                    print("invalid target")
+            elif inTwo == "score":
+                finalMove = ScorePlay(selected, self.hand, zones[3])
+        return finalMove    
+    
+    def turn(self, zones:list):
+        super().turn(zones)
+        valid = False
+        
+        while not valid:
+            finalMove = self.getInput(zones)
+            valid = finalMove in self.moves
+            
 
 
 
@@ -12,3 +43,8 @@ class Manual(Player):
 class Automatic(Player):
     def __init__(self, hand: Hand, name: str) -> None:
         pass
+    
+    def turn(self, zones: list):
+        super().turn(zones)
+        select = random.randint(0, self.moves.__len__() - 1)
+        self.moves[select].execute()

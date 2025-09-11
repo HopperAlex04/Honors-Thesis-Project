@@ -23,6 +23,15 @@ class ScorePlay(Move):
         print("scored")
         print(self.card)
         
+    def __eq__(self, other):
+        equals = True
+        if not isinstance(other, ScorePlay):
+            equals = False
+        else:
+            equals = (self.card == other.card) and (self.field == other.field) and (self.hand == other.hand)
+            
+        return equals
+        
 class ScuttlePlay(Move):
     def __init__(self, card:Card, target:Card, hand:Hand, field:Zone, scrap:Zone):
         self.card = card
@@ -41,6 +50,15 @@ class ScuttlePlay(Move):
         print("with")
         print(self.card)
         
+    def __eq__(self, other):
+        equals = True
+        if not isinstance(other, ScuttlePlay):
+            equals = False
+        else:
+            equals = (self.card == other.card) and (self.field == other.field) and (self.hand == other.hand) and (self.target == other.target) and (self.scrap == other.scrap)
+                
+        return equals
+        
 class Draw(Move):
     def __init__(self, hand:Hand, deck:Deck):
         self.hand = hand
@@ -50,3 +68,12 @@ class Draw(Move):
         self.hand.cards.append(self.deck.cards.pop())
         print(self.hand.owner.name)
         print("drew")
+        
+    def __eq__(self, other):
+        equals = True
+        if not isinstance(other, Draw):
+            equals = False
+        else:
+            equals = (self.hand == other.hand) and (self.deck == other.deck)
+            
+        return equals
