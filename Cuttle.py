@@ -49,6 +49,9 @@ class Cuttle():
             #print(self.zones)
             self.dealer.turn(self.zones)
             over = self.dealer.cleanUp(self.zones)
+            for x in self.zones:
+                if x is not self.deck and x is not self.scrap:
+                    print(x)
             
         #print(self.pfield.cards[0])
         #print(self.dfield.cards[0])
