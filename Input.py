@@ -21,7 +21,7 @@ class Manual(Player):
             if inTwo == "scuttle":
                 inThree = input("target?")
                 try:
-                    targ = zones[3].cards[inThree]
+                    targ = zones[3].cards[int(inThree)]
                     finalMove = ScuttlePlay(selected, targ, self.hand, zones[3], zones[4])
                 except IndexError:
                     print("invalid target")
@@ -50,7 +50,7 @@ class Manual(Player):
 
 class Automatic(Player):
     def __init__(self, hand: Hand, name: str) -> None:
-        pass
+        super().__init__(hand, name)
     
     def turn(self, zones: list):
         super().turn(zones)

@@ -1,11 +1,11 @@
 from Cuttle import Cuttle
-from Input import Manual
+from Input import Automatic, Manual
 from Person import Player
 from Zone import Hand
 
 
 #instance testing
-p1 = Manual(Hand(0), "dealer")
+p1 = Automatic(Hand(0), "dealer")
 p2 = Manual(Hand(0), "player")
 
 game = Cuttle(p1, p2)
