@@ -1,15 +1,5 @@
-player.play
+1. Create String based move input
 
-    DONE: compute all possible moves
+2. Turn abstract?
 
-    make a choice
-        agent selects from computed moves
-        human player constructs a move through prompting (terminal) or buttons (gui)
-
-    compare choice to values in computed moves:
-        DONE: a move is one of three subclasses of Move superclass
-        DONE: Implement a simple score move, altering player score during cleanup
-        TODO: Implement Scuttle
-        TODO: Implement Special Actions
-
-    Note:Need to figure out how to handle response windows.
+3. Absoulutely move all "move computing" into compute moves instead of looping in turn.
