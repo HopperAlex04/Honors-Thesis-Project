@@ -1,9 +1,12 @@
+from abc import ABC, abstractmethod
 from Card import Card
 from Zone import Deck, Hand, Zone
 
 
-class Move:
-    pass
+class Move(ABC):
+    @abstractmethod
+    def execute(self):
+        pass
 
 class ScorePlay(Move):
     
@@ -25,9 +28,18 @@ class ScorePlay(Move):
         
     def __eq__(self, other):
         equals = True
+        #print(other)
         if not isinstance(other, ScorePlay):
+            #print("not a score")
             equals = False
         else:
+            #print(self.field)
+            #print(other.field)
+            #print(self.card == other.card)
+            #print(self.field == other.field)
+            #print(self.hand == other.hand)
+            #print()
+            
             equals = (self.card == other.card) and (self.field == other.field) and (self.hand == other.hand)
             
         return equals
