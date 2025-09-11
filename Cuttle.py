@@ -37,12 +37,21 @@ class Cuttle():
             self.player.draw(self.deck)
         
         over = False
+        self.zones = [self.pHand, self.pfield, self.dHand, self.dfield, self.scrap, self.deck]
+        
+        for x in self.zones:
+                if x is not self.deck and x is not self.scrap:
+                    print(x)
         
         while (not over):
             self.zones = [self.pHand, self.pfield, self.dHand, self.dfield, self.scrap, self.deck]
             #print(self.zones)
+            
             self.player.turn(self.zones)
             over = self.player.cleanUp(self.zones)
+            for x in self.zones:
+                if x is not self.deck and x is not self.scrap:
+                    print(x)
             if over: continue
             
             self.zones = [self.dHand, self.dfield, self.pHand, self.pfield, self.scrap, self.deck]

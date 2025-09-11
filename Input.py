@@ -16,6 +16,7 @@ class Manual(Player):
             finalMove = Draw(self.hand, zones[5]) 
         elif int(inOne) in handSize:
             selected = self.hand.cards[int(inOne)]
+            print(selected)
             inTwo = input("scuttle or score?")
             if inTwo == "scuttle":
                 inThree = input("target?")
@@ -25,7 +26,7 @@ class Manual(Player):
                 except IndexError:
                     print("invalid target")
             elif inTwo == "score":
-                finalMove = ScorePlay(selected, self.hand, zones[3])
+                finalMove = ScorePlay(selected, self.hand, zones[1])
         return finalMove    
     
     def turn(self, zones:list):
@@ -34,7 +35,14 @@ class Manual(Player):
         
         while not valid:
             finalMove = self.getInput(zones)
-            valid = finalMove in self.moves
+            print(finalMove)
+            for x in self.moves:
+                #print(finalMove.__eq__(x))
+                valid = finalMove.__eq__(x)
+                if valid: break
+            if not valid: print("invalid move")
+            
+        finalMove.execute()
             
 
 
