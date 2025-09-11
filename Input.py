@@ -1,13 +1,13 @@
 from Person import Player
 
 
-class Manual():
-    def __init__(self, position:Player) -> None:
+class Manual(Player):
+    def __init__(self) -> None:
         pass
 
 
 
 
-class Agent():
-    def __init__(self, position:Player) -> None:
+class Automatic(Player):
+    def __init__(self) -> None:
         pass
