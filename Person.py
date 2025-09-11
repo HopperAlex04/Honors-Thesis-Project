@@ -28,7 +28,7 @@ class Player():
         self.moves.append(ScorePlay(card, cast(Hand, zones[0]), cast(Zone, zones[1])))
         
         for x in zones[3].cards:
-            if x.number < card.number & x.suit < card.suit:
+            if x.number < card.number or (x.number == card.number and x.suit < card.suit):
                 scuttle = ScuttlePlay(card, x, self.hand, zones[3], zones[4])
                 self.moves.append(scuttle)
         

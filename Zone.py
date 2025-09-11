@@ -16,6 +16,13 @@ class Zone():
     #privacy = 0 means no player knows, 1 means the owner knows, and 2 means both players know.
     #owner, 0 means no ownership, 1 means player 1, 2 means player 2
     
+    def __str__(self) -> str:
+        result = ""
+        for x in self.cards:
+            result += x.__str__()
+            result += " | "
+        return result
+    
 class Deck(Zone):
     def __init__(self):
         super().__init__(0, 0, [])

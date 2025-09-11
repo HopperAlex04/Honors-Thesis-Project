@@ -10,7 +10,7 @@ game.gameStart()
 
 #scale testing
 
-#for x in range (100000):
+#for x in range (10000):
 #    game = Cuttle(Player(Hand(0), "dealer"), Player(Hand(0), "player"))
 #    game.gameStart()
 
