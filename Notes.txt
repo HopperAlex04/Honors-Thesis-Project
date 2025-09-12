@@ -3,3 +3,5 @@
 2. Turn abstract?
 
 3. Absoulutely move all "move computing" into compute moves instead of looping in turn.
+
+13393 possible moves disregarding state and assuming all possible targets for every possible action

@@ -64,5 +64,9 @@ class Cuttle():
             
         #print(self.pfield.cards[0])
         #print(self.dfield.cards[0])
+        
+        # this is for testing the computation of all actions
+                    
+
             
         
