@@ -1,11 +1,11 @@
 from Cuttle import Cuttle
-from Input import Automatic, Manual
+from Input import Randomized, Manual
 from Person import Player
 from Zone import Hand
 
 
 #instance testing
-p1 = Automatic(Hand(0), "dealer")
+p1 = Randomized(Hand(0), "dealer")
 p2 = Manual(Hand(0), "player")
 
 game = Cuttle(p1, p2)
@@ -17,5 +17,6 @@ game.gameStart()
 #for x in range (10000):
 #    game = Cuttle(Player(Hand(0), "dealer"), Player(Hand(0), "player"))
 #    game.gameStart()
+
 
 

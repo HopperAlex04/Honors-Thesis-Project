@@ -3,6 +3,16 @@ from Moves import Draw, Move, ScorePlay, ScuttlePlay
 from Person import Player
 from Zone import Hand
 
+import torch  # type: ignore
+import torch.nn as nn # type: ignore
+import torch.optim as optim # type: ignore
+import torch.nn.functional as F # type: ignore
+import torch.distributions as distributions # type: ignore
+import numpy as np # type: ignore
+import gymnasium as gym # type: ignore
+x = torch.rand(5,3)
+print(x)
+
 
 class Manual(Player):
     def __init__(self, hand: Hand, name: str) -> None:
@@ -48,7 +58,7 @@ class Manual(Player):
 
 
 
-class Automatic(Player):
+class Randomized(Player):
     def __init__(self, hand: Hand, name: str) -> None:
         super().__init__(hand, name)
     
