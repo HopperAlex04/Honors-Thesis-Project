@@ -1,17 +1,14 @@
 from Cuttle import Cuttle
+from GradientTesting import Agent, CuttleEnvironment
 from Input import Randomized, Manual
 from Person import Player
 from Zone import Hand
 
 
 #instance testing
-p1 = Randomized(Hand(0), "dealer")
-p2 = Randomized(Hand(0), "player")
+env = CuttleEnvironment()
 
-game = Cuttle(p1, p2)
-
-game.gameStart()
-
+env.envStart()
 #scale testing
 
 #for x in range (10000):
