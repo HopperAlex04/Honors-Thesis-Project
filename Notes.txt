@@ -5,3 +5,8 @@
 3. Absoulutely move all "move computing" into compute moves instead of looping in turn.
 
 13393 possible moves disregarding state and assuming all possible targets for every possible action
+
+Line 403: when thinking replace unit_location_mask with a mask corresponding to cards in hand
+line 404: same with target, replace target unit with target card mask
+
+in Game start, make it reset the game entirely
