@@ -1,116 +1,126 @@
+import math
 import torch  # type: ignore
 import torch.nn as nn # type: ignore
 import torch.optim as optim # type: ignore
 import torch.nn.functional as F # type: ignore
 import torch.distributions as distributions # type: ignore
 import numpy as np # type: ignore
-import gymnasium as gym # type: ignore
+import gymnasium as gym
+
+from Card import Card
+from Cuttle import Cuttle
+from Input import Randomized
+from Moves import Draw, Move, ScorePlay, ScuttlePlay
+from Person import Player
+from Zone import Hand # type: ignore
 
 
-class PolicyNetwork(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, dropout):
-        super().__init__()
-
-        self.layer1 = nn.Linear(input_dim, hidden_dim)
-        self.layer2 = nn.Linear(hidden_dim, output_dim)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x):
-        x = self.layer1(x)
-        x = self.dropout(x)
-        x = F.relu(x)
-        x = self.layer2(x)
-        return x
-
-def calculate_stepwise_returns(rewards, discount_factor):
-    returns = []
-    R = 0
-
-    for r in reversed(rewards):
-        R = r + R * discount_factor
-        returns.insert(0, R)
-    returns = torch.tensor(returns)
-    normalized_returns = (returns - returns.mean()) / returns.std()
-    return normalized_returns
-
-#Actually plays games, this is the target here
-
-def forward_pass(env, policy, discount_factor):
-    log_prob_actions = []
-    rewards = []
-    done = False
-    episode_return = 0
-
-    policy.train()
-    observation, info = env.reset()
-
-    while not done:
-        observation = torch.FloatTensor(observation).unsqueeze(0)
-        action_pred = policy(observation)
-        action_prob = F.softmax(action_pred, dim = -1)
-        dist = distributions.Categorical(action_prob)
-        action = dist.sample()
-        log_prob_action = dist.log_prob(action)
-
-        observation, reward, terminated, truncated, info = env.step(action.item()) #Here we pick from action pool an execute and grab some data, namely ob and reward
-        done = terminated or truncated
-
-        log_prob_actions.append(log_prob_action)
-        rewards.append(reward)
-        episode_return += reward
-
-    log_prob_actions = torch.cat(log_prob_actions)
-    stepwise_returns = calculate_stepwise_returns(rewards, discount_factor)
-
-    return episode_return, stepwise_returns, log_prob_actions
-
-def calculate_loss(stepwise_returns, log_prob_actions):
-    loss = -(stepwise_returns * log_prob_actions).sum()
-    return loss
-
-def update_policy(stepwise_returns, log_prob_actions, optimizer):
-    stepwise_returns = stepwise_returns.detach()
-    loss = calculate_loss(stepwise_returns, log_prob_actions)
+class CuttleEnvironment(gym.Env):
     
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+    def __init__(self):
+        
+        self.game = Cuttle(Randomized(Hand(0), "dealer"), Agent(None, "player", None, None, None))
+        
+        self.action_space = gym.spaces.MultiDiscrete([2, 52, 51])
+        self.observation_space = gym.spaces.MultiBinary([4,52])
+        
+        #Setting up open boardstate
+        self.agentHand = []
+        self.agentField = []
+        self.oppField = []
+        self.scrapPile = []
+        
+        for x in range(52):
+            self.agentHand.append(0)
+            self.agentField.append(0)
+            self.oppField.append(0)
+            self.scrapPile.append(0)
+        
+        self.agentHand = np.array(self.agentHand)
+        self.agentField = np.array(self.agentField)
+        self.oppField = np.array(self.oppField)
+        self.scrapPile = np.array(self.scrapPile)
+        
+    def reset(self, seed, options):
+        super().reset(seed = seed)
+        self.game.gameStart
+        
+        observation = self.get_obs()
+        
+        return observation
+    
+    def render(self):
+        pass
+    
+    def get_obs(self):
+        #returns observation of current state
+        return {"aHand": self.agentHand, "aField": self.agentField, "oField": self.oppField, "scrap":  self.scrapPile}
+    
+    def step(self, action):
+        move: Move = self.convertToMove(action)
+        
+        if self.game.player.cleanUp(self.game.zones):
+            reward = 1
+        
+        move.execute()
+        
+        observation = self.get_obs()
+        
+        return observation, reward
+    
+    def convertToMove(self, action) -> Move:
+        final: Move = Draw(self.game.pHand, self.game.deck)
+        
+        if (action[0] == 0):
+            if (action[1] != 0):
+                final = ScorePlay(self.getCard(action[1]), self.game.pHand, self.game.pfield)
+            else:
+                final = Draw(self.game.pHand, self.game.deck)
+                print("drawing")
+        elif (action[0] == 1):
+            final = ScuttlePlay(self.getCard(action[1]), self.getCard(action[2] + 1), self.game.pHand, self.game.dfield, self.game.scrap)
+        
+        return final
 
-    return loss.item()
+#mode = 1 is hand, mode = 2 is target
 
-def main(): 
-    MAX_EPOCHS = 500
-    DISCOUNT_FACTOR = 0.99
-    N_TRIALS = 25
-    REWARD_THRESHOLD = 475
-    PRINT_INTERVAL = 10
-    INPUT_DIM = env.observation_space.shape[0] #test altering this
-    HIDDEN_DIM = 128
-    OUTPUT_DIM = env.action_space.n #Test altering this
-    DROPOUT = 0.5
-
-    episode_returns = []
-
-    policy = PolicyNetwork(INPUT_DIM, HIDDEN_DIM, OUTPUT_DIM, DROPOUT)
-
-    LEARNING_RATE = 0.01
-    optimizer = optim.Adam(policy.parameters(), lr = LEARNING_RATE)
-
-    for episode in range(1, MAX_EPOCHS+1):
-        episode_return, stepwise_returns, log_prob_actions = forward_pass(env, policy, DISCOUNT_FACTOR)
-        _ = update_policy(stepwise_returns, log_prob_actions, optimizer)
-
-        episode_returns.append(episode_return)
-        mean_episode_return = np.mean(episode_returns[-N_TRIALS:])
-
-        if episode % PRINT_INTERVAL == 0:
-            print(f'| Episode: {episode:3} | Mean Rewards: {mean_episode_return:5.1f} |')
-
-        if mean_episode_return >= REWARD_THRESHOLD:
-            print(f'Reached reward threshold in {episode} episodes')
-            break
-
-
-env = gym.make('CartPole-v1') #This is the target of alteration I think
-print(env.action_space.n)
-#main()
+    def getCard(self, index) -> Card:
+        number = math.ceil(index/4)
+        suit = index % 4
+        match suit:
+            case 1: suit = 1
+            case 2: suit = 2
+            case 3: suit = 3
+            case 0: suit = 4
+        
+        selected = Card(number, suit)
+        print(selected)
+        for x in self.game.pHand.cards:
+            if selected.number == x.number and selected.suit == x.suit:
+                selected = x
+                
+        return selected
+    
+        
+#sets up for agent play
+class Agent(Player):
+    def __init__(self, hand, name, aField, oField, scrap):
+        super().__init__(hand, name)
+        self.aField = aField
+        self.oField = oField
+        self.scrap = scrap
+        
+    def turn(self):
+        pass
+    
+    
+env = CuttleEnvironment()
+count = 0
+for x in range(1, 53):
+    for y in range(0, 52):
+        env.convertToMove([1, x, y])
+        count += 1
+        
+print(count)
+#print(env.action_space)
+#print(env.observation_space.sample())

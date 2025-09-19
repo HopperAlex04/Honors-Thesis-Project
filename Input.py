@@ -50,7 +50,7 @@ class Manual(Player):
 
 
 class Randomized(Player):
-    def __init__(self, hand: Hand, name: str) -> None:
+    def __init__(self, hand, name: str) -> None:
         super().__init__(hand, name)
     
     def turn(self, zones: list):

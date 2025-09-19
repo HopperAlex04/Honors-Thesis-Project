@@ -6,7 +6,7 @@ from Zone import Hand
 
 #instance testing
 p1 = Randomized(Hand(0), "dealer")
-p2 = Manual(Hand(0), "player")
+p2 = Randomized(Hand(0), "player")
 
 game = Cuttle(p1, p2)
 
