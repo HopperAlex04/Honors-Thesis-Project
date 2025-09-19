@@ -46,7 +46,6 @@ class Cuttle():
         while (not over):
             self.zones = [self.pHand, self.pfield, self.dHand, self.dfield, self.scrap, self.deck]
             #print(self.zones)
-            
             self.player.turn(self.zones)
             over = self.player.cleanUp(self.zones)
             for x in self.zones:

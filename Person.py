@@ -17,7 +17,9 @@ class Player():
         #self.yard = yard
         
     def draw(self,deck):
-        (cast(Hand, self.hand)).cards.append(cast(Deck, deck).cards.pop())
+        drawn = cast(Deck, deck).cards.pop()
+        (cast(Hand, self.hand)).cards.append(drawn)
+        return drawn
         
         #print((cast(Hand, self.hand)).cards)
         #print(cast(Deck, deck).cards)
