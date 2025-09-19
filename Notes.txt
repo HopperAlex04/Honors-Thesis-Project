@@ -10,3 +10,5 @@ Line 403: when thinking replace unit_location_mask with a mask corresponding to 
 line 404: same with target, replace target unit with target card mask
 
 in Game start, make it reset the game entirely
+
+TODO: environment translation, ie make it execute and interact, test run of "dumb" solution

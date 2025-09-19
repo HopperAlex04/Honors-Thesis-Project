@@ -7,6 +7,7 @@ import torch.distributions as distributions # type: ignore
 import numpy as np # type: ignore
 import gymnasium as gym
 
+
 from Card import Card
 from Cuttle import Cuttle
 from Input import Randomized
@@ -114,13 +115,38 @@ class Agent(Player):
         pass
     
     
-env = CuttleEnvironment()
-count = 0
-for x in range(1, 53):
-    for y in range(0, 52):
-        env.convertToMove([1, x, y])
-        count += 1
-        
-print(count)
-#print(env.action_space)
-#print(env.observation_space.sample())
+def mlp(sizes, activation=nn.Tanh, output_activation=nn.Identity):
+    # Build a feedforward neural network.
+    layers = []
+    for j in range(len(sizes)-1):
+        act = activation if j < len(sizes)-2 else output_activation
+        layers += [nn.Linear(sizes[j], sizes[j+1]), act()]
+    return nn.Sequential(*layers)
+    
+def train(hidden_sizes = [32] , lr = 1e-2, epochs = 50, batch_size = 5000, render = False):
+    env = CuttleEnvironment()
+
+    obs_dim = env.observation_space.shape
+
+    n_acts = env.action_space.shape
+
+    logits_net = mlp(sizes = [obs_dim] + hidden_sizes + [n_acts])
+    
+    def get_policy(obs):
+        logits = logits_net(obs)
+        return torch.distributions.Categorical(logits)
+    
+    def get_action(obs):
+        return get_policy(obs).sample() 
+    
+    def compute_loss(obs, act, weights):
+        logp = get_policy(obs).log_prob(act)
+        return -(logp * weights).mean()
+    
+
+    
+
+    
+
+    
+    
