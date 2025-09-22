@@ -192,6 +192,6 @@ def train(hidden_sizes = [32] , lr = 1e-2, epochs = 50, batch_size = 5000, rende
     
 
     
-
+print(gym.spaces.Discrete(1379).sample())
     
     

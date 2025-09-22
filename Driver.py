@@ -6,14 +6,20 @@ from Zone import Hand
 
 
 #instance testing
-env = CuttleEnvironment()
+count = 0
+indices = []
+indices.append(count)
+for x in range(52):
+    count += 1
+    indices.append(count)
+    
+for x in range(52):
+    indices.append(count)
+    for y in range(x + 1):
+        count += 1
+    
+print(indices)
 
-env.envStart()
-#scale testing
-
-#for x in range (10000):
-#    game = Cuttle(Player(Hand(0), "dealer"), Player(Hand(0), "player"))
-#    game.gameStart()
 
 
 

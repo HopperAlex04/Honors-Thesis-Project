@@ -12,3 +12,38 @@ line 404: same with target, replace target unit with target card mask
 in Game start, make it reset the game entirely
 
 TODO: environment translation, ie make it execute and interact, test run of "dumb" solution
+
+Question: How to build 
+Answer: Just use a discrete space and map each instance to a possible move
+
+Question: How to compute number of moves regardless of state?
+
+Answer: add 1 for drawing, add 52 for scoring, Scuttling, due to targeting restrictions is where we can save a little.
+
+for every card at index x, there are 52 - x cards below that card which are valid targets. This is specified by the range 0 to x
+
+Note:Later on scuttling can be removed from face cards if we get to royal effects
+
+
+Question: How to figure out what move is at what index in the discrete space?
+
+if 0: drawing
+if in range 1 to 52: scoring
+if in range 53 to 1378: Scuttling
+    1 1 has no target
+    1 2 = 1
+    1 3 = 2 ...
+
+    [
+        [1 2, 1 1]
+        [1 3, 1 1]
+        [1 3, 1 2]
+        .
+        .
+        .
+        ]
+
+for x in 1-51
+    53
+    54
+    56
