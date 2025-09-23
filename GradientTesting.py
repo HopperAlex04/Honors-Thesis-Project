@@ -109,19 +109,41 @@ class CuttleEnvironment(gym.Env):
     def convertToMove(self, action, zones) -> Move:
         final: Move = Draw(zones[0], zones[5])
         
-        if (action[0] == 0):
-            if (action[1] != 0):
-                final = ScorePlay(self.getCard(action[1], zones[0]), zones[0], zones[1])
-            else:
-                final = Draw(zones[0], zones[5])
-                #print("drawing")
-        elif (action[0] == 1):
-            if (action[2] != 0):
-                final = ScuttlePlay(self.getCard(action[1], zones[0]), self.getCard(action[2], zones[3]), zones[0], zones[3], zones[4])
-            else:
-                final = ScorePlay(self.getCard(action[1], zones[0]), zones[0], zones[1])
+        if action == 0:
+            final = Draw(zones[0], zones[5])
+            
+        elif action in range(1, 53):
+            scoreCard = self.getCard(action - 1, zones[0])
+            final = ScorePlay(scoreCard, zones[0], zones[1])
+            
+        elif action in range(53, 1379):
+            count = 0
+            indices = []
+
+            for x in range(52):
+                count += 1
+                
+                
+            for x in range(52):
+                
+                for y in range(x + 1):
+                    count += 1
+                indices.append(count)
+            
+            index = 1 
+            #print(indices)
+            for x in indices:
+                #print(x)
+                if action <= x:
+                    break
+                index += 1
+                    
+            if index > -1:
+                pCard = self.getCard(index, zones[0])
+                #print(index, indices[index - 1], action, self.getCard(indices[index - 1] - action, zones[3]))
+                oCard = self.getCard(indices[index - 1] - action, zones[3])
+                final = ScuttlePlay(pCard, oCard, zones[0], zones[3], zones[4])        
         
-        print(final)
         return final
 
 #mode = 1 is hand, mode = 2 is target
@@ -131,14 +153,14 @@ class CuttleEnvironment(gym.Env):
         suit = index - number * 4
         
         selected = Card(number + 1, suit + 1)
-        print(selected)
+        #print(selected)
         
-        print(zone)
+        #print(zone)
         for x in zone.cards:
             if x.number == selected.number and x.suit == selected.suit:
                 selected = x
         
-        print(selected)
+        #print(selected)
         return selected
     
     def getIndex(self, card:Card):
@@ -192,6 +214,6 @@ def train(hidden_sizes = [32] , lr = 1e-2, epochs = 50, batch_size = 5000, rende
     
 
     
-print(gym.spaces.Discrete(1379).sample())
+#print(gym.spaces.Discrete(1379).sample())
     
     
