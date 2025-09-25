@@ -44,6 +44,10 @@ class Cuttle():
                     print(x)
         
         while (not over):
+            
+            if self.deck.cards.__len__() == 0:
+                over = True
+            
             self.zones = [self.pHand, self.pfield, self.dHand, self.dfield, self.scrap, self.deck]
             #print(self.zones)
             self.player.turn(self.zones)
@@ -51,7 +55,9 @@ class Cuttle():
             for x in self.zones:
                 if x is not self.deck and x is not self.scrap:
                     print(x)
+            
             if over: continue
+            if not self.deck: break
             
             self.zones = [self.dHand, self.dfield, self.pHand, self.pfield, self.scrap, self.deck]
             #print(self.zones)
