@@ -77,7 +77,8 @@ class Draw(Move):
         self.deck = deck
     
     def execute(self):
-        self.hand.cards.append(self.deck.cards.pop())
+        if self.deck:
+            self.hand.cards.append(self.deck.cards.pop())
         print(self.hand.owner.name)
         print("drew")
         

@@ -1,7 +1,9 @@
 #zones = [self.pHand, self.pfield, self.dHand, self.dfield, self.scrap, self.deck]
 from typing import cast
+
+import torch
 from Card import Card
-from GradientTesting import CuttleEnvironment
+from Environment import CuttleEnvironment
 from Moves import Draw, ScorePlay, ScuttlePlay
 from Zone import Hand, Zone
 
@@ -66,3 +68,14 @@ def actionToMoveTest():
             print(x.field == computedMoves[i].field)
             break
         i += 1
+    print("done")
+
+def AgentTest():
+    env = CuttleEnvironment()
+    #print(env.observation_space.shape[0])
+    for x in range(1):
+        env.envStart()
+        env.reset()
+        
+#actionToMoveTest()
+AgentTest()

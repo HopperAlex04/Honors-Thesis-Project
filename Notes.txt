@@ -47,3 +47,16 @@ for x in 1-51
     53
     54
     56
+
+
+
+mask
+-ComputeMovesEnv(zones) Computes the legal moves based on the zones given
+    computedMoves = []               
+    for x in range(1379):
+        computedMoves.append(env.convertToMove(x, zones))
+    
+indexes
+
+    for x in self.moves
+        index.append(computedMoves.index(x))
