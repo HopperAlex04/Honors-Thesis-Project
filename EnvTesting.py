@@ -73,7 +73,7 @@ def actionToMoveTest():
 def AgentTest():
     env = CuttleEnvironment()
     #print(env.observation_space.shape[0])
-    for x in range(1):
+    for x in range(10):
         env.envStart()
         env.reset()
         

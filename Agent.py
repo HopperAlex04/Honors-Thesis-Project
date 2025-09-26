@@ -12,11 +12,11 @@ class Agent(Player):
     def __init__(self, hand, name, env):
         super().__init__(hand, name)
         self.env = env
-        self.device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-        print(f"Using {self.device} device")
+        self.device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu" # type: ignore
+        #print(f"Using {self.device} device")
 
         self.model = NeuralNetwork().to(self.device)
-        print(self.model)
+        #print(self.model)
         
     def turn(self, zones):
         super().turn(zones)
@@ -32,12 +32,18 @@ class Agent(Player):
         logits = self.model(stateT)
         
         mask = self.generateMask(zones)
-        print(mask)
-        exit()
+        
+        for x in range(1379):
+            if x not in mask:
+                logits[0, x] = float('-inf')
+        
+        
+        probs = torch.softmax(logits, dim = 1)
+        
         while not valid:
-            pred_probab = nn.Softmax(dim=1)(logits)
+            pred_probab = nn.Softmax(dim=1)(probs)
             y_pred = pred_probab.argmax(1)
-            mv = self.env.convertToMove(y_pred.item() + 1, zones)
+            mv = self.env.convertToMove(y_pred.item(), zones)
             print(y_pred.item())
             for x in self.moves:
                 valid = x.__eq__(mv)
@@ -83,6 +89,6 @@ class NeuralNetwork(nn.Module):
     def forward(self, x):
 
         x = self.flatten(x)
-        print(x)
+        #print(x)
         logits = self.linear_relu_stack(x)
         return logits
