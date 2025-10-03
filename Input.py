@@ -8,6 +8,7 @@ from Zone import Hand
 class Manual(Player):
     def __init__(self, hand: Hand, name: str) -> None:
         super().__init__(hand, name)
+        hand.owner = self
         
     def getInput(self, zones:list) -> Move:
         finalMove: Move
@@ -52,8 +53,10 @@ class Manual(Player):
 class Randomized(Player):
     def __init__(self, hand, name: str) -> None:
         super().__init__(hand, name)
+        hand.owner = self
     
     def turn(self, zones: list):
         super().turn(zones)
-        select = random.randint(0, self.moves.__len__() - 1)
-        self.moves[select].execute()
+        if self.moves:
+            select = random.randint(0, self.moves.__len__() - 1)
+            self.moves[select].execute()

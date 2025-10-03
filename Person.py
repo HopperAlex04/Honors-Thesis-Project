@@ -40,14 +40,14 @@ class Player():
         for x in self.hand.cards:
             self.computeMoves(x, zones)
         #print(self.moves.__len__())
-        self.moves.append(Draw(self.hand, zones[5]))
+        if zones[5].cards: self.moves.append(Draw(self.hand, zones[5]))
         
     
     def cleanUp(self, zones:list) -> bool:
         self.score = 0
         for x in cast(Zone, zones[1]).cards:
             self.score += cast(Card, x).number
-        print(self.score)
+        print(f"{self.name}: {self.score}")
         return self.score >= 21
     
     def getInput(self) -> str:
