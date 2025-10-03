@@ -51,7 +51,6 @@ class DQNAgent(Player):
         
     def turn(self, zones):
         super().turn(zones)
-        
         self.env.envLoad(zones)
         valid = False
         

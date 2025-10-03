@@ -55,7 +55,7 @@ class Cuttle():
         
         while (not over):
             
-            if not self.deck: break
+            if not self.deck.cards: break
             
             self.currPlayer = self.player
             self.offPlayer = self.dealer
@@ -68,13 +68,13 @@ class Cuttle():
                     print(x)
             
             if over: continue
-            if not self.deck: break
+            if not self.deck.cards: break
             
             self.zones = [self.dHand, self.dfield, self.pHand, self.pfield, self.scrap, self.deck]
             #print(self.zones)
             self.currPlayer = self.dealer
             self.offPlayer = self.player
-            if not self.deck: break
+            if not self.deck.cards: break
             self.dealer.turn(self.zones)
             over = self.dealer.cleanUp(self.zones)
             for x in self.zones:

@@ -54,9 +54,12 @@ class Randomized(Player):
     def __init__(self, hand, name: str) -> None:
         super().__init__(hand, name)
         hand.owner = self
+        self.deckEmpty = False
     
     def turn(self, zones: list):
         super().turn(zones)
         if self.moves:
             select = random.randint(0, self.moves.__len__() - 1)
             self.moves[select].execute()
+        else:
+            self.noAction = True
