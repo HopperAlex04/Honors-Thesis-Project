@@ -146,4 +146,4 @@ def AgentTest(episodes):
         
 #actionToMoveTest()
 model1 = "./models/model1.pth"
-torch.save(AgentTest(1000), model1)
+torch.save(AgentTest(300), model1)

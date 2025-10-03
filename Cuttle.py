@@ -5,7 +5,9 @@
 # TODO: Hands
 # TODO: Card Functionality
 
+import torch.nn as nn # type: ignore
 from typing import cast
+from Agent import DQNAgent, DQNOne
 from Person import Player
 from Zone import Deck, Hand, Zone
 
@@ -67,6 +69,9 @@ class Cuttle():
                 if x is not self.deck and x is not self.scrap:
                     print(x)
             
+            
+            if isinstance(self.dealer, DQNAgent): self.dealer.updateModel(self.zones)
+            
             if over: continue
             if not self.deck.cards: break
             
@@ -80,6 +85,8 @@ class Cuttle():
             for x in self.zones:
                 if x is not self.deck and x is not self.scrap:
                     print(x)
+                    
+            if isinstance(self.player, DQNAgent): self.player.updateModel(self.zones)
             
         #print(self.pfield.cards[0])
         #print(self.dfield.cards[0])
