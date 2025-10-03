@@ -11,16 +11,24 @@ from Zone import Deck, Hand, Zone
 
 class Cuttle():
     
-    def __init__(self, d: Player, p: Player):
+    def __init__(self, d, p):
         self.dealer = d
         self.player = p
         
+        self.currPlayer = self.player
+        self.offPlayer = self.dealer
+        
         self.scrap = Zone(0, None, [])
         
-        self.player.hand = Hand(self.player)
-        self.dealer.hand = Hand(self.dealer)
-        self.dHand = self.dealer.hand
-        self.pHand = self.player.hand
+        self.dHand = None
+        self.pHand = None
+        
+        if self.dealer is not None and self.player is not None:
+            self.player.hand = Hand(self.player)
+            self.dealer.hand = Hand(self.dealer)
+            self.dHand = self.dealer.hand
+            self.pHand = self.player.hand
+        
         
         self.deck = Deck()
         
@@ -30,6 +38,8 @@ class Cuttle():
         self.zones = [self.deck, self.scrap, self.dHand, self.pHand, self.pfield, self.dfield]
     
     def gameStart(self):
+        self.player.score = 0
+        self.dealer.score = 0
         for x in range(0,6):
             self.dealer.draw(self.deck)
         
@@ -45,9 +55,10 @@ class Cuttle():
         
         while (not over):
             
-            if self.deck.cards.__len__() == 0:
-                over = True
+            if not self.deck: break
             
+            self.currPlayer = self.player
+            self.offPlayer = self.dealer
             self.zones = [self.pHand, self.pfield, self.dHand, self.dfield, self.scrap, self.deck]
             #print(self.zones)
             self.player.turn(self.zones)
@@ -61,6 +72,9 @@ class Cuttle():
             
             self.zones = [self.dHand, self.dfield, self.pHand, self.pfield, self.scrap, self.deck]
             #print(self.zones)
+            self.currPlayer = self.dealer
+            self.offPlayer = self.player
+            if not self.deck: break
             self.dealer.turn(self.zones)
             over = self.dealer.cleanUp(self.zones)
             for x in self.zones:

@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn # type: ignore
-from Agent import NeuralNetwork
+from Agent import DQNOne
 
-device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu" # type: ignore
 print(f"Using {device} device")
 
-model = NeuralNetwork().to(device)
+model = DQNOne(52*4, 1379).to(device)
 print(model)
 
 X = torch.rand(1, 4, 52, device=device)

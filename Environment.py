@@ -9,21 +9,25 @@ import numpy as np # type: ignore
 import gymnasium as gym
 
 
-from Agent import Agent
+#from Agent import Agent
 from Card import Card
 from Cuttle import Cuttle
-from Input import Manual, Randomized
+#from Input import Manual, Randomized
 from Moves import Draw, Move, ScorePlay, ScuttlePlay
-from Person import Player
+#from Person import Player
 from Zone import Hand # type: ignore
 
 
 #sets up for agent play
 class CuttleEnvironment(gym.Env):
     
-    def __init__(self):
+    def __init__(self, dealer, player):
         
-        self.game = Cuttle(Randomized(Hand(0), "dealer"), Agent(None, "player", self))
+        
+        self.dealer = dealer
+        self.player = player
+        
+        self.game = Cuttle(self.dealer, self.player)
         
         self.action_space = gym.spaces.Discrete(1379)
         self.observation_space = gym.spaces.MultiBinary([4,52])
@@ -51,7 +55,7 @@ class CuttleEnvironment(gym.Env):
         
     def reset(self):
         super().reset(seed = 0)
-        self.game = Cuttle(Randomized(Hand(0), "dealer"), Agent(None, "player", self))
+        self.game = Cuttle(self.dealer, self.player)
         
         observation = self.get_obs()
         
@@ -67,12 +71,11 @@ class CuttleEnvironment(gym.Env):
     def step(self, action, zones):
         move: Move = self.convertToMove(action, zones)
         reward = 0
-        if self.game.player.cleanUp(zones):
-            reward = 1
+        reward = self.game.currPlayer.score - self.game.offPlayer.score
         
         #print(move)
         move.execute()
-        self.envExecute(zones)
+        self.envLoad(zones)
         
         observation = self.get_obs()
         
@@ -140,7 +143,7 @@ class CuttleEnvironment(gym.Env):
         return (4 * (card.number- 1)) + card.suit-1
     
     #Necessary since game and env are seperate
-    def envExecute(self, zones):
+    def envLoad(self, zones):
         
         self.agentHandarr.fill(0)
         self.agentFieldarr.fill(0)
