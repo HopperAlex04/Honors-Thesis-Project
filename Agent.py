@@ -88,7 +88,7 @@ class DQNAgent(Player):
         next_stateT = torch.from_numpy(np.array([next_state])).to(device=self.device)
         self.memory.push(stateT, y_pred, next_stateT, reward)
 
-        self.updateModel()
+        self.updateModel(zones)
         
         #print(ob, reward)
     
@@ -109,8 +109,9 @@ class DQNAgent(Player):
             
         return indexes
     
-    def updateModel(self):
+    def updateModel(self,zones):
         # Perform one step of the optimization (on the policy network)
+        self.env.envLoad(zones)
         self.optimize_model()
 
         # Soft update of the target network's weights
@@ -121,8 +122,8 @@ class DQNAgent(Player):
             target_net_state_dict[key] = policy_net_state_dict[key]*DQNAgent.TAU + target_net_state_dict[key]*(1-DQNAgent.TAU)
         self.target_net.load_state_dict(target_net_state_dict)
         
-        if self.score >= 21:
-            self.data.append(1)
+        #if self.score >= 21:
+            #self.data.append(1)
        
     def optimize_model(self):
         if len(self.memory) < DQNAgent.BATCH_SIZE:
