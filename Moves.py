@@ -101,12 +101,21 @@ class AceAction(Move):
         
     def execute(self):
         self.scrap.cards.append(self.hand.cards.pop(self.hand.cards.index(self.card)))
-        for x in self.pField.cards:
+        while self.pField.cards:
             self.scrap.cards.append(self.pField.cards.pop())
-        for x in self.pField.cards:
+        while self.oField.cards:
             self.scrap.cards.append(self.oField.cards.pop())
         
         print(self.hand.owner.name)
         print("Board Wiped")
         print("with")
         print(self.card)
+        
+    def __eq__(self, other):
+        equals = True
+        if not isinstance(other, AceAction):
+            equals = False
+        else:
+            equals = (self.card == other.card) and (self.pField == other.pField) and (self.hand == other.hand) and (self.oField == other.oField) and (self.scrap == other.scrap)
+            
+        return equals

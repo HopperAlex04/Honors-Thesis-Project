@@ -50,7 +50,7 @@ def actionToMoveTest():
                     moves.append(ScuttlePlay(x, y, zones[0], zones[3], zones[4]))
                     
     computedMoves = []               
-    for x in range(1379):
+    for x in range(1383):
         computedMoves.append(env.convertToMove(x, zones))
     #print(cast(ScuttlePlay, env.convertToMove(53, zones)).card)
     #print(env.getCard(0, zones[0]).__str__())
@@ -93,9 +93,9 @@ def plot_durations(episode_durations, show_result=False):
     plt.ylabel('ScoreGap')
     plt.plot(durations_t.numpy())
     # Take 100 episode averages and plot them too
-    if len(durations_t) >= 100:
-        means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99), means))
+    if len(durations_t) >= 10:
+        means = durations_t.unfold(0, 10, 1).mean(1).view(-1)
+        means = torch.cat((torch.zeros(9), means))
         plt.plot(means.numpy())
 
     plt.pause(0.001)  # pause a bit so that plots are updated
@@ -110,8 +110,8 @@ def AgentTest(episodes):
     env = CuttleEnvironment(None, None)
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu" # type: ignore
     memory = ReplayMemory(10000)
-    network = DQNOne(52*4, 1379).to(device)
-    
+    network = DQNOne(52*4, 1383).to(device)
+    datap = []
     env.player = DQNAgent(Hand(0), "player", env, network, memory, device, datap) # type: ignore
     #env.dealer = DQNAgent(Hand(0), "dealer", env, network, memory, device, datad) # type: ignore
     env.dealer = Randomized(Hand(0), "dealer") # type: ignore
@@ -130,8 +130,12 @@ def AgentTest(episodes):
     for x in range(episodes):
         env.envStart()
         datad.append(env.game.dealer.score - env.game.player.score) # type: ignore
-        datap.append(env.game.player.score - env.game.dealer.score) # type: ignore
-        plot_durations(datap)
+        value = env.game.currPlayer.score - env.game.offPlayer.score # type: ignore
+        normValue = (value + 28)/(56)
+        datap.append(normValue) # type: ignore
+        if x % 10 == 0:
+            plot_durations(datap)
+            datap = []
         env.reset()
         if env.game.player.score > env.game.dealer.score and x > 100: # type: ignore
             wins += 1
@@ -149,4 +153,4 @@ def AgentTest(episodes):
         
 #actionToMoveTest()
 model1 = "./models/model1.pth"
-torch.save(AgentTest(200), model1)
+torch.save(AgentTest(1000), model1)

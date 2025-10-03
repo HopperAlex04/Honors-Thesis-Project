@@ -1,5 +1,6 @@
 from collections import deque, namedtuple
 import random
+from Moves import AceAction
 from Person import Player
 import torch  # type: ignore
 import torch.nn as nn # type: ignore
@@ -21,7 +22,7 @@ class DQNAgent(Player):
     EPS_END = 0.01
     EPS_DECAY = 2500
     TAU = 0.005
-    LR = 3e-2
+    LR = 3e-4
     
     def __init__(self, hand, name, env, model, memory, device, data):
         super().__init__(hand, name)
@@ -34,7 +35,7 @@ class DQNAgent(Player):
         
         self.model = model
         # Get number of actions from gym action space
-        n_actions = 1379
+        n_actions = 1383
         # Get the number of state observations
         #state, info = env.reset()
         n_observations = 52 * 4
@@ -63,7 +64,7 @@ class DQNAgent(Player):
         
         mask = self.generateMask(zones)
         
-        for x in range(1379):
+        for x in range(1383):
             if x not in mask:
                 logits[0, x] = float('-inf')
         
@@ -73,8 +74,8 @@ class DQNAgent(Player):
         while not valid:
             pred_probab = nn.Softmax(dim=1)(probs)
             self.y_pred = pred_probab.argmax(1)
+            
             mv = self.env.convertToMove(self.y_pred.item(), zones)
-            #print(y_pred.item())
             for x in self.moves:
                 valid = x.__eq__(mv)
                 if valid: break
@@ -96,7 +97,7 @@ class DQNAgent(Player):
             
     def generateMask(self, zones):
         computedMoves = []               
-        for x in range(1379):
+        for x in range(1383):
             computedMoves.append(self.env.convertToMove(x, zones))
         
         indexes = []
@@ -113,8 +114,8 @@ class DQNAgent(Player):
         
         next_state = np.concatenate((self.env.agentHandarr, self.env.agentFieldarr, self.env.oppFieldarr, self.env.scrapPilearr), axis = 0)
         next_stateT = torch.from_numpy(np.array([next_state])).to(device=self.device)
-        
-        self.reward = self.env.game.currPlayer.score - self.env.game.offPlayer.score
+        value = self.env.game.currPlayer.score - self.env.game.offPlayer.score
+        self.reward = (value + 28)/(56)
         
         self.memory.push(self.stateT, self.y_pred, next_stateT, self.reward)
         
