@@ -90,3 +90,23 @@ class Draw(Move):
             equals = (self.hand == other.hand) and (self.deck == other.deck)
             
         return equals
+    
+class AceAction(Move):
+    def __init__(self, card, hand:Hand, pField:Zone, oField:Zone, scrap:Zone):
+        self.card = card
+        self.hand = hand
+        self.pField = pField
+        self.oField = oField
+        self.scrap = scrap
+        
+    def execute(self):
+        self.scrap.cards.append(self.hand.cards.pop(self.hand.cards.index(self.card)))
+        for x in self.pField.cards:
+            self.scrap.cards.append(self.pField.cards.pop())
+        for x in self.pField.cards:
+            self.scrap.cards.append(self.oField.cards.pop())
+        
+        print(self.hand.owner.name)
+        print("Board Wiped")
+        print("with")
+        print(self.card)

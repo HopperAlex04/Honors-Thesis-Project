@@ -1,7 +1,7 @@
 import random
 from typing import cast
 from Card import Card
-from Moves import Draw, Move, ScorePlay, ScuttlePlay
+from Moves import AceAction, Draw, Move, ScorePlay, ScuttlePlay
 import Moves
 from Zone import Deck, Hand, Zone
 
@@ -25,14 +25,16 @@ class Player():
         #print(cast(Deck, deck).cards)
         
     def computeMoves(self, card: Card, zones: list):
-        #add scoring moves to moves
-        #due to the construction of turn ordering, the owners hand will always be 0, and field will always be 1
+        #self.zones = [self.pHand, self.pfield, self.dHand, self.dfield, self.scrap, self.deck]
         self.moves.append(ScorePlay(card, cast(Hand, zones[0]), cast(Zone, zones[1])))
         
         for x in zones[3].cards:
             if x.number < card.number or (x.number == card.number and x.suit < card.suit):
                 scuttle = ScuttlePlay(card, x, self.hand, zones[3], zones[4])
                 self.moves.append(scuttle)
+                
+        if card.number == 1:
+            self.moves.append(AceAction(card, zones[0], zones[1], zones[3], zones[4]))
         
     def turn(self, zones: list):
         self.moves = []
