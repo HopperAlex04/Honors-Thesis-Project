@@ -13,7 +13,7 @@ import gymnasium as gym
 from Card import Card
 from Cuttle import Cuttle
 #from Input import Manual, Randomized
-from Moves import Draw, Move, ScorePlay, ScuttlePlay
+from Moves import AceAction, Draw, Move, ScorePlay, ScuttlePlay
 #from Person import Player
 from Zone import Hand # type: ignore
 
@@ -29,7 +29,7 @@ class CuttleEnvironment(gym.Env):
         
         self.game = Cuttle(self.dealer, self.player)
         
-        self.action_space = gym.spaces.Discrete(1379)
+        self.action_space = gym.spaces.Discrete(1383)
         self.observation_space = gym.spaces.MultiBinary([4,52])
         
         #Setting up open boardstate
@@ -119,7 +119,9 @@ class CuttleEnvironment(gym.Env):
                 #print(index, indices[index - 1], action, self.getCard(indices[index - 1] - action, zones[3]))
                 oCard = self.getCard(indices[index - 1] - action, zones[3])
                 final = ScuttlePlay(pCard, oCard, zones[0], zones[3], zones[4])        
-        
+        elif action in range(1379, 1383):
+            pCard = self.getCard(0 + (action-1379), zones[0])
+            final = AceAction(pCard, zones[0], zones[1], zones[3], zones[4])
         return final
 
 #mode = 1 is hand, mode = 2 is target

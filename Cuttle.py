@@ -65,6 +65,7 @@ class Cuttle():
             #print(self.zones)
             self.player.turn(self.zones)
             over = self.player.cleanUp(self.zones)
+            
             for x in self.zones:
                 if x is not self.deck and x is not self.scrap:
                     print(x)
