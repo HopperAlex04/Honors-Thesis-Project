@@ -133,8 +133,11 @@ def AgentTest(episodes):
         datap.append(env.game.player.score - env.game.dealer.score) # type: ignore
         plot_durations(datap)
         env.reset()
+        if env.game.player.score > env.game.dealer.score and x > 100: # type: ignore
+            wins += 1
         
     print('Complete')
+    print(wins)
     plot_durations(datap, show_result=True)
     #plot_durations(datad, show_result=True)
     plt.ioff()
@@ -146,4 +149,4 @@ def AgentTest(episodes):
         
 #actionToMoveTest()
 model1 = "./models/model1.pth"
-torch.save(AgentTest(300), model1)
+torch.save(AgentTest(200), model1)

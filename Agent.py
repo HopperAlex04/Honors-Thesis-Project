@@ -57,9 +57,9 @@ class DQNAgent(Player):
         #obs = self.env.get_obs
         state = np.concatenate((self.env.agentHandarr, self.env.agentFieldarr, self.env.oppFieldarr, self.env.scrapPilearr), axis = 0)
                 
-        stateT = torch.from_numpy(np.array([state])).float().to(device=self.device)
+        self.stateT = torch.from_numpy(np.array([state])).float().to(device=self.device)
         #print(stateT)
-        logits = self.model(stateT)
+        logits = self.model(self.stateT)
         
         mask = self.generateMask(zones)
         
@@ -72,8 +72,8 @@ class DQNAgent(Player):
         
         while not valid:
             pred_probab = nn.Softmax(dim=1)(probs)
-            y_pred = pred_probab.argmax(1)
-            mv = self.env.convertToMove(y_pred.item(), zones)
+            self.y_pred = pred_probab.argmax(1)
+            mv = self.env.convertToMove(self.y_pred.item(), zones)
             #print(y_pred.item())
             for x in self.moves:
                 valid = x.__eq__(mv)
@@ -81,14 +81,11 @@ class DQNAgent(Player):
         
         
             
-        ob, reward = self.env.step(y_pred.item(), zones)
+        ob, self.reward = self.env.step(self.y_pred.item(), zones)
         
         self.env.envLoad(zones)
-        next_state = np.concatenate((self.env.agentHandarr, self.env.agentFieldarr, self.env.oppFieldarr, self.env.scrapPilearr), axis = 0)
-        next_stateT = torch.from_numpy(np.array([next_state])).to(device=self.device)
-        self.memory.push(stateT, y_pred, next_stateT, reward)
-
-        self.updateModel(zones)
+        
+        #self.updateModel(zones)
         
         #print(ob, reward)
     
@@ -111,7 +108,16 @@ class DQNAgent(Player):
     
     def updateModel(self,zones):
         # Perform one step of the optimization (on the policy network)
+        
         self.env.envLoad(zones)
+        
+        next_state = np.concatenate((self.env.agentHandarr, self.env.agentFieldarr, self.env.oppFieldarr, self.env.scrapPilearr), axis = 0)
+        next_stateT = torch.from_numpy(np.array([next_state])).to(device=self.device)
+        
+        self.reward = self.env.game.currPlayer.score - self.env.game.offPlayer.score
+        
+        self.memory.push(self.stateT, self.y_pred, next_stateT, self.reward)
+        
         self.optimize_model()
 
         # Soft update of the target network's weights
