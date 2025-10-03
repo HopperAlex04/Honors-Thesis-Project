@@ -21,7 +21,7 @@ class DQNAgent(Player):
     EPS_END = 0.01
     EPS_DECAY = 2500
     TAU = 0.005
-    LR = 3e-3
+    LR = 3e-2
     
     def __init__(self, hand, name, env, model, memory, device, data):
         super().__init__(hand, name)
@@ -184,13 +184,13 @@ class DQNOne(nn.Module):
         self.linear_relu_stack = nn.Sequential(
             nn.Linear(n_observations, 1517),
             nn.ReLU(),
-            nn.Linear(1517, 1517),
+            nn.Linear(1517, 758),
             nn.ReLU(),
-            nn.Linear(1517, 1517),
+            nn.Linear(758, 380),
             nn.ReLU(),
-            nn.Linear(1517, 1517),
+            nn.Linear(380, 190),
             nn.ReLU(),
-            nn.Linear(1517, n_actions),
+            nn.Linear(190, n_actions),
         )
 
     def forward(self, x):
