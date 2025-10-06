@@ -2,7 +2,7 @@ import random
 from typing import cast
 from Card import Card
 from Moves import AceAction, Draw, Move, ScorePlay, ScuttlePlay
-import Moves
+import Move
 from Zone import Deck, Hand, Zone
 
 
