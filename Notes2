@@ -1,0 +1,6 @@
+Do moves really need to be objects? maybe make the dict map out functions with parameters
+
+Yes, this works
+
+Proposal: A timestep is a turncycle, only one player gets rewards and learns while another form of input is passed in to the environment
+    This lets us take in to account the other player's action when getting rewards, allowing an actual loss function
