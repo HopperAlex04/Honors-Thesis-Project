@@ -23,13 +23,13 @@ class CuttleEnvironment(gym.Env):
         self.currentZones = self.playerZones
         self.offZones = self.dealerZones
         
+        self.cardDict = self.generateCards()
+        
         self.action_to_move, self.actions = self.generateActions()
         
         self.observation_space = gym.spaces.MultiBinary([6,52])
         self.action_space = gym.spaces.Discrete(self.actions)
-        
-        
-        
+         
     def _get_obs(self):
         return {"Dealer Hand": self.dealerHand, "Dealer Field": self.dealerField, "Player Field": self.playerField, 
                 "Player Hand": self.playerHand, "Deck": self.deck, "Scrap": self.scrap}
@@ -85,47 +85,74 @@ class CuttleEnvironment(gym.Env):
         
         return "Draw"
     
-    def scoreAction(self, *args):
+    def scoreAction(self, card):
         hand = self.currentZones.get("Hand")
         field = self.currentZones.get("Field")
-        card = args[0]
+        
         
         hand[card] = False # type: ignore
         field[card] = True # type: ignore
+        
+        return f"Scored f{card}"
     
-    def scuttleAction(self, *args):
+    def scuttleAction(self, cardAndTarget):
         hand = self.currentZones.get("Hand")
         oppField = self.offZones.get("Field")
         scrap = self.scrap
         
         
-        card = args[0]
-        target = args[1]
+        card = cardAndTarget[0]
+        target = cardAndTarget[1]
         
         hand[card] = False # type: ignore
         oppField[target] = False # type: ignore
-        scrap[card] = False
-        scrap[target] = False
+        scrap[card] = True
+        scrap[target] = True
+        
+        return f"Scuttled {target} with {card}"
         
             
-    
+
     def generateActions(self):
         #Initializes storage mediums
         act_dict = {}
         actions = 0
         
         #Adds draw action
-        act_dict.update({0: (self.drawAction, "")})
+        act_dict.update({actions: (self.drawAction, "")})
         actions += 1
         
-        while actions < 53:
-            act_dict.update({actions: (self.scoreAction, actions - 1)})
+        #Adds score actions
+        for x in range(52):
+            act_dict.update({actions: (self.scoreAction, x)})
             actions += 1
         
+        #Adds Scuttle actions  
+        for x in range(52):
+            cardUsed = self.cardDict[x] # type: ignore
+            for y in range(52):
+                target = self.cardDict[y] # type: ignore
+                if target["rank"] < cardUsed["rank"] or (target["rank"] == cardUsed["rank"] and target["suit"] < cardUsed["suit"]): # type: ignore
+                    act_dict.update({actions: (self.scuttleAction, [x,y])})
+                    actions += 1
+                     
         
             
         return act_dict, actions
     
+    def generateActionMask(self):
+        pass
+    
+    def generateCards(self):
+        cards = {}
+        index = 0
+        for suit in range(4):
+            for rank in range(13):
+                c ={"rank": rank, "suit":suit}
+                cards.update({index:c})
+                index += 1
+                
+        return cards
     
     def passControl(self):
         if self.currentZones is self.playerZones:
