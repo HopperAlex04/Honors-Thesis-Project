@@ -1,10 +1,20 @@
-from EnvTests import drawTest, initTest, resetTest, scoreTest
+from EnvTests import drawTest, generateCardsTest, initTest, resetTest, scoreTest, scuttleTest
 
 
 initTest()
+input("Complete")
 
-drawTest()
+generateCardsTest()
+input("Complete")
 
 resetTest()
+input("Complete")
 
 scoreTest()
+input("Complete")
+
+drawTest()
+input("Complete")
+
+scuttleTest()
+input("Complete")

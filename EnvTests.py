@@ -17,6 +17,7 @@ def initTest():
         args = act[1] # type: ignore
         act = act[0] # type: ignore
         print(act(args))
+    print(env.actions)
         
 def drawTest():
     env = CuttleEnvironment()
@@ -88,3 +89,18 @@ def resetTest():
     
     if not (len(np.where(env.playerHand)[0]) == 5): print(f"error {len(np.where(env.dealerHand)[0])}")
     
+    
+def generateCardsTest():
+    env = CuttleEnvironment()
+    print(env.cardDict)
+    
+def scuttleTest():
+    env = CuttleEnvironment()
+    env.playerHand[2] = True
+    env.dealerField[0] = True
+    
+    env.scuttleAction([2, 0])
+    
+    print(f"Card: {env.playerHand[2]}")
+    print(f"Target: { env.dealerField[0]}")
+    print(f"Scrap 2:{env.scrap[2]}, 0: {env.scrap[0]}")
