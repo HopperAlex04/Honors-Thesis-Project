@@ -1,6 +1,19 @@
-Do moves really need to be objects? maybe make the dict map out functions with parameters
-
-Yes, this works
-
 Proposal: A timestep is a turncycle, only one player gets rewards and learns while another form of input is passed in to the environment
     This lets us take in to account the other player's action when getting rewards, allowing an actual loss function
+
+Why? We need step to be independent, our learning agent should only be able to pass in an action into step and get an observation and reward out,
+i.e. anything not inside of the environment shouldn't have control over it.
+
+Second proposal, some kind of getAction method with our agents, who are passed in as parameters to the environment so this method can be used to get an action value.
+We wouldn;t need "out of step" data because we can just hold onto whatever step returns. The procedure is as follows:
+1. The game starts 
+2. The "player" is passed an observation to start with in order to generate the first action
+3. Until the game is over:
+    3a. Environment gets the action for the "player"
+    3b. step is called executing the action
+    3c. Somehow the "dealer" generates and also calls step with that action, this generates a reward for "player"'s step call
+    3d. pass control to "player" "player" steps, rewarding "dealer"
+
+This feels really weird and definitely not in line with step's documentation, so we need to workshop this to bring it in line or accept we can't
+
+A work around (Which might be better), is simply have only one "learning" agent, the other is static, both passed as arguements.

@@ -31,8 +31,9 @@ class CuttleEnvironment(gym.Env):
         self.action_space = gym.spaces.Discrete(self.actions)
          
     def _get_obs(self):
-        return {"Dealer Hand": self.dealerHand, "Dealer Field": self.dealerField, "Player Field": self.playerField, 
-                "Player Hand": self.playerHand, "Deck": self.deck, "Scrap": self.scrap}
+        #Slight abstraction here, the current zones are the current players field and hand, while off zones are the opposite player's hand and field
+        #This allows passControl to affect what will be visible to who when turns or priority changes.
+        return {"Current Zones": self.currentZones, "Off-Player Zones": self.offZones, "Deck": self.deck, "Scrap": self.scrap}
         
     def _get_info(self):
         #return {"Score Difference": np.linalg.norm(player.score - dealer.score)} is the basic idea, for later
@@ -110,8 +111,6 @@ class CuttleEnvironment(gym.Env):
         scrap[target] = True
         
         return f"Scuttled {target} with {card}"
-        
-            
 
     def generateActions(self):
         #Initializes storage mediums
