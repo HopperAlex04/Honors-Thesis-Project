@@ -1,4 +1,4 @@
-from EnvTests import drawTest, generateCardsTest, initTest, resetTest, scoreTest, scuttleTest
+from EnvTests import drawTest, generateCardsTest, initTest, maskTest, resetTest, scoreTest, scuttleTest
 
 
 initTest()
@@ -17,4 +17,7 @@ drawTest()
 input("Complete")
 
 scuttleTest()
+input("Complete")
+
+maskTest()
 input("Complete")
