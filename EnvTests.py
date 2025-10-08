@@ -104,3 +104,14 @@ def scuttleTest():
     print(f"Card: {env.playerHand[2]}")
     print(f"Target: { env.dealerField[0]}")
     print(f"Scrap 2:{env.scrap[2]}, 0: {env.scrap[0]}")
+    
+def maskTest():
+    env = CuttleEnvironment()
+    env.playerHand[0] = True
+    env.playerHand[10] = True
+    env.dealerField[9] = True
+    
+    mask = env.generateActionMask()
+    print(mask)
+    for x in mask:
+        print(env.action_to_move[x])

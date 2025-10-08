@@ -27,6 +27,8 @@ class CuttleEnvironment(gym.Env):
         
         self.action_to_move, self.actions = self.generateActions()
         
+        self.mask = []
+        
         self.observation_space = gym.spaces.MultiBinary([6,52])
         self.action_space = gym.spaces.Discrete(self.actions)
          
@@ -140,7 +142,32 @@ class CuttleEnvironment(gym.Env):
         return act_dict, actions
     
     def generateActionMask(self):
-        pass
+        handMask = np.where(self.currentZones["Hand"])
+        fieldMask = np.where(self.offZones["Field"])
+        fullMask = []
+        for x in self.action_to_move:
+            move = self.action_to_move[x]
+            moveType = move[0]
+            if  moveType == self.drawAction:
+                fullMask.append(x)
+            elif moveType == self.scoreAction:
+                card = move[1]
+                if card in handMask[0]:
+                    fullMask.append(x)
+            elif moveType == self.scuttleAction:
+                card = move[1][0]
+                if card in handMask[0]:
+                    target = move[1][1]
+                    
+                    cRank = self.cardDict[card]["rank"]
+                    cSuit = self.cardDict[card]["suit"]
+                    
+                    tRank = self.cardDict[target]["rank"]
+                    tSuit = self.cardDict[card]["suit"]
+                    
+                    if target in fieldMask and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
+                        fullMask.append(x)
+        return fullMask
     
     def generateCards(self):
         cards = {}
