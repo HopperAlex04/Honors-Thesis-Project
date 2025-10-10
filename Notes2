@@ -17,3 +17,10 @@ We wouldn;t need "out of step" data because we can just hold onto whatever step 
 This feels really weird and definitely not in line with step's documentation, so we need to workshop this to bring it in line or accept we can't
 
 A work around (Which might be better), is simply have only one "learning" agent, the other is static, both passed as arguements.
+
+We can start with win or lose 
+
+1. Switch the move dict to a list
+2. Arguements are tuples (x) you can make an empty tuple 
+3. We can use a getReward() function
+4. Possibility of moving rewards outside of the step(), or even removing step entirely in favor of a continuos reception of actions

@@ -191,4 +191,4 @@ class CuttleEnvironment(gym.Env):
             self.offZones = self.dealerZones
             return
         
-        
+         
