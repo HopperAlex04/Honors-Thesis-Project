@@ -1,6 +1,6 @@
 import random
 from typing import Optional
-import numpy as np
+import numpy as np # type: ignore
 import gymnasium as gym
 
 
