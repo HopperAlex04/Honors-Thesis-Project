@@ -15,6 +15,12 @@ class CuttleEnvironment(gym.Env):
         self.player = player1
         self.dealer = player2
         
+        self.currPlayer = self.player
+        self.offPlayer = self.dealer
+        
+        self.Dscore = 0
+        self.Pscore = 0
+        
         self.dealerHand = np.zeros(52, dtype=bool)
         self.dealerField = np.zeros(52, dtype=bool)
         self.playerField = np.zeros(52, dtype=bool)
@@ -37,7 +43,7 @@ class CuttleEnvironment(gym.Env):
         self.observation_space = gym.spaces.MultiBinary([6,52])
         self.action_space = gym.spaces.Discrete(self.actions)
          
-    def _get_obs(self):
+    def _get_obs(self) -> dict:
         #Slight abstraction here, the current zones are the current players field and hand, while off zones are the opposite player's hand and field
         #This allows passControl to affect what will be visible to who when turns or priority changes.
         return {"Current Zones": self.currentZones, "Off-Player Zones": self.offZones, "Deck": self.deck, "Scrap": self.scrap}
@@ -46,6 +52,56 @@ class CuttleEnvironment(gym.Env):
         #return {"Score Difference": np.linalg.norm(player.score - dealer.score)} is the basic idea, for later
         pass
     
+    def render(self):
+        currHand = self.currentZones["Hand"]
+        currField = self.currentZones["Field"]
+        index = 0
+        zoneString = f"{self.currPlayer.name} Hand:"
+        for suit in range(4):
+            for rank in range(13):
+                if currHand[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+        
+        index = 0
+        zoneString = f"{self.currPlayer.name} Field: "
+        for suit in range(4):
+            for rank in range(13):
+                if currField[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+             
+                
+        offHand = self.offZones["Hand"]
+        offField = self.offZones["Field"]
+        index = 0
+        zoneString = f"{self.offPlayer.name} Field: "
+        for suit in range(4):
+            for rank in range(13):
+                if offField[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+        
+        index = 0
+        zoneString = f"{self.offPlayer.name} Hand: "
+        for suit in range(4):
+            for rank in range(13):
+                if offHand[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+        
+        index = 0
+        zoneString = f"Scrap: "
+        for suit in range(4):
+            for rank in range(13):
+                if self.scrap[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+        
+        print(f"{self.player.name}: {self.Pscore} {self.dealer.name}: {self.Dscore}")
+        
+        
+        
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed = seed)
         
@@ -98,10 +154,10 @@ class CuttleEnvironment(gym.Env):
             if truncated: break
             
             action = self.player.getAction(validActions)
-            ob, score, terminated = self.step(action)
-            self.player.getReward(obs, score, terminated) #If we go for a score based reward, this is dealer.getReward since we want the next state
+            obs, self.Pscore, terminated = self.step(action)
+            self.dealer.getReward(obs, self.Pscore - self.Dscore, terminated)
             
-           
+            self.render()
             self.passControl()
             
             validActions = self.generateActionMask()
@@ -110,10 +166,11 @@ class CuttleEnvironment(gym.Env):
             
             action = self.dealer.getAction(validActions)
     
-            obs, score, terminated = self.step(action)
+            obs, self.Dscore, terminated = self.step(action)
             
-            self.dealer.getReward(obs, score, terminated)
+            self.player.getReward(obs, self.Dscore - self.Pscore, terminated)
             
+            self.render()
             self.passControl()
             
             
@@ -236,11 +293,15 @@ class CuttleEnvironment(gym.Env):
         if self.currentZones is self.playerZones:
             self.currentZones = self.dealerZones
             self.offZones = self.playerZones
+            self.currPlayer = self.dealer
+            self.offPlayer = self.player
             return
         
         if self.currentZones is self.dealerZones:
             self.currentZones = self.playerZones
             self.offZones = self.dealerZones
+            self.currPlayer = self.player
+            self.offPlayer = self.dealer
             return
         
          

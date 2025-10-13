@@ -149,3 +149,12 @@ def gameLoopTest():
     
     env.reset()
     env.gameLoop()
+    
+def renderTest():
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
+    
+    env.reset()
+    env.render()
