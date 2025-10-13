@@ -1,10 +1,14 @@
 import numpy as np
 from GameEnvironment import CuttleEnvironment
+from Players import Randomized
 #from Move import DrawMove
 
 
 def initTest():
-    env = CuttleEnvironment()
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
     
     ob = env._get_obs()
     
@@ -20,7 +24,10 @@ def initTest():
     print(env.actions)
         
 def drawTest():
-    env = CuttleEnvironment()
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
     
     act = env.action_to_move[0]
     func = act[0]      
@@ -42,7 +49,10 @@ def drawTest():
     print(ob)
     
 def scoreTest():
-    env = CuttleEnvironment()
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
     
     draw = env.action_to_move.get(0)
     args = draw[1] # type: ignore
@@ -59,7 +69,10 @@ def scoreTest():
     ob = env._get_obs()
     print(ob)
     
-    env = CuttleEnvironment()
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
     
     env.passControl()
     
@@ -81,7 +94,10 @@ def scoreTest():
     
         
 def resetTest():
-    env = CuttleEnvironment()
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
     
     env.reset()
     
@@ -91,11 +107,17 @@ def resetTest():
     
     
 def generateCardsTest():
-    env = CuttleEnvironment()
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
     print(env.cardDict)
     
 def scuttleTest():
-    env = CuttleEnvironment()
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
     env.playerHand[2] = True
     env.dealerField[0] = True
     
@@ -106,7 +128,10 @@ def scuttleTest():
     print(f"Scrap 2:{env.scrap[2]}, 0: {env.scrap[0]}")
     
 def maskTest():
-    env = CuttleEnvironment()
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
     env.playerHand[0] = True
     env.playerHand[10] = True
     env.dealerField[9] = True
