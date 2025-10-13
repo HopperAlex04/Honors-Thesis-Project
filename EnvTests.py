@@ -140,3 +140,12 @@ def maskTest():
     print(mask)
     for x in mask:
         print(env.action_to_move[x])
+        
+def gameLoopTest():
+    p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
+    
+    env.reset()
+    env.gameLoop()

@@ -80,6 +80,8 @@ class CuttleEnvironment(gym.Env):
         act = self.action_to_move.get(action)
         func = act[0] # type: ignore
         args = act[1] # type: ignore
+        func(args)
+        print(act)
     
     def gameLoop(self):
         terminated = False
@@ -94,7 +96,10 @@ class CuttleEnvironment(gym.Env):
                 terminated = (finalDraws == 3)
                 if terminated:break
             self.step(action)
-            self.player.getReward()
+            score = self.scoreState()
+            print(f"Player Score: {score}")
+            if score >= 21:
+                return self.player.getReward()
             
             self.passControl()
             
@@ -105,16 +110,25 @@ class CuttleEnvironment(gym.Env):
                 terminated = (finalDraws == 3)
                 if terminated:break
             self.step(action)
-            self.player.getReward()
+            score = self.scoreState()
+            print(f"Dealer Score: {score}")
+            if score >= 21:
+                return self.dealer.getReward()
             
             self.passControl()
             
             
             
-    def scoreState(self):      
-        return 21
-            
-    
+    def scoreState(self) -> int:      
+        fieldScored = self.currentZones["Field"]
+        index = 0
+        score = 0
+        for suit in range(4):
+            for rank in range(13):
+                if fieldScored[index]: score += rank
+                index += 1
+        return score
+                    
     def drawAction(self, *args):
         hand = self.currentZones.get("Hand")
         
@@ -204,7 +218,7 @@ class CuttleEnvironment(gym.Env):
                     tRank = self.cardDict[target]["rank"]
                     tSuit = self.cardDict[card]["suit"]
                     
-                    if target in fieldMask and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
+                    if target in fieldMask[0] and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
                         fullMask.append(x)
         return fullMask
     

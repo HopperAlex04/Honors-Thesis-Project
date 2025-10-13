@@ -1,4 +1,4 @@
-from EnvTests import drawTest, generateCardsTest, initTest, maskTest, resetTest, scoreTest, scuttleTest
+from EnvTests import drawTest, gameLoopTest, generateCardsTest, initTest, maskTest, resetTest, scoreTest, scuttleTest
 from PlayerTests import randomGetActionTest
 
 
@@ -24,4 +24,7 @@ maskTest()
 input("Complete")
 
 randomGetActionTest()
+input("Complete")
+
+gameLoopTest()
 input("Complete")
