@@ -3,12 +3,17 @@ from typing import Optional
 import numpy as np # type: ignore
 import gymnasium as gym
 
+from Players import Player
+
 
 
 class CuttleEnvironment(gym.Env):
     
     
-    def __init__(self) -> None:
+    def __init__(self, player1:Player, player2:Player) -> None:
+        
+        self.player = player1
+        self.dealer = player2
         
         self.dealerHand = np.zeros(52, dtype=bool)
         self.dealerField = np.zeros(52, dtype=bool)
@@ -75,6 +80,40 @@ class CuttleEnvironment(gym.Env):
         act = self.action_to_move.get(action)
         func = act[0] # type: ignore
         args = act[1] # type: ignore
+    
+    def gameLoop(self):
+        terminated = False
+        finalDraws = 0
+        
+        while not terminated:
+            #Gets the action from the "player" then checks if the draw condition is true
+            validActions = self.generateActionMask()
+            action = self.player.getAction(validActions)
+            if self.deck.size == 0 and action == 0:
+                finalDraws += 1
+                terminated = (finalDraws == 3)
+                if terminated:break
+            self.step(action)
+            self.player.getReward()
+            
+            self.passControl()
+            
+            validActions = self.generateActionMask()
+            action = self.dealer.getAction(validActions)
+            if self.deck.size == 0 and action == 0:
+                finalDraws += 1
+                terminated = (finalDraws == 3)
+                if terminated:break
+            self.step(action)
+            self.player.getReward()
+            
+            self.passControl()
+            
+            
+            
+    def scoreState(self):      
+        return 21
+            
     
     def drawAction(self, *args):
         hand = self.currentZones.get("Hand")

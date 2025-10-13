@@ -3,8 +3,11 @@ from Players import Randomized
 
 
 def randomGetActionTest():
-    env = CuttleEnvironment()
     p1 = Randomized("player")
+    p2 = Randomized("dealer")
+    
+    env = CuttleEnvironment(p1, p2)
+    
     
     env.playerHand[0] = True
     env.playerHand[40] = True

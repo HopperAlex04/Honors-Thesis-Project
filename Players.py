@@ -7,8 +7,11 @@ class Player(ABC):
         self.name = name
     
     @abstractmethod
-    def getAction(self):
+    def getAction(self, validActions):
         pass
+    
+    def getReward(self):
+        return 1
 
 
 class Randomized(Player):
