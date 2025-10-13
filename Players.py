@@ -10,8 +10,8 @@ class Player(ABC):
     def getAction(self, validActions):
         pass
     
-    def getReward(self):
-        return 1
+    def getReward(self, ob, score, terminated):
+        if terminated and score >= 21: return 1
 
 
 class Randomized(Player):

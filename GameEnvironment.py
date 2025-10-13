@@ -81,39 +81,38 @@ class CuttleEnvironment(gym.Env):
         func = act[0] # type: ignore
         args = act[1] # type: ignore
         func(args)
-        print(act)
+        ob = self._get_obs()
+        score = self.scoreState()
+        terminated = score >= 21
+        
+        return ob, score, terminated
     
     def gameLoop(self):
         terminated = False
-        finalDraws = 0
         
         while not terminated:
             #Gets the action from the "player" then checks if the draw condition is true
+            #If the action list is empty, no rewards should be given
             validActions = self.generateActionMask()
-            action = self.player.getAction(validActions)
-            if self.deck.size == 0 and action == 0:
-                finalDraws += 1
-                terminated = (finalDraws == 3)
-                if terminated:break
-            self.step(action)
-            score = self.scoreState()
-            print(f"Player Score: {score}")
-            if score >= 21:
-                return self.player.getReward()
+            truncated = not validActions
+            if truncated: break
             
+            action = self.player.getAction(validActions)
+            ob, score, terminated = self.step(action)
+            self.player.getReward(obs, score, terminated) #If we go for a score based reward, this is dealer.getReward since we want the next state
+            
+           
             self.passControl()
             
             validActions = self.generateActionMask()
+            truncated = not validActions
+            if truncated: break
+            
             action = self.dealer.getAction(validActions)
-            if self.deck.size == 0 and action == 0:
-                finalDraws += 1
-                terminated = (finalDraws == 3)
-                if terminated:break
-            self.step(action)
-            score = self.scoreState()
-            print(f"Dealer Score: {score}")
-            if score >= 21:
-                return self.dealer.getReward()
+    
+            obs, score, terminated = self.step(action)
+            
+            self.dealer.getReward(obs, score, terminated)
             
             self.passControl()
             
