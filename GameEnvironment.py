@@ -186,6 +186,16 @@ class CuttleEnvironment(gym.Env):
                 
         return cards
     
+    def scoreState(self) -> int:      
+        fieldScored = self.currentZones["Field"]
+        index = 0
+        score = 0
+        for suit in range(4):
+            for rank in range(13):
+                if fieldScored[index]: score += rank
+                index += 1
+        return score
+    
     def passControl(self):
         if self.currentZones is self.playerZones:
             self.currentZones = self.dealerZones
