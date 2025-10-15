@@ -75,6 +75,12 @@ class CuttleEnvironment(gym.Env):
         act = self.action_to_move.get(action)
         func = act[0] # type: ignore
         args = act[1] # type: ignore
+        func(args)
+        ob = self._get_obs()
+        score = self.scoreState()
+        terminated = score >= 21
+        
+        return ob, score, terminated
     
     def drawAction(self, *args):
         hand = self.currentZones.get("Hand")
