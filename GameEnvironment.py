@@ -171,7 +171,7 @@ class CuttleEnvironment(gym.Env):
                     tRank = self.cardDict[target]["rank"]
                     tSuit = self.cardDict[card]["suit"]
                     
-                    if target in fieldMask and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
+                    if fieldMask[0].size > 0 and target in fieldMask[0] and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
                         fullMask.append(x)
         return fullMask
     
