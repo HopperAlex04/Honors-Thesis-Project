@@ -12,12 +12,12 @@ def trainingLoop(episodes):
 
         while not terminated:
             #Get an action from the model
+            env.generateActionMask()
             action = 0
             ob, score, terminated = env.step(action)
             #This could probably be part of the step function
             if terminated:break
             env.passControl()
-            #Get a reward based on the data from step and feed the training alg
             
             #Get an action from the model
             action = 0
