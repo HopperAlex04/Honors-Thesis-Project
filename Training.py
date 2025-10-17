@@ -35,10 +35,15 @@ def randomLoop(episodes):
         terminated = False
 
         while not terminated:
-            #Get an action from the model
+            #Get an action from the player and do it
             validActions = env.generateActionMask()
             action = p1.getAction(validActions)
             ob, score, terminated = env.step(action)
+            
+            #ob, score, terminated, and truncated (when I implement it), would be given to a model
+            
+            #Example: p1.updateModel(ob, score, terminated, truncated)
+            
             #This could probably be part of the step function
             env.render()
             env.passControl()
