@@ -23,4 +23,4 @@ input("Complete")
 maskTest()
 input("Complete")
 
-randomLoop(1)
+randomLoop(10)

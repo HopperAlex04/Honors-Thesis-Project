@@ -82,6 +82,57 @@ class CuttleEnvironment(gym.Env):
         
         return ob, score, terminated
     
+    def render(self):
+        currHand = self.currentZones["Hand"]
+        currField = self.currentZones["Field"]
+        index = 0
+        zoneString = ""
+        zoneString += "Current Hand"
+        for suit in range(4):
+            for rank in range(13):
+                if currHand[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+        
+        index = 0
+        zoneString = ""
+        zoneString += "Current Field"
+        for suit in range(4):
+            for rank in range(13):
+                if currField[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+             
+                
+        offHand = self.offZones["Hand"]
+        offField = self.offZones["Field"]
+        index = 0
+        zoneString = ""
+        zoneString += "Off Field"
+        for suit in range(4):
+            for rank in range(13):
+                if offField[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+        
+        index = 0
+        zoneString = ""
+        zoneString += "Off Hand"
+        for suit in range(4):
+            for rank in range(13):
+                if offHand[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+        
+        index = 0
+        zoneString = f"Scrap: "
+        for suit in range(4):
+            for rank in range(13):
+                if self.scrap[index]: zoneString += f" |{rank} {suit}| "
+                index += 1
+        print(zoneString)
+        
+    
     def drawAction(self, *args):
         hand = self.currentZones.get("Hand")
         
