@@ -166,6 +166,17 @@ class CuttleEnvironment(gym.Env):
         
         return f"Scuttled {target} with {card}"
 
+    def aceAction(self, card):
+        hand = self.currentZones.get("Hand")
+        oppField = self.offZones.get("Field")
+        scrap = self.scrap
+        
+        hand[card] = False # type: ignore
+        scrap[card] = False
+        for x in range(oppField.size): # type: ignore
+            oppField[x] = False # type: ignore
+            scrap[x] = True
+    
     def generateActions(self):
         #Initializes storage mediums
         act_dict = {}
