@@ -199,6 +199,10 @@ class CuttleEnvironment(gym.Env):
                 if target["rank"] < cardUsed["rank"] or (target["rank"] == cardUsed["rank"] and target["suit"] < cardUsed["suit"]): # type: ignore
                     act_dict.update({actions: (self.scuttleAction, [x,y])})
                     actions += 1
+        #Ace special action: boardwipe      
+        for x in range(4):
+            act_dict.update({actions: (self.aceAction(x))})
+            actions += 1
                      
         
             
