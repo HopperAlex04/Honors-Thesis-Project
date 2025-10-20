@@ -5,13 +5,13 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 class NeuralNetwork(nn.Module):
-    def __init__(self, obspace, actions):
+    def __init__(self, obspace, actions: int):
         super().__init__()
         self.flatten = nn.Flatten()
         self.linear_relu_stack = nn.Sequential(
-            nn.Linear(obspace, actions/2),
+            nn.Linear(obspace, actions//2),
             nn.ReLU(),
-            nn.Linear(actions/2, actions),
+            nn.Linear(actions//2, actions),
         )
 
     def forward(self, x):

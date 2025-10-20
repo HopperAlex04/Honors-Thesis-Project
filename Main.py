@@ -1,26 +1,31 @@
 from EnvTests import drawTest, generateCardsTest, initTest, maskTest, resetTest, scoreTest, scuttleTest
+from NetworkTesting import getActionTest
 from Training import randomLoop
+import torch
 
+# initTest()
+# input("Complete")
 
-initTest()
-input("Complete")
+# generateCardsTest()
+# input("Complete")
 
-generateCardsTest()
-input("Complete")
+# resetTest()
+# input("Complete")
 
-resetTest()
-input("Complete")
+# scoreTest()
+# input("Complete")
 
-scoreTest()
-input("Complete")
+# drawTest()
+# input("Complete")
 
-drawTest()
-input("Complete")
+# scuttleTest()
+# input("Complete")
 
-scuttleTest()
-input("Complete")
+# maskTest()
+# input("Complete")
 
-maskTest()
-input("Complete")
+# randomLoop(10)
+device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu" # type: ignore
+print(f"Using {device} device")
 
-randomLoop(10)
+getActionTest()
