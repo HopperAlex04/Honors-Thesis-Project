@@ -73,6 +73,7 @@ class CuttleEnvironment(gym.Env):
             
     def step(self, action):
         act = self.action_to_move.get(action)
+        if act is None: return None, None, True 
         func = act[0] # type: ignore
         args = act[1] # type: ignore
         func(args)
@@ -131,6 +132,7 @@ class CuttleEnvironment(gym.Env):
                 if self.scrap[index]: zoneString += f" |{rank} {suit}| "
                 index += 1
         print(zoneString)
+        print(f"Curr Player Score: {self.scoreState()}")
         
     
     def drawAction(self, *args):

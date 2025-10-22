@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from GameEnvironment import CuttleEnvironment
-from Networks import NeuralNetwork
+from Networks import NeuralNetwork, get_action
 from torch import nn
 
 
@@ -16,21 +16,12 @@ def getActionTest():
     env.render()
     
     ob = env._get_obs()
-    state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
-    stateT = torch.from_numpy(np.array([state])).float()
-    
     mask = env.generateActionMask()
-    logits = model(stateT)
-    
-    for x in range(actions):
-            if x not in mask:
-                logits[0, x] = float('-inf')
-                
-    probs = torch.softmax(logits, dim = 1)
-    pred_probab = nn.Softmax(dim=1)(probs)
-    y_pred = pred_probab.argmax(1)
-    print(y_pred.item())
+    y_pred = get_action(model, ob, mask, actions)
+    print(y_pred.item()) # type: ignore
     print(mask)
     
-    
+# def buildModelTest():
+#     m1 = build_model(10, [])
+#     print(m1)
     
