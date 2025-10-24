@@ -24,10 +24,10 @@ import torch
 # maskTest()
 # input("Complete")
 
-# randomLoop(10)
+#randomLoop(10)
 # device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu" # type: ignore
 # print(f"Using {device} device")
 
 #getActionTest()
 
-winReward01(200)
+winReward01()

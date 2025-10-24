@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from itertools import count
 import math
 import random
+import time
 
 import matplotlib
 from matplotlib import pyplot as plt
@@ -95,13 +96,13 @@ def winReward01(episodes = 0, b_size = 128, gam = 0.99, e_start = 0.9, e_end = 0
                 # t.max(1) will return the largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
-                actout = policy_net(state)
+                actout = policy_net(state).to(device)
                 for x in range(actions):
                     if x not in env.generateActionMask():
                         actout[0, x] = float('-inf')
                 return actout.max(1).indices.view(1,1)
         else:
-            return torch.tensor([[random.choice(env.generateActionMask())]], device=device, dtype=torch.long)
+            return torch.tensor([[random.choice(env.generateActionMask())]], device=device, dtype=torch.long).to(device)
         
     episodeWins = []
     
@@ -184,6 +185,7 @@ def winReward01(episodes = 0, b_size = 128, gam = 0.99, e_start = 0.9, e_end = 0
             
     for i_episode in range(episodes):
         # Initialize the environment and get its state
+        start = time.time()
         env.reset()
         terminated = False
         while not terminated:
@@ -231,8 +233,10 @@ def winReward01(episodes = 0, b_size = 128, gam = 0.99, e_start = 0.9, e_end = 0
             for key in policy_net_state_dict:
                 target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
             target_net.load_state_dict(target_net_state_dict)
-            
+        
+        end = time.time()
         print(f"Episode: {i_episode}")
+        print(f"Duration: {end - start} seconds")
 
                 
 
