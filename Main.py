@@ -1,5 +1,5 @@
-from EnvTests import drawTest, generateCardsTest, initTest, maskTest, resetTest, scoreTest, scuttleTest
-from NetworkTesting import getActionTest
+#from EnvTests import drawTest, generateCardsTest, initTest, maskTest, resetTest, scoreTest, scuttleTest
+#from NetworkTesting import getActionTest
 from Training import randomLoop, winReward01
 import torch
 
@@ -25,9 +25,9 @@ import torch
 # input("Complete")
 
 # randomLoop(10)
-device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu" # type: ignore
-print(f"Using {device} device")
+# device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu" # type: ignore
+# print(f"Using {device} device")
 
 #getActionTest()
 
-winReward01(21)
+winReward01(200)
