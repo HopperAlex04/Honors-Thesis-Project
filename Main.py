@@ -1,33 +1,9 @@
-#from EnvTests import drawTest, generateCardsTest, initTest, maskTest, resetTest, scoreTest, scuttleTest
-#from NetworkTesting import getActionTest
-from Training import randomLoop, winReward01
-import torch
+from Training import WinRewardTraining
+from Players import Randomized
 
-# initTest()
-# input("Complete")
+p1 = Randomized("Player")
+p2 = Randomized("Dealer")
 
-# generateCardsTest()
-# input("Complete")
+t1 = WinRewardTraining(p1, p2)
 
-# resetTest()
-# input("Complete")
-
-# scoreTest()
-# input("Complete")
-
-# drawTest()
-# input("Complete")
-
-# scuttleTest()
-# input("Complete")
-
-# maskTest()
-# input("Complete")
-
-#randomLoop(10)
-# device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu" # type: ignore
-# print(f"Using {device} device")
-
-#getActionTest()
-
-winReward01()
+t1.train()
