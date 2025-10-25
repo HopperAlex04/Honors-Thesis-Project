@@ -17,3 +17,13 @@ class Randomized(Player):
         
     def getAction(self, state, mask):
         return mask[random.randint(0, mask.__len__() - 1)]
+    
+class Agent(Player):
+    def __init__(self, name, model):
+        super().__init__(name)
+        self.model = model
+    
+    def getAction(self, state, mask):
+        #the hard part
+        pass
+        
