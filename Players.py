@@ -26,11 +26,12 @@ class Randomized(Player):
 class Agent(Player):
     def __init__(self, name, model, *args):
         super().__init__(name)
-        #
+        #Set up policy and target model
         self.policy = model
         self.target = model
         self.target.load_state_dict(self.policy.state_dict())
         
+        #Training parameters
         self.batchSize = args[0]
         self.gamma = args[1]
         self.epsStart = args[2]
@@ -38,6 +39,9 @@ class Agent(Player):
         self.epsDecay = args[4]
         self.tau = args[5]
         self.lr = args[6]
+        
+        #Replay Memory
+        self.memory = ReplayMemory(10000)
     
     def getAction(self, ob, mask, actions, steps_done):
         sample = random.random()
@@ -55,9 +59,9 @@ class Agent(Player):
                 for x in range(actions):
                     if x not in mask:
                         actout[0, x] = float('-inf')
-                return actout.max(1).indices.view(1,1)
+                return actout.max(1).indices.view(1,1).item()
         else:
-            return torch.tensor([[random.choice(mask)]], dtype=torch.long)
+            return torch.tensor([[random.choice(mask)]], dtype=torch.long).item()
         
     def get_state(self, ob):
         state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
@@ -74,6 +78,7 @@ class ReplayMemory(object):
 
     def push(self, *args):
         """Save a transition"""
+        print(f"{args[1]} {args[3]}")
         self.memory.append(Transition(*args))
 
     def sample(self, batch_size):

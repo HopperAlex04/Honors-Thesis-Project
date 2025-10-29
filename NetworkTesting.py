@@ -5,6 +5,7 @@ from Networks import NeuralNetwork
 from torch import nn
 
 from Players import Agent
+import Training
 
 
 def getActionTest():
@@ -12,7 +13,7 @@ def getActionTest():
     
     env = CuttleEnvironment()
     actions = env.actions
-    print(actions)
+    #print(actions)
     model = NeuralNetwork(52 * 5, env.actions, None)
     
     BATCH_SIZE = 128
@@ -29,8 +30,32 @@ def getActionTest():
     ob = env._get_obs()
     mask = env.generateActionMask()
     y_pred = ag.getAction(ob, mask, actions, 10000)
-    print(y_pred.item()) # type: ignore
+    print(y_pred)
     print(mask)
+
+
+
+def trainingTest():
+    env = CuttleEnvironment()
+    actions = env.actions
+    #print(actions)
+    model = NeuralNetwork(52 * 5, env.actions, None)
+    
+    BATCH_SIZE = 128
+    GAMMA = 0.99
+    EPS_START = 0.9
+    EPS_END = 0.01
+    EPS_DECAY = 2500
+    TAU = 0.005
+    LR = 3e-4
+    p1 = Agent("player", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
+    p2 = Agent("dealer", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
+    
+    t = Training.WinRewardTraining(p1, p2)
+    t.train(1)
+    
+    
     
 getActionTest()
+trainingTest()
     
