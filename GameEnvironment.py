@@ -73,15 +73,16 @@ class CuttleEnvironment(gym.Env):
             
     def step(self, action):
         act = self.action_to_move.get(action)
-        if act is None: return None, 0, True 
+        if act is None: return None, 0, False, True 
         func = act[0] # type: ignore
         args = act[1] # type: ignore
         func(args)
         ob = self._get_obs()
         score = self.scoreState()
         terminated = score >= 21
+        truncated = False
         
-        return ob, score, terminated
+        return ob, score, terminated, truncated
     
     def render(self):
         currHand = self.currentZones["Hand"]

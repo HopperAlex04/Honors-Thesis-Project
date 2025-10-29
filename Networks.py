@@ -12,23 +12,23 @@ class NeuralNetwork(nn.Module):
         if seq:
             self.linear_relu_stack = seq
         else:
-            self.linear_relu_stack = nn.Linear(obspace, actions)
+            self.linear_relu_stack = nn.Sequential(nn.Linear(obspace, actions), nn.Tanh())
             
     def forward(self, x):
         logits = self.linear_relu_stack(x)
         return logits
     
 
-net = NeuralNetwork(52 * 5, 1379, None)
-print(net)
+# net = NeuralNetwork(52 * 5, 1379, None)
+# print(net)
 
-params = list(net.parameters())
-print(len(params))
-print(params[0])
+# params = list(net.parameters())
+# print(len(params))
+# print(params[0])
 
-input = torch.randn(52 * 5)
-out = net(input)
-print(out)
+# input = torch.randn(52 * 5)
+# out = net(input)
+# print(out)
 
-net.zero_grad()
-out.backward(torch.randn(1379))
+# net.zero_grad()
+# out.backward(torch.randn(1379))
