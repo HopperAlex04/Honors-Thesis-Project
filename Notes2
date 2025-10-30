@@ -1,3 +1,5 @@
 Update render to not flip flop, player on bottom, dealer on top
 
 Loss function is what I actually got
+
+currently better than random play, but as the game stands, still struggles against scoring highest card in the moment.

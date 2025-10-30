@@ -1,7 +1,8 @@
 from GameEnvironment import CuttleEnvironment
 from Networks import NeuralNetwork
 
-from Players import Agent, Randomized
+from Players import Agent, HueristicHighCard, Randomized
+import Players
 import Training
 
 
@@ -45,13 +46,19 @@ def trainingTest():
     #p2 = Agent("dealer", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
     
     t = Training.WinRewardTraining(p1, p1)
-    t.trainLoop(1000)
+    t.trainLoop(2000)
     
-    p3 = Randomized("dealer")
+    p3 = HueristicHighCard("dealer")
     
     t.validLoop(p3, 1000)
     
     
     
-
+def heur1Test():
+    p1 = Players.HueristicHighCard("H1")
+    env = CuttleEnvironment()
+    
+    env.reset()
+    
+    return p1.getAction(env._get_obs(), env.generateActionMask())
     
