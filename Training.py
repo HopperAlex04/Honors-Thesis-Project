@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from GameEnvironment import CuttleEnvironment
-from Players import Agent, Player, Randomized
+from Players import Agent, Player
 
 class WinRewardTraining():
     def __init__(self, player1: Player, player2: Player):
