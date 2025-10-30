@@ -1,8 +1,5 @@
-import torch
-import numpy as np
 from GameEnvironment import CuttleEnvironment
 from Networks import NeuralNetwork
-from torch import nn
 
 from Players import Agent, Randomized
 import Training
@@ -56,6 +53,5 @@ def trainingTest():
     
     
     
-getActionTest()
-trainingTest()
+
     
