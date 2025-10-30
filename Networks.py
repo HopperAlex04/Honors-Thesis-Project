@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 class NeuralNetwork(nn.Module):
-    def __init__(self, obspace, actions: int, seq: nn.Sequential|None):
+    def __init__(self, obspace: int, actions: int, seq: nn.Sequential|None):
         super().__init__()
         #self.flatten = nn.Flatten()
         if seq:
