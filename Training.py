@@ -9,7 +9,123 @@ class WinRewardTraining():
         self.player2 = player2
     
     
-    def train(self, episodes = 1):
+    def trainLoop(self, episodes = 1):
+        #Data for tracking performace
+        total_turns = 0
+        p1Wins = 0
+        p2Wins = 0
+        
+        #Initializing environment
+        env = CuttleEnvironment()
+        
+        
+        for episode in range(episodes):
+            #Resets the deck and zones, then fills player hands.
+            env.reset()
+            turn = 0
+            p1Score = 0
+            p2Score = 0
+            
+            drawCounter = 0
+            #Game Loop
+            terminated = False
+            
+            self.p1State = None
+            self.p1Act = 0
+            self.p1Next = None
+                
+            self.p2State = None
+            self.p2Act = 0
+            self.p2Next = None
+            
+            
+            while not terminated:
+                turn += 1
+                total_turns += 1
+                
+                print(f"{self.player1.name} Score: {p1Score}, {self.player2.name} Score: {p2Score}, Turns: {turn}")
+                
+                #get an action from 'player'
+                mask = env.generateActionMask()
+                ob = env._get_obs()
+                                
+                #Gets an action, needs more parameters for agent actions
+                if isinstance(self.player1, Agent):
+                    self.p1Act = self.player1.getAction(ob, mask, env.actions, turn)
+                else:
+                    self.p1Act = self.player1.getAction(ob, mask)
+                    
+                if self.p1Act == 0: drawCounter += 1
+                else: drawCounter = 0
+                    
+                self.p1State = self.get_state(ob)
+                print(self.p1Act)
+                ob, p1Score, terminated, truncated = env.step(self.p1Act)
+                
+                self.p2Next = self.get_state(ob)
+                
+                truncated = (drawCounter >= 6)
+                
+                if terminated and turn > 1:
+                    p1Wins += 1
+                    if isinstance(self.player1, Agent):
+                        self.p1Win()
+                    break
+                elif truncated and turn > 1:
+                    if isinstance(self.player1, Agent):
+                        self.draw()
+                    break
+                elif isinstance(self.player2, Agent) and turn > 1: 
+                    self.player2.memory.push(torch.tensor(self.p2State), torch.tensor(self.p2Act), torch.tensor(self.p2Next), 0)      
+                
+                env.passControl()
+                
+                #get an action from the 'dealer'
+                mask = env.generateActionMask()
+                ob = env._get_obs()
+                
+                #Gets an action, needs more parameters for agent actions
+                if isinstance(self.player2, Agent):
+                    self.p2Act = self.player2.getAction(ob, mask, env.actions, turn)
+                else:
+                    self.p2Act = self.player2.getAction(ob, mask)
+                    
+                if self.p2Act == 0: drawCounter += 1
+                else: drawCounter = 0
+                    
+                self.p2State = self.get_state(ob)
+                
+                ob, p2Score, terminated, truncated = env.step(self.p2Act)
+                
+                self.p1Next = self.get_state(ob)
+                
+                truncated = (drawCounter >= 6)
+                
+                if terminated:
+                    p2Wins += 1
+                    if isinstance(self.player1, Agent): self.p2Win()
+                    break
+                elif truncated:
+                    if isinstance(self.player1, Agent): self.draw()
+                    break
+                elif isinstance(self.player1, Agent): 
+                    self.player1.memory.push(torch.tensor(self.p1State), torch.tensor(self.p1Act), torch.tensor(self.p1Next), 0)
+                    
+                env.passControl()
+                    
+                    
+            
+            
+            print(f"Episode {episode}| {self.player1.name} WR: {p1Wins/(episode + 1)} | {self.player2.name} WR {p2Wins/(episode + 1)} | Average Turns: {total_turns/(episode + 1)}")
+            if isinstance(self.player1, Agent) and isinstance(self.player2, Agent):
+                self.player1.optimize()
+                if self.player1.model != self.player2.model:
+                    self.player2.optimize()
+                
+    def validLoop(self, newPlayer, episodes = 1):
+        #Allows the ability to validate against other opponents
+        self.player2 = newPlayer
+        
         #Data for tracking performace
         total_turns = 0
         p1Wins = 0
@@ -26,51 +142,36 @@ class WinRewardTraining():
             p1Score = 0
             p2Score = 0
             #Game Loop
-            terminated = False
+            terminated = False            
+            
             while not terminated:
                 turn += 1
                 total_turns += 1
                 
-                p1State = None
-                p1Act = 0
-                p1Next = None
-                
-                p2State = None
-                p2Act = 0
-                p2Next = None
-                
                 #get an action from 'player'
                 mask = env.generateActionMask()
                 ob = env._get_obs()
-                action = 0
-                
+                                
                 #Gets an action, needs more parameters for agent actions
                 if isinstance(self.player1, Agent):
-                    p1Act = self.player1.getAction(ob, mask, env.actions, turn)
+                    self.p1Act = self.player1.getAction(ob, mask, env.actions, turn)
                 else:
-                    p1Act = self.player1.getAction(ob, mask)
-                    
-                p1State = self.get_state(ob)
+                    self.p1Act = self.player1.getAction(ob, mask)
                 
-                ob, p1Score, terminated, truncated = env.step(p1Act)
+                if len(mask) == 1: drawCounter += 1
+                else: drawCounter = 0
                 
-                p2Next = self.get_state(ob)
+                ob, p1Score, terminated, truncated = env.step(self.p1Act)
+                
+                truncated = (drawCounter >= 6)
                 
                 if terminated and turn > 1:
                     p1Wins += 1
-                    if isinstance(self.player1, Agent):
-                        self.player1.memory.push(p1State, p1Act, None, 1)
-                    if isinstance(self.player2, Agent):
-                        self.player2.memory.push(p2State, p2Act, None, -1)
                     break
                 elif truncated and turn > 1:
-                    if isinstance(self.player1, Agent):
-                        self.player1.memory.push(p1State, p1Act, None, 0)
-                    if isinstance(self.player2, Agent):
-                        self.player2.memory.push(p2State, p2Act, None, 0)
-                    break
-                elif isinstance(self.player2, Agent) and turn > 1: 
-                    self.player2.memory.push(p2State, p2Act, p2Next, 0)      
+                    break     
+                
+                env.passControl()
                 
                 #get an action from the 'dealer'
                 mask = env.generateActionMask()
@@ -78,43 +179,54 @@ class WinRewardTraining():
                 
                 #Gets an action, needs more parameters for agent actions
                 if isinstance(self.player1, Agent):
-                    p2Act = self.player1.getAction(ob, mask, env.actions, turn)
+                    self.p2Act = self.player1.getAction(ob, mask, env.actions, turn)
                 else:
-                    p2Act = self.player1.getAction(ob, mask)
-                    
-                p2State = self.get_state(ob)
+                    self.p2Act = self.player1.getAction(ob, mask)
                 
-                ob, p2Score, terminated, truncated = env.step(p2Act)
+                if len(mask) == 1: drawCounter += 1
+                else: drawCounter = 0
                 
-                p1Next = self.get_state(ob)
+                ob, p2Score, terminated, truncated = env.step(self.p2Act)
+                
+                truncated = (drawCounter >= 6)                
                 
                 if terminated:
                     p2Wins += 1
-                    if isinstance(self.player1, Agent):
-                        self.player1.memory.push(p1State, p1Act, None, -1)
-                    if isinstance(self.player2, Agent):
-                        self.player2.memory.push(p2State, p2Act, p2Next, 1)
                     break
                 elif truncated:
-                    if isinstance(self.player1, Agent):
-                        self.player1.memory.push(p1State, p1Act, None, 0)
-                    if isinstance(self.player2, Agent):
-                        self.player2.memory.push(p2State, p2Act, p2Next, 0)
                     break
-                elif isinstance(self.player1, Agent): 
-                    self.player1.memory.push(p1State, p1Act, p1Next, 0)
+                
+                env.passControl()
                     
-                    
-            print(f"{self.player1.name} Score: {p1Score}, {self.player2.name} Score: {p2Score}, Turns: {turn}")
+                print(f"{self.player1.name} Score: {p1Score}, {self.player2.name} Score: {p2Score}, Turns: {turn}")
             
-        print(f"Episode End| {self.player1.name} WR: {p1Wins/(episode + 1)} | {self.player2.name} WR {p2Wins/(episode + 1)} | Average Turns: {total_turns/(episode + 1)}")
-        
+            print(f"Episode {episode}| {self.player1.name} WR: {p1Wins/(episode + 1)} | {self.player2.name} WR {p2Wins/(episode + 1)} | Average Turns: {total_turns/(episode + 1)}")
         
         
     def get_state(self, ob):
         state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
-        stateT = torch.from_numpy(np.array([state])).float()
+        stateT = torch.from_numpy(np.array(state)).float()
         return stateT
+    
+    def p1Win(self):
+        if isinstance(self.player1, Agent):
+            self.player1.memory.push(torch.tensor(self.p1State), torch.tensor(self.p1Act), None, 1)
+        if isinstance(self.player2, Agent):
+            self.player2.memory.push(torch.tensor(self.p2State), torch.tensor(self.p2Act), None, -1)
+            
+    def p2Win(self):
+        if isinstance(self.player1, Agent):
+            self.player1.memory.push(torch.tensor(self.p1State), torch.tensor(self.p1Act), None, -1)
+        if isinstance(self.player2, Agent):
+            self.player2.memory.push(torch.tensor(self.p2State), torch.tensor(self.p2Act), None , 1)
+            
+    def draw(self):
+        if isinstance(self.player1, Agent):
+            self.player1.memory.push(torch.tensor(self.p1State), torch.tensor(self.p1Act), None, 0)
+        if isinstance(self.player2, Agent):
+            self.player2.memory.push(torch.tensor(self.p2State), torch.tensor(self.p2Act), None, 0)
+        
+        
                 
                 
                 

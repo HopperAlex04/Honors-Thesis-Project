@@ -27,6 +27,7 @@ class Agent(Player):
     def __init__(self, name, model, *args):
         super().__init__(name)
         #Set up policy and target model
+        self.model = model
         self.policy = model
         self.target = model
         self.target.load_state_dict(self.policy.state_dict())
@@ -41,7 +42,13 @@ class Agent(Player):
         self.lr = args[6]
         
         #Replay Memory
-        self.memory = ReplayMemory(10000)
+        self.memory = ReplayMemory(50000)
+        
+        #Using Adam optimization
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps = 1e-8, weight_decay=0)
+        
+        #using Huber Loss
+        self.criterion = torch.nn.HuberLoss()
     
     def getAction(self, ob, mask, actions, steps_done):
         sample = random.random()
@@ -58,15 +65,52 @@ class Agent(Player):
                 actout = self.policy(state)
                 for x in range(actions):
                     if x not in mask:
-                        actout[0, x] = float('-inf')
-                return actout.max(1).indices.view(1,1).item()
+                        actout[x] = float('-inf')
+                return actout.argmax().item()
         else:
             return torch.tensor([[random.choice(mask)]], dtype=torch.long).item()
         
     def get_state(self, ob):
         state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
-        stateT = torch.from_numpy(np.array([state])).float()
+        stateT = torch.from_numpy(np.array(state)).float()
         return stateT
+    
+    def optimize(self):
+        if len(self.memory) < self.batchSize: return
+        
+        transitions = self.memory.sample(self.batchSize)
+        # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
+        # detailed explanation). This converts batch-array of Transitions
+        # to Transition of batch-arrays.
+        batch = Transition(*zip(*transitions))
+
+        # Compute a mask of non-final states and concatenate the batch elements
+        # (a final state would've been the one after which simulation ended)
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                            batch.next_state)), dtype=torch.bool)
+        non_final_next_states = torch.stack([s for s in batch.next_state if s is not None])
+        state_batch = torch.stack(batch.state)
+        action_batch = torch.tensor(batch.action)
+        reward_batch = torch.tensor(batch.reward)
+        
+        state_action_values = self.policy(state_batch).gather(1, action_batch.unsqueeze(0))
+        
+        next_state_values = torch.zeros(self.batchSize)
+        
+        with torch.no_grad():
+            next_state_values[non_final_mask] = self.target(non_final_next_states).max(1).values # type: ignore
+        # Compute the expected Q values
+        expected_state_action_values = (next_state_values * self.gamma) + torch.tensor(reward_batch)
+
+        # Compute Huber loss
+        loss = self.criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+
+        # Optimize the model
+        self.optimizer.zero_grad()
+        loss.backward()
+        # In-place gradient clipping
+        torch.nn.utils.clip_grad_value_(self.policy.parameters(), 100)
+        self.optimizer.step()
     
     
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
@@ -78,7 +122,6 @@ class ReplayMemory(object):
 
     def push(self, *args):
         """Save a transition"""
-        print(f"{args[1]} {args[3]}")
         self.memory.append(Transition(*args))
 
     def sample(self, batch_size):
