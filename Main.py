@@ -1,3 +1,3 @@
-from NetworkTesting import trainingTest
+import NetworkTesting
+NetworkTesting.trainingTest()
 
-trainingTest()

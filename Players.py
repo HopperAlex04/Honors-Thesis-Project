@@ -23,6 +23,18 @@ class Randomized(Player):
     def getAction(self, state, mask):
         return mask[random.randint(0, mask.__len__() - 1)]
     
+class HueristicHighCard(Player):
+    def __init__(self, name):
+        super().__init__(name)
+        
+    def getAction(self, state, mask):
+        actOut = 0
+        for x in mask:
+            if x in range(1,53):
+                actOut = x
+        return actOut
+            
+    
 class Agent(Player):
     def __init__(self, name, model, *args):
         super().__init__(name)
