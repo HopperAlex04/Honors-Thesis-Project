@@ -7,9 +7,12 @@ import gymnasium as gym
 
 class CuttleEnvironment(gym.Env):
     
-    
+    #Initializes the environment and defines the observation and action spaces
     def __init__(self) -> None:
         
+        #Generates the zones
+        #A zone is a bool np array
+        #Where a card is can be determined as follows: 13*suit + rank, where suit is 0-3 and rank is 0-12
         self.dealerHand = np.zeros(52, dtype=bool)
         self.dealerField = np.zeros(52, dtype=bool)
         self.playerField = np.zeros(52, dtype=bool)
@@ -17,18 +20,22 @@ class CuttleEnvironment(gym.Env):
         self.deck = np.ones(52, dtype=bool)
         self.scrap = np.zeros(52, dtype=bool)
         
+        #Defines who owns what zones, allows for easy access to fields
         self.playerZones = {"Hand": self.playerHand, "Field": self.playerField}
         self.dealerZones = {"Hand": self.dealerHand, "Field": self.dealerField}
         
+        #Swapped by passControl(), always start with the player
         self.currentZones = self.playerZones
         self.offZones = self.dealerZones
         
+        #Generates the cards for easy access to rank and suit based on index (demonstrated above)
         self.cardDict = self.generateCards()
         
+        #Generates the actions, as well as determining how many actions are in the environment.
+        #Actions from the action_to_move dict are of the form (moveType, [args]), where moveType is one of the functions below.
         self.action_to_move, self.actions = self.generateActions()
         
-        self.mask = []
-        
+        #Gym helps us out so we make gym spaces
         self.observation_space = gym.spaces.MultiBinary([6,52])
         self.action_space = gym.spaces.Discrete(self.actions)
          
@@ -266,7 +273,10 @@ class CuttleEnvironment(gym.Env):
         score = 0
         for suit in range(4):
             for rank in range(13):
-                if fieldScored[index]: score += rank
+                if fieldScored[index]: 
+                    if rank == 12:
+                        score += 7
+                    score += rank + 1
                 index += 1
         return score
     
