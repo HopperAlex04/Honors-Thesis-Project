@@ -20,14 +20,14 @@ class Randomized(Player):
         super().__init__(name)
         if seed != 0: random.seed(seed)
         
-    def getAction(self, state, mask):
-        return mask[random.randint(0, mask.__len__() - 1)]
+    def getAction(self, state, mask) -> int:
+        return random.choice(mask)
     
 class HueristicHighCard(Player):
     def __init__(self, name):
         super().__init__(name)
         
-    def getAction(self, state, mask):
+    def getAction(self, state, mask) -> int:
         actOut = 0
         for x in mask:
             if x in range(1,53):
@@ -62,11 +62,12 @@ class Agent(Player):
         #using Huber Loss
         self.criterion = torch.nn.HuberLoss()
     
-    def getAction(self, ob, mask, actions, steps_done):
+    def getAction(self, ob, mask, actions, steps_done) -> int:
         sample = random.random()
+        #As training continues, when getAction is called it becomes more likely to return an action from the model
         eps_threshold = self.epsEnd + (self.epsStart - self.epsEnd) * \
             math.exp(-1. * steps_done / self.epsDecay)
-
+        #ob should be of the form [dict, dict, zone, zone] so the dicts need to be broken down by get_state()
         state = self.get_state(ob)
         
         if sample > eps_threshold:
@@ -80,8 +81,9 @@ class Agent(Player):
                         actout[x] = float('-inf')
                 return actout.argmax().item()
         else:
-            return torch.tensor([[random.choice(mask)]], dtype=torch.long).item()
+            return mask[random.choice(mask)]
         
+    #States are dim 1 tensors (think [1, 0, 0, 1, 0, 1])
     def get_state(self, ob):
         state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
         stateT = torch.from_numpy(np.array(state)).float()
@@ -94,6 +96,14 @@ class Agent(Player):
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
+        
+        #The zip function: zip(iterator1, iterator2...) returns a zip object, which is an iterator of the form [(iterator1[0], iterator2[0]...]),...]
+        
+        # zip(*iterable) will use all of the elements of that iterable as arguements. zip(*transitions) is the collection of all the transitions such that 
+        #   (assuming array structure) each row corresponds to all of that part of the transition. ex. zip(*transitions)[0] would be all of the states, in order.
+        
+        # Transition(*zip(*transitions)) is the final step, which makes this collection able to be accesed as so: batch.field, where field is one of the namedTuple's names
+        # defined as Transition(transition, (state, action, next_state, reward))
         batch = Transition(*zip(*transitions))
 
         # Compute a mask of non-final states and concatenate the batch elements

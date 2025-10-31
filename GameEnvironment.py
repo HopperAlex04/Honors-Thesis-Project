@@ -59,13 +59,13 @@ class CuttleEnvironment(gym.Env):
         self.deck = np.ones(52, dtype=bool)
         self.scrap = np.zeros(52, dtype=bool)
         
-        
-        
+        #Makes sure all the zones are in the right places
         self.playerZones = {"Hand": self.playerHand, "Field": self.playerField}
         self.dealerZones = {"Hand": self.dealerHand, "Field": self.dealerField}
         
         self.currentZones = self.playerZones
         self.offZones = self.dealerZones
+        
         #Draw opening hands
         draw = self.action_to_move.get(0)
         args = draw[1] # type: ignore
@@ -77,9 +77,12 @@ class CuttleEnvironment(gym.Env):
         self.passControl()
         for x in range(5):
             draw(args)
-            
-    def step(self, action):
+    
+    #Converts an action into a move by grabbing the calling the function with args from the move dict
+    def step(self, action:int):
         act = self.action_to_move.get(action)
+        
+        #This is to prevent a crash in the event of exhausting all possible actions, for games this ends the game
         if act is None: return None, 0, False, True 
         func = act[0] # type: ignore
         args = act[1] # type: ignore
@@ -89,6 +92,7 @@ class CuttleEnvironment(gym.Env):
         terminated = score >= 21
         truncated = False
         
+        #ob is of the form [dict, dict] and should be broken up when reading a state
         return ob, score, terminated, truncated
     
     def render(self):
