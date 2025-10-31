@@ -174,6 +174,17 @@ class CuttleEnvironment(gym.Env):
         
         return f"Scuttled {target} with {card}"
 
+    def aceAction(self, card):
+        hand = self.currentZones.get("Hand")
+        oppField = self.offZones.get("Field")
+        scrap = self.scrap
+        
+        hand[card] = False # type: ignore
+        scrap[card] = False
+        for x in range(oppField.size): # type: ignore
+            oppField[x] = False # type: ignore
+            scrap[x] = True
+    
     def generateActions(self):
         #Initializes storage mediums
         act_dict = {}
@@ -197,7 +208,10 @@ class CuttleEnvironment(gym.Env):
                     act_dict.update({actions: (self.scuttleAction, [x,y])})
                     actions += 1
                      
-        
+        #Ace special action: boardwipe      
+        for x in range(4):
+            act_dict.update({actions: (self.aceAction, [x])})
+            actions += 1
             
         return act_dict, actions
     
@@ -227,6 +241,12 @@ class CuttleEnvironment(gym.Env):
                     
                     if fieldMask[0].size > 0 and target in fieldMask[0] and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
                         fullMask.append(x)
+            elif moveType == self.aceAction:
+                card = move[1][0]
+                if card in handMask[0]:
+                    fullMask.append(x)            
+                        
+            
         return fullMask
     
     def generateCards(self):
