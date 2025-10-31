@@ -7,11 +7,12 @@ class WinRewardTraining():
     def __init__(self, player1: Player, player2: Player):
         self.player1 = player1
         self.player2 = player2
+        self.total_steps = 0
     
     
     def trainLoop(self, episodes = 1):
         #Data for tracking performace
-        total_turns = 0
+        self.total_steps = 0
         p1Wins = 0
         p2Wins = 0
         
@@ -41,7 +42,7 @@ class WinRewardTraining():
             
             while not terminated:
                 turn += 1
-                total_turns += 1
+                self.total_steps += 1
                 
                 print(f"{self.player1.name} Score: {p1Score}, {self.player2.name} Score: {p2Score}, Turns: {turn}")
                 
@@ -116,7 +117,7 @@ class WinRewardTraining():
                     
             
             
-            print(f"Episode {episode}| {self.player1.name} WR: {p1Wins/(episode + 1)} | {self.player2.name} WR {p2Wins/(episode + 1)} | Average Turns: {total_turns/(episode + 1)}")
+            print(f"Episode {episode}| {self.player1.name} WR: {p1Wins/(episode + 1)} | {self.player2.name} WR {p2Wins/(episode + 1)} | Average Turns: {self.total_steps/(episode + 1)}")
             if isinstance(self.player1, Agent) and isinstance(self.player2, Agent):
                 self.player1.optimize()
                 if self.player1.model != self.player2.model:
@@ -125,9 +126,8 @@ class WinRewardTraining():
     def validLoop(self, newPlayer, episodes = 1):
         #Allows the ability to validate against other opponents
         self.player2 = newPlayer
-        
+        totalTurns = 0
         #Data for tracking performace
-        total_turns = 0
         p1Wins = 0
         p2Wins = 0
         
@@ -146,7 +146,7 @@ class WinRewardTraining():
             
             while not terminated:
                 turn += 1
-                total_turns += 1
+                totalTurns += 1
                 
                 #get an action from 'player'
                 mask = env.generateActionMask()
@@ -200,7 +200,7 @@ class WinRewardTraining():
                     
                 print(f"{self.player1.name} Score: {p1Score}, {self.player2.name} Score: {p2Score}, Turns: {turn}")
             
-            print(f"Episode {episode}| {self.player1.name} WR: {p1Wins/(episode + 1)} | {self.player2.name} WR {p2Wins/(episode + 1)} | Average Turns: {total_turns/(episode + 1)}")
+            print(f"Episode {episode}| {self.player1.name} WR: {p1Wins/(episode + 1)} | {self.player2.name} WR {p2Wins/(episode + 1)} | Average Turns: {totalTurns/(episode + 1)}")
         
         
     def get_state(self, ob):
