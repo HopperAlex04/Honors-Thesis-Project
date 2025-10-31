@@ -52,7 +52,27 @@ def trainingTest():
     
     t.validLoop(p3, 1000)
     
+def getStateTest():
+    env = CuttleEnvironment()
+    actions = env.actions
+    model = NeuralNetwork(260, actions, None)
     
+    BATCH_SIZE = 4096
+    GAMMA = 0.99
+    EPS_START = 0.9
+    EPS_END = 0.01
+    EPS_DECAY = 2500
+    TAU = 0.005
+    LR = 3e-4
+    p1 = Agent("Agent01", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
+    
+    env.reset()
+    ob = env._get_obs()
+    print(ob)
+    state =p1.get_state(ob)
+    print(state)
+    print(len(state))
+    print(state.dim())
     
 def heur1Test():
     p1 = Players.HueristicHighCard("H1")

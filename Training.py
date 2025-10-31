@@ -60,7 +60,6 @@ class WinRewardTraining():
                 else: drawCounter = 0
                     
                 self.p1State = self.get_state(ob)
-                print(self.p1Act)
                 ob, p1Score, terminated, truncated = env.step(self.p1Act)
                 
                 self.p2Next = self.get_state(ob)
