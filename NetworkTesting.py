@@ -1,7 +1,9 @@
+from numpy import long
+import torch
 from GameEnvironment import CuttleEnvironment
 from Networks import NeuralNetwork
 
-from Players import Agent, HueristicHighCard, Randomized
+from Players import Agent, HueristicHighCard, Randomized, Transition
 import Players
 import Training
 
@@ -36,7 +38,7 @@ def trainingTest():
     model = NeuralNetwork(260, actions, None)
     
     BATCH_SIZE = 4096
-    GAMMA = 0.99
+    GAMMA = 0.5
     EPS_START = 0.9
     EPS_END = 0.01
     EPS_DECAY = 2500
@@ -69,7 +71,7 @@ def getStateTest():
     env.reset()
     ob = env._get_obs()
     print(ob)
-    state =p1.get_state(ob)
+    state = p1.get_state(ob)
     print(state)
     print(len(state))
     print(state.dim())
@@ -81,4 +83,32 @@ def heur1Test():
     env.reset()
     
     return p1.getAction(env._get_obs(), env.generateActionMask())
+
+def optPrepTest():
+    env = CuttleEnvironment()
+    actions = env.actions
+    model = NeuralNetwork(260, actions, None)
+    
+    BATCH_SIZE = 4096
+    GAMMA = 0.99
+    EPS_START = 0.9
+    EPS_END = 0.01
+    EPS_DECAY = 2500
+    TAU = 0.005
+    LR = 3e-4
+    p1 = Agent("Agent01", model, 2, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
+    
+    env.reset()
+    ob = env._get_obs()
+    
+    state = p1.get_state(ob)
+    action = 0
+    env.step(0)
+    ob = env._get_obs()
+    next_state = p1.get_state(ob)
+    reward = 0
+    
+    p1.memory.push(state, torch.tensor([action]), next_state, torch.tensor([0]))
+    p1.memory.push(state, torch.tensor([action]), next_state, torch.tensor([1]))
+    p1.optimize()
     

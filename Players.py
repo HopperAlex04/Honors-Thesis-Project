@@ -38,11 +38,11 @@ class HueristicHighCard(Player):
 class Agent(Player):
     def __init__(self, name, model, *args):
         super().__init__(name)
-        #Set up policy and target model
+        #Set up policy model
+        
         self.model = model
+        
         self.policy = model
-        self.target = model
-        self.target.load_state_dict(self.policy.state_dict())
         
         #Training parameters
         self.batchSize = args[0]
@@ -60,7 +60,7 @@ class Agent(Player):
         self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps = 1e-8, weight_decay=0)
         
         #using Huber Loss
-        self.criterion = torch.nn.HuberLoss()
+        self.criterion = torch.nn.SmoothL1Loss()
     
     def getAction(self, ob, mask, actions, steps_done) -> int:
         sample = random.random()
@@ -81,7 +81,7 @@ class Agent(Player):
                         actout[x] = float('-inf')
                 return actout.argmax().item()
         else:
-            return mask[random.choice(mask)]
+            return random.choice(mask)
         
     #States are dim 1 tensors (think [1, 0, 0, 1, 0, 1])
     def get_state(self, ob):
@@ -112,21 +112,20 @@ class Agent(Player):
                                             batch.next_state)), dtype=torch.bool)
         non_final_next_states = torch.stack([s for s in batch.next_state if s is not None])
         state_batch = torch.stack(batch.state)
-        action_batch = torch.tensor(batch.action)
-        reward_batch = torch.tensor(batch.reward)
+        action_batch = torch.stack(batch.action)
+        reward_batch = torch.stack(batch.reward)
         
-        state_action_values = self.policy(state_batch).gather(1, action_batch.unsqueeze(0))
-        
+        #print(torch.stack(action_batch))
+        state_action_values = self.policy(state_batch).gather(1, action_batch)
         next_state_values = torch.zeros(self.batchSize)
         
         with torch.no_grad():
-            next_state_values[non_final_mask] = self.target(non_final_next_states).max(1).values # type: ignore
+            next_state_values[non_final_mask] = self.policy(non_final_next_states).max(1).values # type: ignore
         # Compute the expected Q values
-        expected_state_action_values = (next_state_values * self.gamma) + torch.tensor(reward_batch)
+        expected_state_action_values = (next_state_values * self.gamma) + reward_batch
 
         # Compute Huber loss
-        loss = self.criterion(state_action_values, expected_state_action_values.unsqueeze(1))
-
+        loss = self.criterion(state_action_values, expected_state_action_values)
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()

@@ -76,7 +76,7 @@ class WinRewardTraining():
                         self.draw()
                     break
                 elif isinstance(self.player2, Agent) and turn > 1: 
-                    self.player2.memory.push(torch.tensor(self.p2State), torch.tensor(self.p2Act), torch.tensor(self.p2Next), 0)      
+                    self.player2.memory.push(torch.tensor(self.p2State), torch.tensor([self.p2Act]), torch.tensor(self.p2Next), torch.tensor([0]))      
                 
                 env.passControl()
                 
@@ -109,7 +109,7 @@ class WinRewardTraining():
                     if isinstance(self.player1, Agent): self.draw()
                     break
                 elif isinstance(self.player1, Agent): 
-                    self.player1.memory.push(torch.tensor(self.p1State), torch.tensor(self.p1Act), torch.tensor(self.p1Next), 0)
+                    self.player1.memory.push(self.p1State, torch.tensor([self.p1Act]), self.p1Next, torch.tensor([0]))
                     
                 env.passControl()
                     
@@ -117,10 +117,8 @@ class WinRewardTraining():
             
             
             print(f"Episode {episode}| {self.player1.name} WR: {p1Wins/(episode + 1)} | {self.player2.name} WR {p2Wins/(episode + 1)} | Average Turns: {self.total_steps/(episode + 1)}")
-            if isinstance(self.player1, Agent) and isinstance(self.player2, Agent):
-                self.player1.optimize()
-                if self.player1.model != self.player2.model:
-                    self.player2.optimize()
+            if isinstance(self.player1, Agent): self.player1.optimize()
+            if isinstance(self.player2, Agent) and self.player1 != self.player2: self.player2.optimize()
                 
     def validLoop(self, newPlayer, episodes = 1):
         #Allows the ability to validate against other opponents
@@ -209,21 +207,21 @@ class WinRewardTraining():
     
     def p1Win(self):
         if isinstance(self.player1, Agent):
-            self.player1.memory.push(torch.tensor(self.p1State), torch.tensor(self.p1Act), None, 1)
+            self.player1.memory.push(self.p1State, torch.tensor([self.p1Act]), None, torch.tensor([1]))
         if isinstance(self.player2, Agent):
-            self.player2.memory.push(torch.tensor(self.p2State), torch.tensor(self.p2Act), None, -1)
+            self.player2.memory.push(self.p2State, torch.tensor([self.p2Act]), None, torch.tensor([-1]))
             
     def p2Win(self):
         if isinstance(self.player1, Agent):
-            self.player1.memory.push(torch.tensor(self.p1State), torch.tensor(self.p1Act), None, -1)
+            self.player1.memory.push(self.p1State, torch.tensor([self.p1Act]), None, torch.tensor([-1]))
         if isinstance(self.player2, Agent):
-            self.player2.memory.push(torch.tensor(self.p2State), torch.tensor(self.p2Act), None , 1)
+            self.player2.memory.push(self.p2State, torch.tensor([self.p2Act]), None, torch.tensor([1]))
             
     def draw(self):
         if isinstance(self.player1, Agent):
-            self.player1.memory.push(torch.tensor(self.p1State), torch.tensor(self.p1Act), None, 0)
+            self.player1.memory.push(self.p1State, torch.tensor([self.p1Act]), None, torch.tensor([0]))
         if isinstance(self.player2, Agent):
-            self.player2.memory.push(torch.tensor(self.p2State), torch.tensor(self.p2Act), None, 0)
+            self.player2.memory.push(self.p2State, torch.tensor([self.p2Act]), None, torch.tensor([0]))
         
         
                 
