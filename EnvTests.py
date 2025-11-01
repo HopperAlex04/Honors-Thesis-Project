@@ -77,9 +77,7 @@ def scoreTest():
         score(args)
     ob = env._get_obs()
     print(ob)
-    
-    
-        
+            
 def resetTest():
     env = CuttleEnvironment()
     
@@ -88,7 +86,6 @@ def resetTest():
     if not (len(np.where(env.dealerHand)[0]) == 6): print(f"error {len(np.where(env.dealerHand)[0])}")
     
     if not (len(np.where(env.playerHand)[0]) == 5): print(f"error {len(np.where(env.dealerHand)[0])}")
-    
     
 def generateCardsTest():
     env = CuttleEnvironment()
@@ -115,3 +112,11 @@ def maskTest():
     print(mask)
     for x in mask:
         print(env.action_to_move[x])
+
+def fiveTest():
+    env = CuttleEnvironment()
+    env.currentZones["Hand"][30] = True
+    mask = env.generateActionMask()
+    print(mask)
+    env.step(mask[2])
+    env.render()
