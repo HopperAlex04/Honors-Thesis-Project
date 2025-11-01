@@ -206,7 +206,26 @@ class CuttleEnvironment(gym.Env):
         self.drawAction()
         self.drawAction()
         
+    def nineAction(self, cardtargetselfHit):
+        currHand = self.currentZones.get("Hand")
+        currField = self.currentZones.get("Field")
+        offField = self.offZones.get("Field")
+        offHand = self.offZones.get("Hand")
+        scrap = self.scrap
         
+        card = cardtargetselfHit[0]
+        target = cardtargetselfHit[1]
+        selfHit = cardtargetselfHit[2]
+        
+        currHand[card] = False # type: ignore
+        scrap[card] = True
+        
+        if selfHit:
+            currField[target] = False # type: ignore
+            currHand[target] = True # type: ignore
+        else:
+            offField[target] = False # type: ignore
+            offHand[target] = True # type: ignore
     
     def generateActions(self):
         #Initializes storage mediums
@@ -241,11 +260,22 @@ class CuttleEnvironment(gym.Env):
             #13 cards per rank, we are looking for rank 4 (Five)
             act_dict.update({actions: (self.fiveAction, [(13 * x) + 4])})
             actions += 1
+            
+        for x in range(4):
+            #13 cards per rank, we are looking for rank 8 (Nine), one for each card
+            for y in range(51):
+                act_dict.update({actions: (self.nineAction, [(13 * x) + 8, y, True])})
+                actions += 1
+                act_dict.update({actions: (self.nineAction, [(13 * x) + 8, y, False])})
+                actions += 1   
         return act_dict, actions
+    
     
     def generateActionMask(self):
         inHand = np.where(self.currentZones["Hand"])
+        selfField = np.where(self.currentZones["Field"])
         onField = np.where(self.offZones["Field"])
+        oppHand = np.where(self.offZones["Hand"])
         validActions = []
         for x in self.action_to_move:
             move = self.action_to_move[x]
@@ -276,7 +306,16 @@ class CuttleEnvironment(gym.Env):
             elif moveType == self.fiveAction:
                 card = move[1][0]
                 if card in inHand[0]:
-                    validActions.append(x)            
+                    validActions.append(x)
+            elif moveType == self.nineAction:
+                card = move[1][0]
+                if card in inHand[0]:
+                    target = move[1][1]
+                    selfHit = move[1][2]
+                    
+                    if selfHit and selfField[0].size > 0 and target in selfField[0]:validActions.append(x)
+                    elif not selfHit and onField[0].size > 0 and target in onField[0]: validActions.append(x)    
+                                   
                         
             
         return validActions

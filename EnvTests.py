@@ -120,3 +120,35 @@ def fiveTest():
     print(mask)
     env.step(mask[2])
     env.render()
+    
+def nineTest1():
+    env = CuttleEnvironment()
+    #Test 1: Hitting opponent
+    env.currentZones["Hand"][8] = True
+    env.offZones["Field"][0] = True
+    env.render()
+    env.nineAction([8, 0, False])
+    env.render()
+    
+    env = CuttleEnvironment()
+    #Test 2: Hitting self
+    env.currentZones["Hand"][8] = True
+    env.currentZones["Field"][0] = True
+    env.render()
+    env.nineAction([8, 0, True])
+    env.render()
+    
+    env = CuttleEnvironment()
+    #Test 3: Hitting opponent valid actions
+    env.currentZones["Hand"][8] = True
+    env.offZones["Field"][0] = True
+    validActions = env.generateActionMask()
+    print(env.action_to_move[validActions[3]])
+    
+    env = CuttleEnvironment()
+    #Test 4: Hitting self valid actions
+    env.currentZones["Hand"][8] = True
+    env.currentZones["Field"][0] = True
+    validActions = env.generateActionMask()
+    print(env.action_to_move[validActions[2]])
+    
