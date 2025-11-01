@@ -191,10 +191,22 @@ class CuttleEnvironment(gym.Env):
         scrap = self.scrap
         
         hand[card] = False # type: ignore
-        scrap[card] = False
+        scrap[card] = True
         for x in range(oppField.size): # type: ignore
             oppField[x] = False # type: ignore
             scrap[x] = True
+    
+    def fiveAction(self, card):
+        hand = self.currentZones.get("Hand")
+        scrap = self.scrap
+        
+        hand[card] = False # type: ignore
+        scrap[card] = True
+        
+        self.drawAction()
+        self.drawAction()
+        
+        
     
     def generateActions(self):
         #Initializes storage mediums
@@ -221,27 +233,32 @@ class CuttleEnvironment(gym.Env):
                      
         #Ace special action: boardwipe      
         for x in range(4):
-            act_dict.update({actions: (self.aceAction, [x])})
+            #13 cards per rank, we are looking for rank 0 (Ace)
+            act_dict.update({actions: (self.aceAction, [13 * x])})
             actions += 1
-            
+        
+        for x in range(4):
+            #13 cards per rank, we are looking for rank 4 (Five)
+            act_dict.update({actions: (self.fiveAction, [(13 * x) + 4])})
+            actions += 1
         return act_dict, actions
     
     def generateActionMask(self):
-        handMask = np.where(self.currentZones["Hand"])
-        fieldMask = np.where(self.offZones["Field"])
-        fullMask = []
+        inHand = np.where(self.currentZones["Hand"])
+        onField = np.where(self.offZones["Field"])
+        validActions = []
         for x in self.action_to_move:
             move = self.action_to_move[x]
             moveType = move[0]
             if  moveType == self.drawAction:
-                fullMask.append(x)
+                validActions.append(x)
             elif moveType == self.scoreAction:
                 card = move[1]
-                if card in handMask[0]:
-                    fullMask.append(x)
+                if card in inHand[0]:
+                    validActions.append(x)
             elif moveType == self.scuttleAction:
                 card = move[1][0]
-                if card in handMask[0]:
+                if card in inHand[0]:
                     target = move[1][1]
                     
                     cRank = self.cardDict[card]["rank"]
@@ -250,16 +267,23 @@ class CuttleEnvironment(gym.Env):
                     tRank = self.cardDict[target]["rank"]
                     tSuit = self.cardDict[card]["suit"]
                     
-                    if fieldMask[0].size > 0 and target in fieldMask[0] and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
-                        fullMask.append(x)
+                    if onField[0].size > 0 and target in onField[0] and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
+                        validActions.append(x)
             elif moveType == self.aceAction:
                 card = move[1][0]
-                if card in handMask[0]:
-                    fullMask.append(x)            
+                if card in inHand[0]:
+                    validActions.append(x)
+            elif moveType == self.fiveAction:
+                card = move[1][0]
+                if card in inHand[0]:
+                    validActions.append(x)            
                         
             
-        return fullMask
+        return validActions
     
+    #Cards are generated as follows:
+    #Generate all cards, in order (Ace = 0, King = 12), in a suit, then increase the suit
+    #Ex. 0, 13, 26, and 39 are aces. Any card index is 13 * suit + rank
     def generateCards(self):
         cards = {}
         index = 0
