@@ -1,4 +1,4 @@
 import NetworkTesting
 import EnvTests
 
-NetworkTesting.getStateTest()
+NetworkTesting.trainingTest()
