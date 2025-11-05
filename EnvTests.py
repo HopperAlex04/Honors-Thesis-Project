@@ -83,9 +83,11 @@ def resetTest():
 
     env.reset()
 
-    if not (len(np.where(env.dealerHand)[0]) == 6): print(f"error {len(np.where(env.dealerHand)[0])}")
+    if not len(np.where(env.dealerHand)[0]) == 6:
+        print(f"error {len(np.where(env.dealerHand)[0])}")
 
-    if not (len(np.where(env.playerHand)[0]) == 5): print(f"error {len(np.where(env.dealerHand)[0])}")
+    if not len(np.where(env.playerHand)[0]) == 5:
+        print(f"error {len(np.where(env.dealerHand)[0])}")
 
 def generateCardsTest():
     env = CuttleEnvironment()
