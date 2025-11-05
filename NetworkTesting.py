@@ -10,11 +10,11 @@ import Training
 
 def getActionTest():
     #Ensures model only outputs valid action after a mask is applied to the logits
-    
+
     env = CuttleEnvironment()
     actions = env.actions
     model = NeuralNetwork(260, env.actions, None)
-    
+
     BATCH_SIZE = 1
     GAMMA = 0.99
     EPS_START = 0.9
@@ -25,7 +25,7 @@ def getActionTest():
     ag = Agent("player", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
     env.reset()
     env.render()
-    
+
     ob = env._get_obs()
     mask = env.generateActionMask()
     y_pred = ag.getAction(ob, mask, actions, 10000)
@@ -36,7 +36,7 @@ def trainingTest():
     env = CuttleEnvironment()
     actions = env.actions
     model = NeuralNetwork(260, actions, None)
-    
+
     BATCH_SIZE = 4096
     GAMMA = 0.5
     EPS_START = 0.9
@@ -46,19 +46,19 @@ def trainingTest():
     LR = 3e-4
     p1 = Agent("Agent01", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
     #p2 = Agent("dealer", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
-    
+
     t = Training.WinRewardTraining(p1, p1)
     t.trainLoop(2000)
-    
+
     p3 = HueristicHighCard("dealer")
-    
+
     t.validLoop(p3, 1000)
-    
+
 def getStateTest():
     env = CuttleEnvironment()
     actions = env.actions
     model = NeuralNetwork(260, actions, None)
-    
+
     BATCH_SIZE = 4096
     GAMMA = 0.99
     EPS_START = 0.9
@@ -67,7 +67,7 @@ def getStateTest():
     TAU = 0.005
     LR = 3e-4
     p1 = Agent("Agent01", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
-    
+
     env.reset()
     ob = env._get_obs()
     print(ob)
@@ -75,20 +75,20 @@ def getStateTest():
     print(state)
     print(len(state))
     print(state.dim())
-    
+
 def heur1Test():
     p1 = Players.HueristicHighCard("H1")
     env = CuttleEnvironment()
-    
+
     env.reset()
-    
+
     return p1.getAction(env._get_obs(), env.generateActionMask())
 
 def optPrepTest():
     env = CuttleEnvironment()
     actions = env.actions
     model = NeuralNetwork(260, actions, None)
-    
+
     BATCH_SIZE = 4096
     GAMMA = 0.99
     EPS_START = 0.9
@@ -97,18 +97,17 @@ def optPrepTest():
     TAU = 0.005
     LR = 3e-4
     p1 = Agent("Agent01", model, 2, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
-    
+
     env.reset()
     ob = env._get_obs()
-    
+
     state = p1.get_state(ob)
     action = 0
     env.step(0)
     ob = env._get_obs()
     next_state = p1.get_state(ob)
     reward = 0
-    
+
     p1.memory.push(state, torch.tensor([action]), next_state, torch.tensor([0]))
     p1.memory.push(state, torch.tensor([action]), next_state, torch.tensor([1]))
     p1.optimize()
-    
