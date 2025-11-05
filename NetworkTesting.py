@@ -111,3 +111,52 @@ def optPrepTest():
     p1.memory.push(state, torch.tensor([action]), next_state, torch.tensor([0]))
     p1.memory.push(state, torch.tensor([action]), next_state, torch.tensor([1]))
     p1.optimize()
+
+def multiAgentTest():
+    env = CuttleEnvironment()
+    actions = env.actions
+    model = NeuralNetwork(260, actions, None)
+    torch.save(model, "./models/base.pt")
+    BATCH_SIZE = 4096
+    GAMMA = 0.5
+    EPS_START = 0.9
+    EPS_END = 0.01
+    EPS_DECAY = 2500
+    TAU = 0.005
+    LR = 3e-4
+    p1 = Agent("Agent01", torch.load("./models/base.pt", weights_only=False), BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
+    p2 = Agent("Agent02", torch.load("./models/base.pt", weights_only=False), BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
+    p3 = Agent("Agent03", torch.load("./models/base.pt", weights_only=False), BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
+    p4 = Agent("Agent04", torch.load("./models/base.pt", weights_only=False), BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
+    agents = [p1, p2,p3,p4]
+    testP = HueristicHighCard("theOpp")
+    t = Training.WinRewardTraining(agents[0], agents[0])
+    for epochs in range(30):
+        winRates = []
+        for a in agents:
+            t = Training.WinRewardTraining(a, a)
+            t.trainLoop(500)
+            winRates.append([0,0,0,0])
+
+        for x in range(len(agents)):
+            for y in range(len(agents)):
+                if x != y:
+                    p1WR, p2WR = t.validLoop(agents[x], agents[y])
+                    winRates[x][y] = p1WR
+                    winRates[y][x] = p2WR
+
+        highWR = 0
+        best = agents[0]
+        for x in range(len(winRates)):
+            sum = 0
+            for y in range(len(winRates[0])):
+                sum += winRates[x][y]
+            avg = sum / len(winRates[0])
+            if highWR < avg:
+                highWR = avg
+                best = agents[x]
+
+
+        t.validLoop(best, testP, 500)
+        input("enter to continue")
+        t.validLoop(testP, best, 500)

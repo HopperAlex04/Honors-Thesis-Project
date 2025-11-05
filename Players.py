@@ -131,6 +131,7 @@ class Agent(Player):
         loss.backward()
         # In-place gradient clipping
         torch.nn.utils.clip_grad_value_(self.policy.parameters(), 100)
+
         self.optimizer.step()
 
 

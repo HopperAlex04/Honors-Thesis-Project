@@ -120,8 +120,9 @@ class WinRewardTraining():
             if isinstance(self.player1, Agent): self.player1.optimize()
             if isinstance(self.player2, Agent) and self.player1 != self.player2: self.player2.optimize()
 
-    def validLoop(self, newPlayer, episodes = 1):
+    def validLoop(self, p1, newPlayer, episodes = 1):
         #Allows the ability to validate against other opponents
+        self.player1 = p1
         self.player2 = newPlayer
         totalTurns = 0
         #Data for tracking performace
@@ -198,7 +199,9 @@ class WinRewardTraining():
                 print(f"{self.player1.name} Score: {p1Score}, {self.player2.name} Score: {p2Score}, Turns: {turn}")
 
             print(f"Episode {episode}| {self.player1.name} WR: {p1Wins/(episode + 1)} | {self.player2.name} WR {p2Wins/(episode + 1)} | Average Turns: {totalTurns/(episode + 1)}")
-
+        p1WR = p1Wins/(episode + 1)
+        p2WR = p2Wins/(episode + 1)
+        return p1WR, p2WR
 
     def get_state(self, ob):
         state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
