@@ -1,5 +1,10 @@
-Update render to not flip flop, player on bottom, dealer on top
+7: Reveal top 2, play one
+3:Grab a card from scrap
+Ask about how best it would be to handle temporary knowledge
 
-Loss function is what I actually got
+4:This is a two stage decision (choose to use, then pick target from hand), get advice on how to proceed
 
-currently better than random play, but as the game stands, still struggles against scoring highest card in the moment.
+The easy way would be to just play with hands revealed
+
+Proposed 2 implementation:
+    Basically just get another action while giving the agent the option of using the two or doing nothing
