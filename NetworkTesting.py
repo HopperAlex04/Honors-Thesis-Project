@@ -26,7 +26,7 @@ def getActionTest():
     env.reset()
     env.render()
 
-    ob = env._get_obs()
+    ob = env.get_obs()
     mask = env.generateActionMask()
     y_pred = ag.getAction(ob, mask, actions, 10000)
 
@@ -69,7 +69,7 @@ def getStateTest():
     p1 = Agent("Agent01", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
 
     env.reset()
-    ob = env._get_obs()
+    ob = env.get_obs()
     print(ob)
     state = p1.get_state(ob)
     print(state)
@@ -82,7 +82,7 @@ def heur1Test():
 
     env.reset()
 
-    return p1.getAction(env._get_obs(), env.generateActionMask())
+    return p1.getAction(env.get_obs(), env.generateActionMask())
 
 def optPrepTest():
     env = CuttleEnvironment()
@@ -99,14 +99,13 @@ def optPrepTest():
     p1 = Agent("Agent01", model, 2, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
 
     env.reset()
-    ob = env._get_obs()
+    ob = env.get_obs()
 
     state = p1.get_state(ob)
     action = 0
     env.step(0)
-    ob = env._get_obs()
+    ob = env.get_obs()
     next_state = p1.get_state(ob)
-    reward = 0
 
     p1.memory.push(state, torch.tensor([action]), next_state, torch.tensor([0]))
     p1.memory.push(state, torch.tensor([action]), next_state, torch.tensor([1]))
@@ -132,26 +131,26 @@ def multiAgentTest():
     testP = HueristicHighCard("theOpp")
     t = Training.WinRewardTraining(agents[0], agents[0])
     for epochs in range(30):
-        winRates = []
+        win_rates = []
         for a in agents:
             t = Training.WinRewardTraining(a, a)
             t.trainLoop(500)
-            winRates.append([0,0,0,0])
+            win_rates.append([0,0,0,0])
 
         for x in range(len(agents)):
             for y in range(len(agents)):
                 if x != y:
                     p1WR, p2WR = t.validLoop(agents[x], agents[y])
-                    winRates[x][y] = p1WR
-                    winRates[y][x] = p2WR
+                    win_rates[x][y] = p1WR
+                    win_rates[y][x] = p2WR
 
         highWR = 0
         best = agents[0]
-        for x in range(len(winRates)):
+        for x in range(len(win_rates)):
             sum = 0
-            for y in range(len(winRates[0])):
-                sum += winRates[x][y]
-            avg = sum / len(winRates[0])
+            for y in range(len(win_rates[0])):
+                sum += win_rates[x][y]
+            avg = sum / len(win_rates[0])
             if highWR < avg:
                 highWR = avg
                 best = agents[x]

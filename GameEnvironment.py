@@ -12,70 +12,77 @@ class CuttleEnvironment(gym.Env):
 
         #Generates the zones
         #A zone is a bool np array
-        #Where a card is can be determined as follows: 13*suit + rank, where suit is 0-3 and rank is 0-12
-        self.dealerHand = np.zeros(52, dtype=bool)
-        self.dealerField = np.zeros(52, dtype=bool)
-        self.playerField = np.zeros(52, dtype=bool)
-        self.playerHand = np.zeros(52, dtype=bool)
+        #Where a card is can be determined as follows: 13*suit + rank,
+        # where suit is 0-3 and rank is 0-12
+        self.dealer_hand = np.zeros(52, dtype=bool)
+        self.dealer_field = np.zeros(52, dtype=bool)
+        self.player_field = np.zeros(52, dtype=bool)
+        self.player_hand = np.zeros(52, dtype=bool)
         self.deck = np.ones(52, dtype=bool)
         self.scrap = np.zeros(52, dtype=bool)
 
         #Defines who owns what zones, allows for easy access to fields
-        self.playerZones = {"Hand": self.playerHand, "Field": self.playerField}
-        self.dealerZones = {"Hand": self.dealerHand, "Field": self.dealerField}
+        self.player_zones = {"Hand": self.player_hand, "Field": self.player_field}
+        self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field}
 
-        #Swapped by passControl(), always start with the player
-        self.currentZones = self.playerZones
-        self.offZones = self.dealerZones
+        #Swapped by passControl(), always start with the player_
+        self.current_zones = self.player_zones
+        self.off_zones = self.dealer_zones
 
         #Generates the cards for easy access to rank and suit based on index (demonstrated above)
-        self.cardDict = self.generateCards()
+        self.card_dict = self.generateCards()
 
         #Generates the actions, as well as determining how many actions are in the environment.
-        #Actions from the action_to_move dict are of the form (moveType, [args]), where moveType is one of the functions below.
+        #Actions from the action_to_move dict are of the form (moveType, [args]),
+        # where moveType is one of the functions below.
         self.action_to_move, self.actions = self.generateActions()
 
         #Gym helps us out so we make gym spaces
         self.observation_space = gym.spaces.MultiBinary([6,52])
         self.action_space = gym.spaces.Discrete(self.actions)
 
-    def _get_obs(self):
-        #Slight abstraction here, the current zones are the current players field and hand, while off zones are the opposite player's hand and field
-        #This allows passControl to affect what will be visible to who when turns or priority changes.
-        return {"Current Zones": self.currentZones, "Off-Player Zones": self.offZones, "Deck": self.deck, "Scrap": self.scrap}
+    def get_obs(self):
+        #Slight abstraction here, the current_ zones are the current_ player_s field and hand,
+        # while off_ zones are the opposite player_'s hand and field
+        #This allows passControl to affect what will be visible to who
+        # when turns or priority changes.
+        return {
+            "Current Zones": self.current_zones,
+            "Off-Player Zones": self.off_zones,
+            "Deck": self.deck,
+            "Scrap": self.scrap}
 
     def _get_info(self):
-        #return {"Score Difference": np.linalg.norm(player.score - dealer.score)} is the basic idea, for later
         pass
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed = seed)
 
         #Reset to open state to make new game
-        self.dealerHand = np.zeros(52, dtype=bool)
-        self.dealerField = np.zeros(52, dtype=bool)
-        self.playerField = np.zeros(52, dtype=bool)
-        self.playerHand = np.zeros(52, dtype=bool)
+        self.dealer_hand = np.zeros(52, dtype=bool)
+        self.dealer_field = np.zeros(52, dtype=bool)
+        self.player_field = np.zeros(52, dtype=bool)
+        self.player_hand = np.zeros(52, dtype=bool)
         self.deck = np.ones(52, dtype=bool)
         self.scrap = np.zeros(52, dtype=bool)
 
         #Makes sure all the zones are in the right places
-        self.playerZones = {"Hand": self.playerHand, "Field": self.playerField}
-        self.dealerZones = {"Hand": self.dealerHand, "Field": self.dealerField}
+        self.player_zones = {"Hand": self.player_hand, "Field": self.player_field}
+        self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field}
 
-        self.currentZones = self.playerZones
-        self.offZones = self.dealerZones
+        self.current_zones = self.player_zones
+        self.off_zones = self.dealer_zones
 
         #Draw opening hands
         draw = self.action_to_move.get(0)
         args = draw[1] # type: ignore
         draw = draw[0] # type: ignore
         self.passControl()
-        for x in range(6):
+        for _ in range(6):
             draw(args)
 
         self.passControl()
-        for x in range(5):
+        for _ in range(5):
             draw(args)
 
     #Converts an action into a move by grabbing the calling the function with args from the move dict
@@ -83,11 +90,12 @@ class CuttleEnvironment(gym.Env):
         act = self.action_to_move.get(action)
 
         #This is to prevent a crash in the event of exhausting all possible actions, for games this ends the game
-        if act is None: return None, 0, False, True
+        if act is None:
+            return None, 0, False, True
         func = act[0] # type: ignore
         args = act[1] # type: ignore
         func(args)
-        ob = self._get_obs()
+        ob = self.get_obs()
         score = self.scoreState()
         terminated = score >= 21
         truncated = False
@@ -96,63 +104,67 @@ class CuttleEnvironment(gym.Env):
         return ob, score, terminated, truncated
 
     def render(self):
-        currHand = self.currentZones["Hand"]
-        currField = self.currentZones["Field"]
+        currhand = self.current_zones["Hand"]
+        currfield = self.current_zones["Field"]
         index = 0
-        zoneString = ""
-        zoneString += "Current Hand"
+        zone_string = ""
+        zone_string += "Current hand"
         for suit in range(4):
             for rank in range(13):
-                if currHand[index]: zoneString += f" |{rank} {suit}| "
+                if currhand[index]:
+                    zone_string += f" |{rank} {suit}| "
                 index += 1
-        print(zoneString)
+        print(zone_string)
 
         index = 0
-        zoneString = ""
-        zoneString += "Current Field"
+        zone_string = ""
+        zone_string += "Current field"
         for suit in range(4):
             for rank in range(13):
-                if currField[index]: zoneString += f" |{rank} {suit}| "
+                if currfield[index]:
+                    zone_string += f" |{rank} {suit}| "
                 index += 1
-        print(zoneString)
+        print(zone_string)
 
 
-        offHand = self.offZones["Hand"]
-        offField = self.offZones["Field"]
+        off_hand = self.off_zones["Hand"]
+        off_field = self.off_zones["Field"]
         index = 0
-        zoneString = ""
-        zoneString += "Off Field"
+        zone_string = ""
+        zone_string += "Off field"
         for suit in range(4):
             for rank in range(13):
-                if offField[index]: zoneString += f" |{rank} {suit}| "
+                if off_field[index]:
+                    zone_string += f" |{rank} {suit}| "
                 index += 1
-        print(zoneString)
-
-        index = 0
-        zoneString = ""
-        zoneString += "Off Hand"
-        for suit in range(4):
-            for rank in range(13):
-                if offHand[index]: zoneString += f" |{rank} {suit}| "
-                index += 1
-        print(zoneString)
+        print(zone_string)
 
         index = 0
-        zoneString = f"Scrap: "
+        zone_string = ""
+        zone_string += "Off hand"
         for suit in range(4):
             for rank in range(13):
-                if self.scrap[index]: zoneString += f" |{rank} {suit}| "
+                if off_hand[index]:
+                    zone_string += f" |{rank} {suit}| "
                 index += 1
-        print(zoneString)
+        print(zone_string)
+
+        index = 0
+        zone_string = "Scrap: "
+        for suit in range(4):
+            for rank in range(13):
+                if self.scrap[index]:
+                    zone_string += f" |{rank} {suit}| "
+                index += 1
+        print(zone_string)
         print(f"Curr Player Score: {self.scoreState()}")
 
 
     def drawAction(self, *args):
-        hand = self.currentZones.get("Hand")
-
-        possibleDraws = np.where(self.deck)[0]
-        if possibleDraws.any():
-            index = possibleDraws[random.randint(0, len(possibleDraws) - 1)]
+        hand = self.current_zones.get("Hand")
+        possible_draws = np.where(self.deck)[0]
+        if possible_draws.any():
+            index = possible_draws[random.randint(0, len(possible_draws) - 1)]
             hand[index] = True # type: ignore
             self.deck[index] = False
         else: return 1
@@ -160,8 +172,8 @@ class CuttleEnvironment(gym.Env):
         return "Draw"
 
     def scoreAction(self, card):
-        hand = self.currentZones.get("Hand")
-        field = self.currentZones.get("Field")
+        hand = self.current_zones.get("Hand")
+        field = self.current_zones.get("Field")
 
 
         hand[card] = False # type: ignore
@@ -170,8 +182,8 @@ class CuttleEnvironment(gym.Env):
         return f"Scored f{card}"
 
     def scuttleAction(self, cardAndTarget):
-        hand = self.currentZones.get("Hand")
-        oppField = self.offZones.get("Field")
+        hand = self.current_zones.get("Hand")
+        oppfield = self.off_zones.get("Field")
         scrap = self.scrap
 
 
@@ -179,25 +191,25 @@ class CuttleEnvironment(gym.Env):
         target = cardAndTarget[1]
 
         hand[card] = False # type: ignore
-        oppField[target] = False # type: ignore
+        oppfield[target] = False # type: ignore
         scrap[card] = True
         scrap[target] = True
 
         return f"Scuttled {target} with {card}"
 
     def aceAction(self, card):
-        hand = self.currentZones.get("Hand")
-        oppField = self.offZones.get("Field")
+        hand = self.current_zones.get("Hand")
+        oppfield = self.off_zones.get("Field")
         scrap = self.scrap
 
         hand[card] = False # type: ignore
         scrap[card] = True
-        for x in range(oppField.size): # type: ignore
-            oppField[x] = False # type: ignore
+        for x in range(oppfield.size): # type: ignore
+            oppfield[x] = False # type: ignore
             scrap[x] = True
 
     def fiveAction(self, card):
-        hand = self.currentZones.get("Hand")
+        hand = self.current_zones.get("Hand")
         scrap = self.scrap
 
         hand[card] = False # type: ignore
@@ -224,10 +236,10 @@ class CuttleEnvironment(gym.Env):
 
         #Adds Scuttle actions
         for x in range(52):
-            cardUsed = self.cardDict[x] # type: ignore
+            card_used = self.card_dict[x] # type: ignore
             for y in range(52):
-                target = self.cardDict[y] # type: ignore
-                if target["rank"] < cardUsed["rank"] or (target["rank"] == cardUsed["rank"] and target["suit"] < cardUsed["suit"]): # type: ignore
+                target = self.card_dict[y] # type: ignore
+                if target["rank"] < card_used["rank"] or (target["rank"] == card_used["rank"] and target["suit"] < card_used["suit"]): # type: ignore
                     act_dict.update({actions: (self.scuttleAction, [x,y])})
                     actions += 1
 
@@ -244,42 +256,42 @@ class CuttleEnvironment(gym.Env):
         return act_dict, actions
 
     def generateActionMask(self):
-        inHand = np.where(self.currentZones["Hand"])
-        onField = np.where(self.offZones["Field"])
-        validActions = []
-        for x in self.action_to_move:
-            move = self.action_to_move[x]
+        inhand = np.where(self.current_zones["Hand"])
+        onfield = np.where(self.off_zones["Field"])
+        valid_actions = []
+
+        for act_index, move in self.action_to_move.items():
             moveType = move[0]
+            args = move[1]
             if  moveType == self.drawAction:
-                validActions.append(x)
+                valid_actions.append(act_index)
             elif moveType == self.scoreAction:
-                card = move[1]
-                if card in inHand[0]:
-                    validActions.append(x)
+                card = args
+                if card in inhand[0]:
+                    valid_actions.append(act_index)
             elif moveType == self.scuttleAction:
-                card = move[1][0]
-                if card in inHand[0]:
-                    target = move[1][1]
+                card = args[0]
+                if card in inhand[0]:
+                    target = args[1]
 
-                    cRank = self.cardDict[card]["rank"]
-                    cSuit = self.cardDict[card]["suit"]
+                    cRank = self.card_dict[card]["rank"]
+                    cSuit = self.card_dict[card]["suit"]
 
-                    tRank = self.cardDict[target]["rank"]
-                    tSuit = self.cardDict[card]["suit"]
+                    tRank = self.card_dict[target]["rank"]
+                    tSuit = self.card_dict[card]["suit"]
 
-                    if onField[0].size > 0 and target in onField[0] and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
-                        validActions.append(x)
+                    if onfield[0].size > 0 and target in onfield[0] and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
+                        valid_actions.append(act_index)
             elif moveType == self.aceAction:
-                card = move[1][0]
-                if card in inHand[0]:
-                    validActions.append(x)
+                card = args[0]
+                if card in inhand[0]:
+                    valid_actions.append(act_index)
             elif moveType == self.fiveAction:
-                card = move[1][0]
-                if card in inHand[0]:
-                    validActions.append(x)
+                card = args[0]
+                if card in inhand[0]:
+                    valid_actions.append(act_index)
 
-
-        return validActions
+        return valid_actions
 
     #Cards are generated as follows:
     #Generate all cards, in order (Ace = 0, King = 12), in a suit, then increase the suit
@@ -296,12 +308,12 @@ class CuttleEnvironment(gym.Env):
         return cards
 
     def scoreState(self) -> int:
-        fieldScored = self.currentZones["Field"]
+        field_scored = self.current_zones["Field"]
         index = 0
         score = 0
-        for suit in range(4):
+        for _ in range(4):
             for rank in range(13):
-                if fieldScored[index]:
+                if field_scored[index]:
                     if rank == 12:
                         score += 7
                     score += rank + 1
@@ -309,13 +321,13 @@ class CuttleEnvironment(gym.Env):
         return score
 
     def passControl(self):
-        if self.currentZones is self.playerZones:
-            self.currentZones = self.dealerZones
-            self.offZones = self.playerZones
+        if self.current_zones is self.player_zones:
+            self.current_zones = self.dealer_zones
+            self.off_zones = self.player_zones
             return
 
-        if self.currentZones is self.dealerZones:
-            self.currentZones = self.playerZones
-            self.offZones = self.dealerZones
+        if self.current_zones is self.dealer_zones:
+            self.current_zones = self.player_zones
+            self.off_zones = self.dealer_zones
             return
 
