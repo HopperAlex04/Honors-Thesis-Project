@@ -104,14 +104,14 @@ class CuttleEnvironment(gym.Env):
         return ob, score, terminated, truncated
 
     def render(self):
-        currhand = self.current_zones["Hand"]
-        currfield = self.current_zones["Field"]
+        curr_hand = self.current_zones["Hand"]
+        curr_field = self.current_zones["Field"]
         index = 0
         zone_string = ""
         zone_string += "Current hand"
         for suit in range(4):
             for rank in range(13):
-                if currhand[index]:
+                if curr_hand[index]:
                     zone_string += f" |{rank} {suit}| "
                 index += 1
         print(zone_string)
@@ -121,7 +121,7 @@ class CuttleEnvironment(gym.Env):
         zone_string += "Current field"
         for suit in range(4):
             for rank in range(13):
-                if currfield[index]:
+                if curr_field[index]:
                     zone_string += f" |{rank} {suit}| "
                 index += 1
         print(zone_string)
@@ -218,6 +218,27 @@ class CuttleEnvironment(gym.Env):
         self.drawAction()
         self.drawAction()
 
+    def nineAction(self, cardtargetself_hit):
+        curr_hand = self.current_zones.get("Hand")
+        curr_field = self.current_zones.get("Field")
+        off_field = self.off_zones.get("Field")
+        off_hand = self.off_zones.get("Hand")
+        scrap = self.scrap
+
+        card = cardtargetself_hit[0]
+        target = cardtargetself_hit[1]
+        self_hit = cardtargetself_hit[2]
+
+        curr_hand[card] = False # type: ignore
+        scrap[card] = True
+
+        if self_hit:
+            curr_field[target] = False # type: ignore
+            curr_hand[target] = True # type: ignore
+        else:
+            off_field[target] = False # type: ignore
+            off_hand[target] = True # type: ignore
+
     def generateActions(self):
         #Initializes storage mediums
         act_dict = {}
@@ -251,11 +272,26 @@ class CuttleEnvironment(gym.Env):
             #13 cards per rank, we are looking for rank 4 (Five)
             act_dict.update({actions: (self.fiveAction, [(13 * x) + 4])})
             actions += 1
+
+        for x in range(4):
+            #13 cards per rank, we are looking for rank 8 (Nine), one for each card
+            for y in range(52):
+                #Checks to make sure we aren't adding the unecessary self bounce to the pool.
+                if y != (13 * x) + 8:
+                    act_dict.update({actions: (self.nineAction, [(13 * x) + 8, y, True])})
+                    actions += 1
+                    act_dict.update({actions: (self.nineAction, [(13 * x) + 8, y, False])})
+                    actions += 1
+
         return act_dict, actions
 
     def generateActionMask(self):
         inhand = np.where(self.current_zones["Hand"])
+        self_field = np.where(self.current_zones["Field"])
         onfield = np.where(self.off_zones["Field"])
+        #Need this later for four
+        opp_hand = np.where(self.off_zones["Hand"])
+
         valid_actions = []
 
         for act_index, move in self.action_to_move.items():
@@ -288,6 +324,16 @@ class CuttleEnvironment(gym.Env):
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
+            elif moveType == self.nineAction:
+                card = move[1][0]
+                if card in inhand[0]:
+                    target = move[1][1]
+                    selfhit = move[1][2]
+
+                    if selfhit and self_field[0].size > 0 and target in self_field[0]:
+                        valid_actions.append(act_index)
+                    elif not selfhit and onfield[0].size > 0 and target in onfield[0]:
+                        valid_actions.append(act_index)
 
         return valid_actions
 
