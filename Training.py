@@ -167,7 +167,8 @@ class WinRewardTraining():
 
                 ob, p1score, terminated, truncated = env.step(self.p1_act)
 
-                truncated = (draw_counter >= 6)
+                if not truncated:
+                    truncated = (draw_counter >= 6)
 
                 if terminated and turn > 1:
                     p1wins += 1
