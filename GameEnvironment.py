@@ -96,8 +96,8 @@ class CuttleEnvironment(gym.Env):
         args = act[1] # type: ignore
         func(args)
         ob = self.get_obs()
-        score = self.scoreState()
-        terminated = score >= 21
+        score, threshold = self.scoreState()
+        terminated = score >= threshold
         truncated = False
 
         #ob is of the form [dict, dict] and should be broken up when reading a state
@@ -218,8 +218,6 @@ class CuttleEnvironment(gym.Env):
         self.drawAction()
         self.drawAction()
 
-
-
     def generateActions(self):
         #Initializes storage mediums
         act_dict = {}
@@ -311,14 +309,28 @@ class CuttleEnvironment(gym.Env):
         field_scored = self.current_zones["Field"]
         index = 0
         score = 0
+        king_count = 0
         for _ in range(4):
             for rank in range(13):
                 if field_scored[index]:
                     if rank == 12:
-                        score += 7
-                    score += rank + 1
+                        king_count += 1
+                    else:
+                        score += rank + 1
                 index += 1
-        return score
+
+        #Since each king decreases threshold differently
+        #we need to use a switch
+        match king_count:
+            case 1:
+                threshold = 14
+            case 2:
+                threshold = 10
+            case 3:
+                threshold = 5
+            case _:
+                threshold = 21
+        return score, threshold
 
     def passControl(self):
         if self.current_zones is self.player_zones:
