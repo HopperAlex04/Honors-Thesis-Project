@@ -16,23 +16,21 @@ class Player(ABC):
         return 0
 
 class Randomized(Player):
-    def __init__(self, name, seed = 0):
+    def __init__(self, name, seed = None):
         super().__init__(name)
-        if seed != 0: random.seed(seed)
+        random.seed(seed)
 
     def getAction(self, state, mask) -> int:
         return random.choice(mask)
 
 class HueristicHighCard(Player):
-    def __init__(self, name):
-        super().__init__(name)
 
     def getAction(self, state, mask) -> int:
-        actOut = 0
+        act_out = 0
         for x in mask:
             if x in range(1,53):
-                actOut = x
-        return actOut
+                act_out = x
+        return act_out
 
 
 class Agent(Player):
@@ -45,11 +43,11 @@ class Agent(Player):
         self.policy = model
 
         #Training parameters
-        self.batchSize = args[0]
+        self.batch_size = args[0]
         self.gamma = args[1]
-        self.epsStart = args[2]
-        self.epsEnd = args[3]
-        self.epsDecay = args[4]
+        self.eps_start = args[2]
+        self.eps_end = args[3]
+        self.eps_decay = args[4]
         self.tau = args[5]
         self.lr = args[6]
 
@@ -57,42 +55,43 @@ class Agent(Player):
         self.memory = ReplayMemory(50000)
 
         #Using Adam optimization
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps = 1e-8, weight_decay=0)
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps=1e-8, weight_decay=0)
 
         #using Huber Loss
         self.criterion = torch.nn.SmoothL1Loss()
 
-    def getAction(self, ob, mask, actions, steps_done) -> int:
+    def getAction(self, ob, mask, actions, steps__done) -> int:
         sample = random.random()
         #As training continues, when getAction is called it becomes more likely to return an action from the model
-        eps_threshold = self.epsEnd + (self.epsStart - self.epsEnd) * \
-            math.exp(-1. * steps_done / self.epsDecay)
+        eps__threshold = self.eps_end + (self.eps_start - self.eps_end) * \
+            math.exp(-1. * steps__done / self.eps_decay)
         #ob should be of the form [dict, dict, zone, zone] so the dicts need to be broken down by get_state()
         state = self.get_state(ob)
 
-        if sample > eps_threshold:
+        if sample > eps__threshold:
             with torch.no_grad():
                 # t.max(1) will return the largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
-                actout = self.policy(state)
+                act_out = self.policy(state)
                 for x in range(actions):
                     if x not in mask:
-                        actout[x] = float('-inf')
-                return actout.argmax().item()
+                        act_out[x] = float('-inf')
+                return act_out.argmax().item()
         else:
             return random.choice(mask)
 
     #States are dim 1 tensors (think [1, 0, 0, 1, 0, 1])
     def get_state(self, ob):
         state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
-        stateT = torch.from_numpy(np.array(state)).float()
-        return stateT
+        state_tensor = torch.from_numpy(np.array(state)).float()
+        return state_tensor
 
     def optimize(self):
-        if len(self.memory) < self.batchSize: return
+        if len(self.memory) < self.batch_size: 
+            return
 
-        transitions = self.memory.sample(self.batchSize)
+        transitions = self.memory.sample(self.batch_size)
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
@@ -117,7 +116,7 @@ class Agent(Player):
 
         #print(torch.stack(action_batch))
         state_action_values = self.policy(state_batch).gather(1, action_batch)
-        next_state_values = torch.zeros(self.batchSize)
+        next_state_values = torch.zeros(self.batch_size)
 
         with torch.no_grad():
             next_state_values[non_final_mask] = self.policy(non_final_next_states).max(1).values # type: ignore
