@@ -48,11 +48,11 @@ def trainingTest():
     #p2 = Agent("dealer", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
 
     t = Training.WinRewardTraining(p1, p1)
-    t.trainLoop(2000)
+    t.trainLoop(1000)
 
     p3 = HueristicHighCard("dealer")
 
-    t.validLoop(p3, 1000)
+    t.validLoop(p1, p3, True, 1000)
 
 def getStateTest():
     env = CuttleEnvironment()

@@ -8,3 +8,27 @@ The easy way would be to just play with hands revealed
 
 Proposed 2 implementation:
     Basically just get another action while giving the agent the option of using the two or doing nothing
+
+
+Expected results if the network is learning the right things:
+(<bound method CuttleEnvironment.aceAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [0])
+59
+(<bound method CuttleEnvironment.aceAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [13])
+61
+(<bound method CuttleEnvironment.aceAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [26])
+66
+(<bound method CuttleEnvironment.aceAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [39])
+54
+(<bound method CuttleEnvironment.fiveAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [4])
+59
+(<bound method CuttleEnvironment.fiveAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [17])
+59
+(<bound method CuttleEnvironment.fiveAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [30])
+51
+(<bound method CuttleEnvironment.fiveAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [43])
+73
+
+These two actions are really strong so I would hope the network figured it out. May need to log by movetype instead of the full move to get a better picture
+Scoring actions were also significantly more present than scuttling
+
+We are starting to hit the point that we need more trials to learn, expected, we are fast enough to do it, may need bigger buffer
