@@ -126,11 +126,11 @@ class WinRewardTraining():
             if isinstance(self.player1, Agent): self.player1.optimize()
             if isinstance(self.player2, Agent) and self.player1 != self.player2: self.player2.optimize()
 
-    def validLoop(self, p1, newPlayer, episodes = 1):
+    def validLoop(self, p1, new_player, logging = False, episodes = 1):
         #Allows the ability to validate against other opponents
         self.player1 = p1
-        self.player2 = newPlayer
-        totalTurns = 0
+        self.player2 = new_player
+        total_turns = 0
         #Data for tracking performace
         p1wins = 0
         p2wins = 0
@@ -138,7 +138,8 @@ class WinRewardTraining():
         #Initializing environment
         env = CuttleEnvironment()
 
-
+        p1log = [0] * env.actions
+        p2log = [0] * env.actions
         for episode in range(episodes):
             #Resets the deck and zones, then fills player hands.
             env.reset()
@@ -150,7 +151,7 @@ class WinRewardTraining():
 
             while not terminated:
                 turn += 1
-                totalTurns += 1
+                total_turns += 1
 
                 #get an action from 'player'
                 mask = env.generateActionMask()
@@ -162,8 +163,13 @@ class WinRewardTraining():
                 else:
                     self.p1_act = self.player1.getAction(ob, mask)
 
-                if len(mask) == 1: draw_counter += 1
-                else: draw_counter = 0
+                if logging:
+                    p1log[self.p1_act] += 1
+
+                if len(mask) == 1:
+                    draw_counter += 1
+                else:
+                    draw_counter = 0
 
                 ob, p1score, terminated, truncated = env.step(self.p1_act)
 
@@ -188,12 +194,18 @@ class WinRewardTraining():
                 else:
                     self.p2_act = self.player1.getAction(ob, mask)
 
-                if len(mask) == 1: draw_counter += 1
-                else: draw_counter = 0
+                if logging:
+                    p2log[self.p2_act] += 1
+
+                if len(mask) == 1:
+                    draw_counter += 1
+                else:
+                    draw_counter = 0
 
                 ob, p2score, terminated, truncated = env.step(self.p2_act)
 
-                truncated = (draw_counter >= 6)
+                if not truncated:
+                    truncated = draw_counter >= 6
 
                 if terminated:
                     p2wins += 1
@@ -205,10 +217,20 @@ class WinRewardTraining():
 
                 print(f"{self.player1.name} Score: {p1score}, {self.player2.name} Score: {p2score}, Turns: {turn}")
 
-            print(f"Episode {episode}| {self.player1.name} WR: {p1wins/(episode + 1)} | {self.player2.name} WR {p2wins/(episode + 1)} | Average Turns: {totalTurns/(episode + 1)}")
-        p1WR = p1wins/(episode + 1)
-        p2WR = p2wins/(episode + 1)
-        return p1WR, p2WR
+            print(f"Episode {episode}| {self.player1.name} WR: {p1wins/(episode + 1)} | {self.player2.name} WR {p2wins/(episode + 1)} | Average Turns: {total_turns/(episode + 1)}")
+        p1wr = p1wins/(episode + 1)
+        p2wr = p2wins/(episode + 1)
+
+        if logging:
+            with open("p1log.txt", "w", encoding = "utf-8") as f:
+                for move, count in enumerate(p1log):
+                    f.write(f'{env.action_to_move[move]}\n{count}\n')
+
+            with open("p2log.txt", "w", encoding = "utf-8") as f:
+                for move, count in enumerate(p2log):
+                    f.write(f'{env.action_to_move[move]}\n{count}\n')
+
+        return p1wr, p2wr
 
     def get_state(self, ob):
         state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
