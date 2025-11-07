@@ -2,12 +2,34 @@
 3:Grab a card from scrap
 Ask about how best it would be to handle temporary knowledge
 
+Just give it the hand and see what it does
+Try and, provide 8 features
+
+Try adding a "revealed zone"
+
+Add hand limit 8
+
 4:This is a two stage decision (choose to use, then pick target from hand), get advice on how to proceed
 
 The easy way would be to just play with hands revealed
 
 Proposed 2 implementation:
     Basically just get another action while giving the agent the option of using the two or doing nothing
+
+Example Thesis:
+    How specific does the feature space need to be for a DQN agent need to be in order to play better than random
+
+Seed games
+
+investigate how common a state is
+
+investigate states with high error
+
+Focus on completing the game
+
+Add playing against t-1, if average reward goes up save as well
+
+track loss and reward
 
 
 Expected results if the network is learning the right things:

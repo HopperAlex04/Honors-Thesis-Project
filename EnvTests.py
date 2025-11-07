@@ -1,6 +1,6 @@
 import numpy as np
 from GameEnvironment import CuttleEnvironment
-#from Move import DrawMove
+# from Move import DrawMove
 
 
 def initTest():
@@ -14,10 +14,11 @@ def initTest():
 
     for x in env.action_to_move:
         act = env.action_to_move.get(x)
-        args = act[1] # type: ignore
-        act = act[0] # type: ignore
+        args = act[1]  # type: ignore
+        act = act[0]  # type: ignore
         print(act(args))
     print(env.actions)
+
 
 def drawTest():
     env = CuttleEnvironment()
@@ -29,32 +30,33 @@ def drawTest():
     func(args)
 
     ob = env.get_obs()
-    #print(ob)
+    #  print(ob)
 
     env.passControl()
     func()
 
-    #print(ob)
+    #  print(ob)
     for x in np.where(env.deck)[0]:
         env.passControl()
         func()
     ob = env.get_obs()
     print(ob)
 
+
 def scoreTest():
     env = CuttleEnvironment()
 
     draw = env.action_to_move.get(0)
-    args = draw[1] # type: ignore
-    draw = draw[0] # type: ignore
+    args = draw[1]  # type: ignore
+    draw = draw[0]  # type: ignore
 
     for x in env.deck:
         draw(args)
 
     for x in range(1, 53):
         score = env.action_to_move.get(x)
-        args = score[1] # type: ignore
-        score = score[0] # type: ignore
+        args = score[1]  # type: ignore
+        score = score[0]  # type: ignore
         score(args)
     ob = env.get_obs()
     print(ob)
@@ -64,19 +66,20 @@ def scoreTest():
     env.passControl()
 
     draw = env.action_to_move.get(0)
-    args = draw[1] # type: ignore
-    draw = draw[0] # type: ignore
+    args = draw[1]  # type: ignore
+    draw = draw[0]  # type: ignore
 
     for x in env.deck:
         draw(args)
 
     for x in range(1, 53):
         score = env.action_to_move.get(x)
-        args = score[1] # type: ignore
-        score = score[0] # type: ignore
+        args = score[1]  # type: ignore
+        score = score[0]  # type: ignore
         score(args)
     ob = env.get_obs()
     print(ob)
+
 
 def resetTest():
     env = CuttleEnvironment()
@@ -89,9 +92,11 @@ def resetTest():
     if not len(np.where(env.player_hand)[0]) == 5:
         print(f"error {len(np.where(env.dealer_hand)[0])}")
 
+
 def generateCardsTest():
     env = CuttleEnvironment()
     print(env.card_dict)
+
 
 def scuttleTest():
     env = CuttleEnvironment()
@@ -101,8 +106,9 @@ def scuttleTest():
     env.scuttleAction([2, 0])
 
     print(f"Card: {env.player_hand[2]}")
-    print(f"Target: { env.dealer_field[0]}")
+    print(f"Target: {env.dealer_field[0]}")
     print(f"Scrap 2:{env.scrap[2]}, 0: {env.scrap[0]}")
+
 
 def maskTest():
     env = CuttleEnvironment()
@@ -114,6 +120,7 @@ def maskTest():
     print(mask)
     for x in mask:
         print(env.action_to_move[x])
+
 
 def fiveTest():
     env = CuttleEnvironment()
