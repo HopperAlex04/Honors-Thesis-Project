@@ -37,8 +37,8 @@ def trainingTest():
     actions = env.actions
     model = NeuralNetwork(260, actions, None)
 
-    BATCH_SIZE = 4096
-    GAMMA = 0.5
+    BATCH_SIZE = 8192
+    GAMMA = 0.7
     EPS_START = 0.9
     EPS_END = 0.01
     EPS_DECAY = 2500
@@ -46,11 +46,12 @@ def trainingTest():
     LR = 3e-4
     p1 = Agent("Agent01", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
     #p2 = Agent("dealer", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
-
-    t = Training.WinRewardTraining(p1, p1)
-    t.trainLoop(1000)
-
     p3 = HueristicHighCard("dealer")
+
+    t = Training.WinRewardTraining(p1, p3)
+    t.trainLoop(1500)
+
+
 
     t.validLoop(p1, p3, True, 1000)
 
@@ -156,6 +157,6 @@ def multiAgentTest():
                 best = agents[x]
 
 
-        t.validLoop(best, testP, 500)
+        #t.validLoop(best, testP, 500)
         input("enter to continue")
-        t.validLoop(testP, best, 500)
+        #t.validLoop(testP, best, 500)

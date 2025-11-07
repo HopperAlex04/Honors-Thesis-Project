@@ -351,7 +351,7 @@ class CuttleEnvironment(gym.Env):
 
         return cards
 
-    def scoreState(self) -> int:
+    def scoreState(self) -> tuple[int, int]:
         field_scored = self.current_zones["Field"]
         index = 0
         score = 0
