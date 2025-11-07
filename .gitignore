@@ -2,6 +2,12 @@
 p1log.txt
 p2log.txt
 
+#generated test models
+*.pt
+*.pth
+models/*
+models
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
