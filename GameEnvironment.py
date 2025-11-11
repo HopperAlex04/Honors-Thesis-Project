@@ -1,18 +1,18 @@
 import random
 from typing import Optional
-import numpy as np
-import gymnasium as gym
 
+import gymnasium as gym
+import numpy as np
 
 
 class CuttleEnvironment(gym.Env):
 
-    #Initializes the environment and defines the observation and action spaces
+    # Initializes the environment and defines the observation and action spaces
     def __init__(self) -> None:
 
-        #Generates the zones
-        #A zone is a bool np array
-        #Where a card is can be determined as follows: 13*suit + rank,
+        # Generates the zones
+        # A zone is a bool np array
+        # Where a card is can be determined as follows: 13*suit + rank,
         # where suit is 0-3 and rank is 0-12
         self.dealer_hand = np.zeros(52, dtype=bool)
         self.dealer_field = np.zeros(52, dtype=bool)
@@ -21,44 +21,61 @@ class CuttleEnvironment(gym.Env):
         self.deck = np.ones(52, dtype=bool)
         self.scrap = np.zeros(52, dtype=bool)
 
-        #Defines who owns what zones, allows for easy access to fields
+        # Defines who owns what zones, allows for easy access to fields
         self.player_zones = {"Hand": self.player_hand, "Field": self.player_field}
         self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field}
 
-        #Swapped by passControl(), always start with the player_
+        # Swapped by passControl(), always start with the player_
         self.current_zones = self.player_zones
         self.off_zones = self.dealer_zones
 
-        #Generates the cards for easy access to rank and suit based on index (demonstrated above)
+        # Generates the cards for easy access to rank and suit based on index (demonstrated above)
         self.card_dict = self.generateCards()
 
-        #Generates the actions, as well as determining how many actions are in the environment.
-        #Actions from the action_to_move dict are of the form (moveType, [args]),
+        # Generates the actions, as well as determining how many actions are in the environment.
+        # Actions from the action_to_move dict are of the form (moveType, [args]),
         # where moveType is one of the functions below.
         self.action_to_move, self.actions = self.generateActions()
 
-        #Gym helps us out so we make gym spaces
-        self.observation_space = gym.spaces.MultiBinary([6,52])
+        # For quick reference we get organize the indicies. The first split is royal and point (8s are in point), then the sublists are by rank
+        self.point_indicies = []
+        for rank in range(10):
+            rank_list = []
+            for suit in range(4):
+                rank_list.append(self.getIndex(rank, suit))
+            self.point_indicies.append(rank_list)
+
+        self.royal_indicies = []
+        for rank in range(10,13):
+            rank_list = []
+            for suit in range(4):
+                rank_list.append(self.getIndex(rank, suit))
+            self.point_indicies.append(rank_list)
+
+
+        # Gym helps us out so we make gym spaces
+        self.observation_space = gym.spaces.MultiBinary([6, 52])
         self.action_space = gym.spaces.Discrete(self.actions)
 
     def get_obs(self):
-        #Slight abstraction here, the current_ zones are the current_ player_s field and hand,
+        # Slight abstraction here, the current_ zones are the current_ player_s field and hand,
         # while off_ zones are the opposite player_'s hand and field
-        #This allows passControl to affect what will be visible to who
+        # This allows passControl to affect what will be visible to who
         # when turns or priority changes.
         return {
             "Current Zones": self.current_zones,
             "Off-Player Zones": self.off_zones,
             "Deck": self.deck,
-            "Scrap": self.scrap}
+            "Scrap": self.scrap,
+        }
 
     def _get_info(self):
         pass
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        super().reset(seed = seed)
+        super().reset(seed=seed)
 
-        #Reset to open state to make new game
+        # Reset to open state to make new game
         self.dealer_hand = np.zeros(52, dtype=bool)
         self.dealer_field = np.zeros(52, dtype=bool)
         self.player_field = np.zeros(52, dtype=bool)
@@ -66,17 +83,17 @@ class CuttleEnvironment(gym.Env):
         self.deck = np.ones(52, dtype=bool)
         self.scrap = np.zeros(52, dtype=bool)
 
-        #Makes sure all the zones are in the right places
+        # Makes sure all the zones are in the right places
         self.player_zones = {"Hand": self.player_hand, "Field": self.player_field}
         self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field}
 
         self.current_zones = self.player_zones
         self.off_zones = self.dealer_zones
 
-        #Draw opening hands
+        # Draw opening hands
         draw = self.action_to_move.get(0)
-        args = draw[1] # type: ignore
-        draw = draw[0] # type: ignore
+        args = draw[1]  # type: ignore
+        draw = draw[0]  # type: ignore
         self.passControl()
         for _ in range(6):
             draw(args)
@@ -85,22 +102,22 @@ class CuttleEnvironment(gym.Env):
         for _ in range(5):
             draw(args)
 
-    #Converts an action into a move by grabbing the calling the function with args from the move dict
-    def step(self, action:int):
+    # Converts an action into a move by grabbing the calling the function with args from the move dict
+    def step(self, action: int):
         act = self.action_to_move.get(action)
 
-        #This is to prevent a crash in the event of exhausting all possible actions, for games this ends the game
+        # This is to prevent a crash in the event of exhausting all possible actions, for games this ends the game
         if act is None:
             return None, 0, False, True
-        func = act[0] # type: ignore
-        args = act[1] # type: ignore
+        func = act[0]  # type: ignore
+        args = act[1]  # type: ignore
         func(args)
         ob = self.get_obs()
         score, threshold = self.scoreState()
         terminated = score >= threshold
         truncated = False
 
-        #ob is of the form [dict, dict] and should be broken up when reading a state
+        # ob is of the form [dict, dict] and should be broken up when reading a state
         return ob, score, terminated, truncated
 
     def render(self):
@@ -125,7 +142,6 @@ class CuttleEnvironment(gym.Env):
                     zone_string += f" |{rank} {suit}| "
                 index += 1
         print(zone_string)
-
 
         off_hand = self.off_zones["Hand"]
         off_field = self.off_zones["Field"]
@@ -159,15 +175,16 @@ class CuttleEnvironment(gym.Env):
         print(zone_string)
         print(f"Curr Player Score: {self.scoreState()}")
 
-
     def drawAction(self, *args):
         hand = self.current_zones.get("Hand")
         possible_draws = np.where(self.deck)[0]
         if possible_draws.any():
+            # trunk-ignore(bandit/B311)
             index = possible_draws[random.randint(0, len(possible_draws) - 1)]
-            hand[index] = True # type: ignore
+            hand[index] = True  # type: ignore
             self.deck[index] = False
-        else: return 1
+        else:
+            return 1
 
         return "Draw"
 
@@ -175,9 +192,8 @@ class CuttleEnvironment(gym.Env):
         hand = self.current_zones.get("Hand")
         field = self.current_zones.get("Field")
 
-
-        hand[card] = False # type: ignore
-        field[card] = True # type: ignore
+        hand[card] = False  # type: ignore
+        field[card] = True  # type: ignore
 
         return f"Scored f{card}"
 
@@ -186,12 +202,11 @@ class CuttleEnvironment(gym.Env):
         oppfield = self.off_zones.get("Field")
         scrap = self.scrap
 
-
         card = cardAndTarget[0]
         target = cardAndTarget[1]
 
-        hand[card] = False # type: ignore
-        oppfield[target] = False # type: ignore
+        hand[card] = False  # type: ignore
+        oppfield[target] = False  # type: ignore
         scrap[card] = True
         scrap[target] = True
 
@@ -202,21 +217,45 @@ class CuttleEnvironment(gym.Env):
         oppfield = self.off_zones.get("Field")
         scrap = self.scrap
 
-        hand[card] = False # type: ignore
+        hand[card] = False  # type: ignore
         scrap[card] = True
-        for x in range(oppfield.size): # type: ignore
-            oppfield[x] = False # type: ignore
+        for x in range(oppfield.size):  # type: ignore
+            oppfield[x] = False  # type: ignore
             scrap[x] = True
+
+    # TODO
+    def twoAction(self):
+        pass
+
+    # TODO
+    def threeAction(self):
+        pass
+
+    # TODO
+    def fourAction(self):
+        pass
 
     def fiveAction(self, card):
         hand = self.current_zones.get("Hand")
         scrap = self.scrap
 
-        hand[card] = False # type: ignore
+        hand[card] = False  # type: ignore
         scrap[card] = True
 
         self.drawAction()
         self.drawAction()
+
+    # TODO
+    def sixAction(self):
+        pass
+
+    # TODO
+    def sevenAction(self):
+        pass
+
+    # TODO
+    def eightRoyal(self):
+        pass
 
     def nineAction(self, cardtargetself_hit):
         curr_hand = self.current_zones.get("Hand")
@@ -229,58 +268,62 @@ class CuttleEnvironment(gym.Env):
         target = cardtargetself_hit[1]
         self_hit = cardtargetself_hit[2]
 
-        curr_hand[card] = False # type: ignore
+        curr_hand[card] = False  # type: ignore
         scrap[card] = True
 
         if self_hit:
-            curr_field[target] = False # type: ignore
-            curr_hand[target] = True # type: ignore
+            curr_field[target] = False  # type: ignore
+            curr_hand[target] = True  # type: ignore
         else:
-            off_field[target] = False # type: ignore
-            off_hand[target] = True # type: ignore
+            off_field[target] = False  # type: ignore
+            off_hand[target] = True  # type: ignore
 
     def generateActions(self):
-        #Initializes storage mediums
+        # Initializes storage mediums
         act_dict = {}
         actions = 0
 
-        #Adds draw action
+        # Adds draw action
         act_dict.update({actions: (self.drawAction, "")})
         actions += 1
 
-        #Adds score actions
+        # Adds score actions
         for x in range(52):
             act_dict.update({actions: (self.scoreAction, x)})
             actions += 1
 
-        #Adds Scuttle actions
+        # Adds Scuttle actions
         for x in range(52):
-            card_used = self.card_dict[x] # type: ignore
+            card_used = self.card_dict[x]  # type: ignore
             for y in range(52):
-                target = self.card_dict[y] # type: ignore
-                if target["rank"] < card_used["rank"] or (target["rank"] == card_used["rank"] and target["suit"] < card_used["suit"]): # type: ignore
-                    act_dict.update({actions: (self.scuttleAction, [x,y])})
+                target = self.card_dict[y]  # type: ignore
+                if target["rank"] < card_used["rank"] or (target["rank"] == card_used["rank"] and target["suit"] < card_used["suit"]):  # type: ignore
+                    act_dict.update({actions: (self.scuttleAction, [x, y])})
                     actions += 1
 
-        #Ace special action: boardwipe
-        for x in range(4):
-            #13 cards per rank, we are looking for rank 0 (Ace)
-            act_dict.update({actions: (self.aceAction, [13 * x])})
+        # Ace special action: boardwipe
+        for x in self.point_indicies[0]:
+            # 13 cards per rank, we are looking for rank 0 (Ace)
+            act_dict.update({actions: (self.aceAction, [x])})
             actions += 1
 
-        for x in range(4):
-            #13 cards per rank, we are looking for rank 4 (Five)
-            act_dict.update({actions: (self.fiveAction, [(13 * x) + 4])})
+        for x in self.point_indicies[4]:
+            # 13 cards per rank, we are looking for rank 4 (Five)
+            act_dict.update({actions: (self.fiveAction, [x])})
             actions += 1
 
-        for x in range(4):
-            #13 cards per rank, we are looking for rank 8 (Nine), one for each card
+        for x in self.point_indicies[8]:
+            # 13 cards per rank, we are looking for rank 8 (Nine), one for each card
             for y in range(52):
-                #Checks to make sure we aren't adding the unecessary self bounce to the pool.
-                if y != (13 * x) + 8:
-                    act_dict.update({actions: (self.nineAction, [(13 * x) + 8, y, True])})
+                # Checks to make sure we aren't adding the unecessary self bounce to the pool.
+                if y != x:
+                    act_dict.update(
+                        {actions: (self.nineAction, [x, y, True])}
+                    )
                     actions += 1
-                    act_dict.update({actions: (self.nineAction, [(13 * x) + 8, y, False])})
+                    act_dict.update(
+                        {actions: (self.nineAction, [x, y, False])}
+                    )
                     actions += 1
 
         return act_dict, actions
@@ -289,7 +332,8 @@ class CuttleEnvironment(gym.Env):
         inhand = np.where(self.current_zones["Hand"])
         self_field = np.where(self.current_zones["Field"])
         onfield = np.where(self.off_zones["Field"])
-        #Need this later for four
+        # Need this later for four
+        # trunk-ignore(ruff/F841)
         opp_hand = np.where(self.off_zones["Hand"])
 
         valid_actions = []
@@ -297,7 +341,7 @@ class CuttleEnvironment(gym.Env):
         for act_index, move in self.action_to_move.items():
             moveType = move[0]
             args = move[1]
-            if  moveType == self.drawAction:
+            if moveType == self.drawAction:
                 valid_actions.append(act_index)
             elif moveType == self.scoreAction:
                 card = args
@@ -314,7 +358,11 @@ class CuttleEnvironment(gym.Env):
                     tRank = self.card_dict[target]["rank"]
                     tSuit = self.card_dict[card]["suit"]
 
-                    if onfield[0].size > 0 and target in onfield[0] and (cRank > tRank or (cRank == tRank and cSuit > tSuit)):
+                    if (
+                        onfield[0].size > 0
+                        and target in onfield[0]
+                        and (cRank > tRank or (cRank == tRank and cSuit > tSuit))
+                    ):
                         valid_actions.append(act_index)
             elif moveType == self.aceAction:
                 card = args[0]
@@ -337,16 +385,16 @@ class CuttleEnvironment(gym.Env):
 
         return valid_actions
 
-    #Cards are generated as follows:
-    #Generate all cards, in order (Ace = 0, King = 12), in a suit, then increase the suit
-    #Ex. 0, 13, 26, and 39 are aces. Any card index is 13 * suit + rank
+    # Cards are generated as follows:
+    # Generate all cards, in order (Ace = 0, King = 12), in a suit, then increase the suit
+    # Ex. 0, 13, 26, and 39 are aces. Any card index is 13 * suit + rank
     def generateCards(self):
         cards = {}
         index = 0
         for suit in range(4):
             for rank in range(13):
-                c ={"rank": rank, "suit":suit}
-                cards.update({index:c})
+                c = {"rank": rank, "suit": suit}
+                cards.update({index: c})
                 index += 1
 
         return cards
@@ -365,8 +413,8 @@ class CuttleEnvironment(gym.Env):
                         score += rank + 1
                 index += 1
 
-        #Since each king decreases threshold differently
-        #we need to use a switch
+        # Since each king decreases threshold differently
+        # we need to use a switch
         match king_count:
             case 1:
                 threshold = 14
@@ -389,3 +437,5 @@ class CuttleEnvironment(gym.Env):
             self.off_zones = self.dealer_zones
             return
 
+    def getIndex(self, rank, suit):
+        return (13 * suit) + rank

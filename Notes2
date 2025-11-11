@@ -1,56 +1,40 @@
-7: Reveal top 2, play one
-3:Grab a card from scrap
-Ask about how best it would be to handle temporary knowledge
+New Observation:
+    current_zones (52)
+    off_field (52)
+    deck (52)
+    scrap (52)
+    stack (in the magic sense) (52)
+    revealed (52)
+    effect-shown(52)
 
-Just give it the hand and see what it does
-Try and, provide 8 features
+    Considering:Hand sizes
 
-Try adding a "revealed zone"
+How to handle revealed cards
+    A revealed card remains revealed until it moves to a new zone
+    Most of the time this is empty
 
-Add hand limit 8
+Effect Shown: The cards revealed by 7
 
-4:This is a two stage decision (choose to use, then pick target from hand), get advice on how to proceed
+2s: When an action is taken, we begin storing the information required for multiple transitions as follows
+    p1 uses one-off (Store the initial state and action to be composed into a transition later)
+    p2 decides to counter (Store the state after the one-off enters the stack and the decsion to use the 2 or not)
+    p1 decides to counter (Store the state after the 2 enters the stack and the decsion to use 2 or not)
+    *repeat until we run out of 2s or someone decides not to act*
 
-The easy way would be to just play with hands revealed
+    Resolve backwards (we stored the actual moves until resolution which get popped off in step)
 
-Proposed 2 implementation:
-    Basically just get another action while giving the agent the option of using the two or doing nothing
+    Note: For one offs add another parameter for resolution, if true, act normal, if not return
 
-Example Thesis:
-    How specific does the feature space need to be for a DQN agent need to be in order to play better than random
-
-Seed games
-
-investigate how common a state is
-
-investigate states with high error
-
-Focus on completing the game
-
-Add playing against t-1, if average reward goes up save as well
-
-track loss and reward
+    after resolution we reach a final state (i.e. the opponents initial state)
+    p1 will store (initial_state, action, next_state, reward) for their actual action as normal
+    p2 will store (stack1_state, decsion, end_turn_state, reward) Here we will evaluate if this decison won or lost them the game that turn for reward
+    p1 will also store (stack2_state, decsion, next_state, reward) so they learn how countering affects the opponents next turn
 
 
-Expected results if the network is learning the right things:
-(<bound method CuttleEnvironment.aceAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [0])
-59
-(<bound method CuttleEnvironment.aceAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [13])
-61
-(<bound method CuttleEnvironment.aceAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [26])
-66
-(<bound method CuttleEnvironment.aceAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [39])
-54
-(<bound method CuttleEnvironment.fiveAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [4])
-59
-(<bound method CuttleEnvironment.fiveAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [17])
-59
-(<bound method CuttleEnvironment.fiveAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [30])
-51
-(<bound method CuttleEnvironment.fiveAction of <GameEnvironment.CuttleEnvironment object at 0x701e8f3fb740>>, [43])
-73
+Multi-Stage Decsions (4s, 7s)
+    When resolved, the effect-shown zone will change accordingly and then another
 
-These two actions are really strong so I would hope the network figured it out. May need to log by movetype instead of the full move to get a better picture
-Scoring actions were also significantly more present than scuttling
 
-We are starting to hit the point that we need more trials to learn, expected, we are fast enough to do it, may need bigger buffer
+Implementation help: Create lists for score card indicies and royal indicies
+
+Add flags for the eights and keep track of number of queens.
