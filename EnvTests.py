@@ -1,5 +1,7 @@
 import numpy as np
+
 from GameEnvironment import CuttleEnvironment
+
 # from Move import DrawMove
 
 
@@ -36,7 +38,7 @@ def drawTest():
     func()
 
     #  print(ob)
-    for x in np.where(env.deck)[0]:
+    for _x in np.where(env.deck)[0]:
         env.passControl()
         func()
     ob = env.get_obs()
@@ -50,7 +52,7 @@ def scoreTest():
     args = draw[1]  # type: ignore
     draw = draw[0]  # type: ignore
 
-    for x in env.deck:
+    for _ in env.deck:
         draw(args)
 
     for x in range(1, 53):
@@ -69,7 +71,7 @@ def scoreTest():
     args = draw[1]  # type: ignore
     draw = draw[0]  # type: ignore
 
-    for x in env.deck:
+    for _ in env.deck:
         draw(args)
 
     for x in range(1, 53):
@@ -116,16 +118,30 @@ def maskTest():
     env.player_hand[10] = True
     env.dealer_field[9] = True
 
-    mask = env.generateActionMask()
-    print(mask)
-    for x in mask:
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    for x in valid_actions:
         print(env.action_to_move[x])
 
 
 def fiveTest():
     env = CuttleEnvironment()
-    env.current_zones["hand"][30] = True
-    mask = env.generateActionMask()
-    print(mask)
-    env.step(mask[2])
+    env.current_zones["Hand"][30] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[2])
     env.render()
+
+
+def aceTest():
+    env = CuttleEnvironment()
+    env.current_zones["Hand"][0] = True
+    env.current_zones["Field"][5] = True
+    env.off_zones["Field"][6] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[2])
+    env.render()
+
+
+aceTest()

@@ -32,11 +32,6 @@ class CuttleEnvironment(gym.Env):
         # Generates the cards for easy access to rank and suit based on index (demonstrated above)
         self.card_dict = self.generateCards()
 
-        # Generates the actions, as well as determining how many actions are in the environment.
-        # Actions from the action_to_move dict are of the form (moveType, [args]),
-        # where moveType is one of the functions below.
-        self.action_to_move, self.actions = self.generateActions()
-
         # For quick reference we get organize the indicies. The first split is royal and point (8s are in point), then the sublists are by rank
         self.point_indicies = []
         for rank in range(10):
@@ -46,12 +41,16 @@ class CuttleEnvironment(gym.Env):
             self.point_indicies.append(rank_list)
 
         self.royal_indicies = []
-        for rank in range(10,13):
+        for rank in range(10, 13):
             rank_list = []
             for suit in range(4):
                 rank_list.append(self.getIndex(rank, suit))
             self.point_indicies.append(rank_list)
 
+        # Generates the actions, as well as determining how many actions are in the environment.
+        # Actions from the action_to_move dict are of the form (moveType, [args]),
+        # where moveType is one of the functions below.
+        self.action_to_move, self.actions = self.generateActions()
 
         # Gym helps us out so we make gym spaces
         self.observation_space = gym.spaces.MultiBinary([6, 52])
@@ -214,14 +213,18 @@ class CuttleEnvironment(gym.Env):
 
     def aceAction(self, card):
         hand = self.current_zones.get("Hand")
+        selfField = self.current_zones.get("Field")
         oppfield = self.off_zones.get("Field")
         scrap = self.scrap
 
         hand[card] = False  # type: ignore
         scrap[card] = True
-        for x in range(oppfield.size):  # type: ignore
-            oppfield[x] = False  # type: ignore
-            scrap[x] = True
+        for rank_list in self.point_indicies:
+            for card in rank_list:
+                if oppfield[card] or selfField[card]:  # type:ignore
+                    oppfield[card] = False  # type:ignore
+                    selfField[card] = False  # type:ignore
+                    scrap[card] = True
 
     # TODO
     def twoAction(self):
@@ -317,13 +320,9 @@ class CuttleEnvironment(gym.Env):
             for y in range(52):
                 # Checks to make sure we aren't adding the unecessary self bounce to the pool.
                 if y != x:
-                    act_dict.update(
-                        {actions: (self.nineAction, [x, y, True])}
-                    )
+                    act_dict.update({actions: (self.nineAction, [x, y, True])})
                     actions += 1
-                    act_dict.update(
-                        {actions: (self.nineAction, [x, y, False])}
-                    )
+                    act_dict.update({actions: (self.nineAction, [x, y, False])})
                     actions += 1
 
         return act_dict, actions
