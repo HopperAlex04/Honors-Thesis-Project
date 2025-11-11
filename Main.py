@@ -27,7 +27,7 @@ validation01 = Players.HueristicHighCard("HighCard")
 t = WinRewardTraining(trainee, trainee)
 
 while not user_ended:
-    user_in = input("Enter 't' to train,'v' to validate,  or 's' to save")
+    user_in = input("Enter 't' to train,'v' to validate, 's' to save, or q to quit")
     match user_in:
         case "t":
             t.trainLoop(500)
@@ -36,4 +36,6 @@ while not user_ended:
         case "s":
             model_name = input("Name the model")
             torch.save(trainee.model, f"models/{model_name}")
+        case "q":
+            user_ended = True
 
