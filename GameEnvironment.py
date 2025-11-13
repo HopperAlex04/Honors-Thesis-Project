@@ -5,7 +5,7 @@ import gymnasium as gym
 import numpy as np
 
 
-class CuttleEnvironment():
+class CuttleEnvironment:
 
     # Initializes the environment and defines the observation and action spaces
     def __init__(self) -> None:
@@ -22,15 +22,36 @@ class CuttleEnvironment():
         self.scrap = np.zeros(52, dtype=bool)
 
         # Special Zones which tell a player information about the game state
-        self.stack = [0, 0, 0, 0, 0] # Contains the actions and counters after an action has been decided, in a model this is embedded when the observation is passed in
-        self.dealer_revealed = np.zeros(52, dtype=bool) # What cards in the dealer's hand that are public
-        self.player_revealed = np.zeros(52, dtype=bool) # What cards in the player's hand that are public
-        self.effect_shown = [0, 0] # Contains the cards revealed by an effect after an action has been decided, in a model this is embedded when the observation is passed in
+        self.stack = [
+            0,
+            0,
+            0,
+            0,
+            0,
+        ]  # Contains the actions and counters after an action has been decided, in a model this is embedded when the observation is passed in
+        self.dealer_revealed = np.zeros(
+            52, dtype=bool
+        )  # What cards in the dealer's hand that are public
+        self.player_revealed = np.zeros(
+            52, dtype=bool
+        )  # What cards in the player's hand that are public
+        self.effect_shown = [
+            0,
+            0,
+        ]  # Contains the cards revealed by an effect after an action has been decided, in a model this is embedded when the observation is passed in
 
-        #Revealed: When a card becomes known to the opponent, it becomes revealed
+        # Revealed: When a card becomes known to the opponent, it becomes revealed
         # Defines who owns what zones, allows for easy access to fields
-        self.player_zones = {"Hand": self.player_hand, "Field": self.player_field, "Revealed": self.player_revealed}
-        self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field, "Revealed": self.dealer_revealed}
+        self.player_zones = {
+            "Hand": self.player_hand,
+            "Field": self.player_field,
+            "Revealed": self.player_revealed,
+        }
+        self.dealer_zones = {
+            "Hand": self.dealer_hand,
+            "Field": self.dealer_field,
+            "Revealed": self.dealer_revealed,
+        }
 
         # Swapped by passControl(), always start with the player_
         self.current_zones = self.player_zones
@@ -76,7 +97,7 @@ class CuttleEnvironment():
             "Deck": self.deck,
             "Scrap": self.scrap,
             "Stack": self.stack,
-            "Effect-Shown": self.effect_shown
+            "Effect-Shown": self.effect_shown,
         }
 
     def _get_info(self):
@@ -93,8 +114,16 @@ class CuttleEnvironment():
         self.scrap = np.zeros(52, dtype=bool)
 
         # Makes sure all the zones are in the right places
-        self.player_zones = {"Hand": self.player_hand, "Field": self.player_field, "Revealed": self.player_revealed}
-        self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field, "Revealed": self.dealer_revealed}
+        self.player_zones = {
+            "Hand": self.player_hand,
+            "Field": self.player_field,
+            "Revealed": self.player_revealed,
+        }
+        self.dealer_zones = {
+            "Hand": self.dealer_hand,
+            "Field": self.dealer_field,
+            "Revealed": self.dealer_revealed,
+        }
 
         self.current_zones = self.player_zones
         self.off_zones = self.dealer_zones
@@ -263,7 +292,7 @@ class CuttleEnvironment():
         scrap[card] = True
         scrap[target] = False
 
-        #Mark target in revealed later
+        # Mark target in revealed later
 
         return f"Recovered {target} with {card}"
 

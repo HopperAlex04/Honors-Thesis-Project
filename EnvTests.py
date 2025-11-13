@@ -155,6 +155,7 @@ def twoTest():
     env.step(valid_actions[2])
     env.render()
 
+
 def threeTest():
     env = CuttleEnvironment()
     env.current_zones["Hand"][2] = True
@@ -164,6 +165,7 @@ def threeTest():
     print(valid_actions)
     env.step(valid_actions[2])
     env.render()
+
 
 def sixTest():
     env = CuttleEnvironment()
