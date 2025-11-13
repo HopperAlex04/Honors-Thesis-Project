@@ -146,6 +146,7 @@ class WinRewardTraining():
             turn = 0
             p1score = 0
             p2score = 0
+            draw_counter = 0
             #Game Loop
             terminated = False
 
@@ -227,10 +228,18 @@ class WinRewardTraining():
         return p1wr, p2wr
 
     def get_state(self, ob):
-        state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
-        stateT = torch.from_numpy(np.array(state)).float()
-        return stateT
+        state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Current Zones"]["Revealed"],
+                                ob["Off-Player Field"], ob["Off-Player Revealed"], ob["Deck"], ob["Scrap"]), axis = 0)
+        embed_stack = self.model.embedding(torch.tensor(ob["Stack"]))
+        embed_effect = self.model.embedding(torch.tensor(ob["Effect-Shown"]))
+        state_tensor = torch.from_numpy(np.array(state)).float()
 
+        embed_stack = torch.flatten(embed_stack, end_dim=-1)
+        embed_effect = torch.flatten(embed_effect, end_dim=-1)
+
+        final = torch.cat([state_tensor, embed_stack, embed_effect])
+
+        return final
     def p1Win(self):
         if isinstance(self.player1, Agent):
             self.player1.memory.push(self.p1_state, torch.tensor([self.p1_act]), None, torch.tensor([1]))

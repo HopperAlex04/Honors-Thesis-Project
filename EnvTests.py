@@ -144,4 +144,40 @@ def aceTest():
     env.render()
 
 
-aceTest()
+def twoTest():
+    env = CuttleEnvironment()
+    print(env.royal_indicies)
+    env.current_zones["Hand"][1] = True
+    env.off_zones["Field"][12] = True
+
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[2])
+    env.render()
+
+def threeTest():
+    env = CuttleEnvironment()
+    env.current_zones["Hand"][2] = True
+    env.scrap[12] = True
+
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[2])
+    env.render()
+
+def sixTest():
+    env = CuttleEnvironment()
+    env.current_zones["Hand"][5] = True
+    for x in env.royal_indicies:
+        for index in x:
+            env.off_zones["Field"][index] = True
+    env.off_zones["Field"][7] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[2])
+    env.render()
+
+    print(env.get_obs())
+
+
+sixTest()
