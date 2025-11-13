@@ -1,10 +1,13 @@
-from torch import nn
 import numpy as np
+from torch import nn
+
 
 class NeuralNetwork(nn.Module):
-    def __init__(self, obspace, embedding_size, actions: int, seq: nn.Sequential|None):
+    def __init__(
+        self, obspace, embedding_size, actions: int, seq: nn.Sequential | None
+    ):
         super().__init__()
-        #self.flatten = nn.Flatten()
+        # self.flatten = nn.Flatten()
         if seq:
             self.linear_relu_stack = seq
         else:
@@ -20,8 +23,12 @@ class NeuralNetwork(nn.Module):
                     for _ in item:
                         input_length += embedding_size
                         print(input_length)
-            self.embedding = nn.Embedding(53, embedding_size) # 0 indicates nothing is there, 1-52 are cards
-            self.linear_relu_stack = nn.Sequential(nn.Linear(input_length, actions), nn.Tanh())
+            self.embedding = nn.Embedding(
+                53, embedding_size
+            )  # 0 indicates nothing is there, 1-52 are cards
+            self.linear_relu_stack = nn.Sequential(
+                nn.Linear(input_length, actions), nn.Tanh()
+            )
 
     def forward(self, x):
         logits = self.linear_relu_stack(x)
