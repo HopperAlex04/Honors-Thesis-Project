@@ -39,7 +39,7 @@ class CuttleEnvironment:
             0,
             0,
         ]  # Contains the cards revealed by an effect after an action has been decided, in a model this is embedded when the observation is passed in
-
+        self.top_deck = []
         # Revealed: When a card becomes known to the opponent, it becomes revealed
         # Defines who owns what zones, allows for easy access to fields
         self.player_zones = {
@@ -218,7 +218,11 @@ class CuttleEnvironment:
         possible_draws = np.where(self.deck)[0]
         if possible_draws.any():
             # trunk-ignore(bandit/B311)
-            index = possible_draws[random.randint(0, len(possible_draws) - 1)]
+            if self.top_deck:
+                index = self.top_deck[0]
+            else:
+                index = possible_draws[random.randint(0, len(possible_draws) - 1)]
+
             hand[index] = True  # type: ignore
             self.deck[index] = False
         else:
@@ -326,8 +330,27 @@ class CuttleEnvironment:
                     scrap[card] = True
 
     # TODO
-    def sevenAction(self):
-        pass
+    def sevenAction01(self, card):
+        # If a seven isn't already being resolved, reveal the top
+        self.stack[0] = 7
+        hand = self.current_zones.get("Hand")
+        scrap = self.scrap
+
+        hand[card] = False  # type: ignore
+        scrap[card] = True
+        self.reveal_two()
+
+    def sevenAction02(self, target):
+        field = self.current_zones.get("Field")
+        scrap = self.scrap
+
+        field[target] = True  # type: ignore
+        scrap[target] = True
+
+        to_top = self.effect_shown[1 - self.effect_shown.index(target)]
+
+        self.top_deck = [to_top]
+        self.deck[to_top] = True
 
     # TODO
     def eightRoyal(self):
@@ -404,6 +427,14 @@ class CuttleEnvironment:
         for x in self.point_indicies[5]:
             # 13 cards per rank, we are looking for rank 5 (Six)
             act_dict.update({actions: (self.sixAction, [x])})
+            actions += 1
+
+        for x in self.point_indicies[6]:
+            act_dict.update({actions: (self.sevenAction01, [x])})
+            actions += 1
+
+        for x in range(52):
+            act_dict.update({actions: (self.sevenAction02, [x])})
             actions += 1
 
         for x in self.point_indicies[8]:
@@ -489,6 +520,14 @@ class CuttleEnvironment:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
+            elif moveType == self.sevenAction01:
+                card = args[0]
+                if card in inhand[0]:
+                    valid_actions.append(act_index)
+            elif moveType == self.sevenAction02:
+                target = args[0]
+                if target in self.effect_shown:
+                    valid_actions.append(act_index)
 
         return valid_actions
 
@@ -546,3 +585,16 @@ class CuttleEnvironment:
 
     def getIndex(self, rank, suit):
         return (13 * suit) + rank
+
+    def reveal_two(self):
+        possible_draws = np.where(self.deck)[0]
+        if possible_draws.any():
+            # trunk-ignore(bandit/B311)
+            index1 = possible_draws[random.randint(0, len(possible_draws) - 1)]
+            self.deck[index1] = False
+            self.effect_shown[0] = index1
+        if possible_draws.any():
+            # trunk-ignore(bandit/B311)
+            index2 = possible_draws[random.randint(0, len(possible_draws) - 1)]
+            self.deck[index2] = False
+            self.effect_shown[1] = index2

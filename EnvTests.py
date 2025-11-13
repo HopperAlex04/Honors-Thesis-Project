@@ -179,7 +179,16 @@ def sixTest():
     env.step(valid_actions[2])
     env.render()
 
-    print(env.get_obs())
-
-
-sixTest()
+def sevenTest():
+    env = CuttleEnvironment()
+    env.current_zones["Hand"][6] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[2])
+    print(env.effect_shown)
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[1])
+    env.step(valid_actions[0])
+    env.render()
+sevenTest()

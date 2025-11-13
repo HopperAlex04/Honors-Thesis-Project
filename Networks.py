@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from torch import nn
 
 
@@ -31,5 +32,38 @@ class NeuralNetwork(nn.Module):
             )
 
     def forward(self, x):
-        logits = self.linear_relu_stack(x)
+
+        state = self.get_state(x)
+        logits = self.linear_relu_stack(state)
         return logits
+
+    def get_state(self, x):
+        if isinstance(x, dict):
+            state = np.concatenate(
+                (
+                    x["Current Zones"]["Hand"],
+                    x["Current Zones"]["Field"],
+                    x["Current Zones"]["Revealed"],
+                    x["Off-Player Field"],
+                    x["Off-Player Revealed"],
+                    x["Deck"],
+                    x["Scrap"],
+                ),
+                axis=0,
+            )
+            embed_stack = self.embedding(torch.tensor(x["Stack"]))
+            embed_effect = self.embedding(torch.tensor(x["Effect-Shown"]))
+            state_tensor = torch.from_numpy(np.array(state)).float()
+
+            embed_stack = torch.flatten(embed_stack, end_dim=-1)
+            embed_effect = torch.flatten(embed_effect, end_dim=-1)
+
+            final = torch.cat([state_tensor, embed_stack, embed_effect])
+
+            return final
+        else:
+            final_list = []
+            for state in x:
+                final_list.append(self.get_state(state))
+            final_ten = torch.stack(final_list)
+            return final_ten
