@@ -5,7 +5,7 @@ import gymnasium as gym
 import numpy as np
 
 
-class CuttleEnvironment(gym.Env):
+class CuttleEnvironment():
 
     # Initializes the environment and defines the observation and action spaces
     def __init__(self) -> None:
@@ -21,9 +21,16 @@ class CuttleEnvironment(gym.Env):
         self.deck = np.ones(52, dtype=bool)
         self.scrap = np.zeros(52, dtype=bool)
 
+        # Special Zones which tell a player information about the game state
+        self.stack = [0, 0, 0, 0, 0] # Contains the actions and counters after an action has been decided, in a model this is embedded when the observation is passed in
+        self.dealer_revealed = np.zeros(52, dtype=bool) # What cards in the dealer's hand that are public
+        self.player_revealed = np.zeros(52, dtype=bool) # What cards in the player's hand that are public
+        self.effect_shown = [0, 0] # Contains the cards revealed by an effect after an action has been decided, in a model this is embedded when the observation is passed in
+
+        #Revealed: When a card becomes known to the opponent, it becomes revealed
         # Defines who owns what zones, allows for easy access to fields
-        self.player_zones = {"Hand": self.player_hand, "Field": self.player_field}
-        self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field}
+        self.player_zones = {"Hand": self.player_hand, "Field": self.player_field, "Revealed": self.player_revealed}
+        self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field, "Revealed": self.dealer_revealed}
 
         # Swapped by passControl(), always start with the player_
         self.current_zones = self.player_zones
@@ -45,7 +52,7 @@ class CuttleEnvironment(gym.Env):
             rank_list = []
             for suit in range(4):
                 rank_list.append(self.getIndex(rank, suit))
-            self.point_indicies.append(rank_list)
+            self.royal_indicies.append(rank_list)
 
         # Generates the actions, as well as determining how many actions are in the environment.
         # Actions from the action_to_move dict are of the form (moveType, [args]),
@@ -53,7 +60,8 @@ class CuttleEnvironment(gym.Env):
         self.action_to_move, self.actions = self.generateActions()
 
         # Gym helps us out so we make gym spaces
-        self.observation_space = gym.spaces.MultiBinary([6, 52])
+        self.observation_space = self.get_obs()
+
         self.action_space = gym.spaces.Discrete(self.actions)
 
     def get_obs(self):
@@ -63,17 +71,19 @@ class CuttleEnvironment(gym.Env):
         # when turns or priority changes.
         return {
             "Current Zones": self.current_zones,
-            "Off-Player Zones": self.off_zones,
+            "Off-Player Field": self.off_zones["Field"],
+            "Off-Player Revealed": self.off_zones["Revealed"],
             "Deck": self.deck,
             "Scrap": self.scrap,
+            "Stack": self.stack,
+            "Effect-Shown": self.effect_shown
         }
 
     def _get_info(self):
         pass
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        super().reset(seed=seed)
-
+        random.seed(seed)
         # Reset to open state to make new game
         self.dealer_hand = np.zeros(52, dtype=bool)
         self.dealer_field = np.zeros(52, dtype=bool)
@@ -83,8 +93,8 @@ class CuttleEnvironment(gym.Env):
         self.scrap = np.zeros(52, dtype=bool)
 
         # Makes sure all the zones are in the right places
-        self.player_zones = {"Hand": self.player_hand, "Field": self.player_field}
-        self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field}
+        self.player_zones = {"Hand": self.player_hand, "Field": self.player_field, "Revealed": self.player_revealed}
+        self.dealer_zones = {"Hand": self.dealer_hand, "Field": self.dealer_field, "Revealed": self.dealer_revealed}
 
         self.current_zones = self.player_zones
         self.off_zones = self.dealer_zones
@@ -226,13 +236,36 @@ class CuttleEnvironment(gym.Env):
                     selfField[card] = False  # type:ignore
                     scrap[card] = True
 
-    # TODO
-    def twoAction(self):
-        pass
+    def twoAction(self, cardAndTarget):
+        hand = self.current_zones.get("Hand")
+        oppfield = self.off_zones.get("Field")
+        scrap = self.scrap
 
-    # TODO
-    def threeAction(self):
-        pass
+        card = cardAndTarget[0]
+        target = cardAndTarget[1]
+
+        hand[card] = False  # type: ignore
+        oppfield[target] = False  # type: ignore
+        scrap[card] = True
+        scrap[target] = True
+
+        return f"Scrapped {target} with {card}"
+
+    def threeAction(self, cardAndTarget):
+        hand = self.current_zones.get("Hand")
+        scrap = self.scrap
+
+        card = cardAndTarget[0]
+        target = cardAndTarget[1]
+
+        hand[card] = False  # type: ignore
+        hand[target] = True  # type: ignore
+        scrap[card] = True
+        scrap[target] = False
+
+        #Mark target in revealed later
+
+        return f"Recovered {target} with {card}"
 
     # TODO
     def fourAction(self):
@@ -248,9 +281,20 @@ class CuttleEnvironment(gym.Env):
         self.drawAction()
         self.drawAction()
 
-    # TODO
-    def sixAction(self):
-        pass
+    def sixAction(self, card):
+        hand = self.current_zones.get("Hand")
+        selfField = self.current_zones.get("Field")
+        oppfield = self.off_zones.get("Field")
+        scrap = self.scrap
+
+        hand[card] = False  # type: ignore
+        scrap[card] = True
+        for rank_list in self.royal_indicies:
+            for card in rank_list:
+                if oppfield[card] or selfField[card]:  # type:ignore
+                    oppfield[card] = False  # type:ignore
+                    selfField[card] = False  # type:ignore
+                    scrap[card] = True
 
     # TODO
     def sevenAction(self):
@@ -310,9 +354,27 @@ class CuttleEnvironment(gym.Env):
             act_dict.update({actions: (self.aceAction, [x])})
             actions += 1
 
+        # Two: scrap target royal (Counters come later)
+        for x in self.point_indicies[1]:
+            for royal_list in self.royal_indicies:
+                for target in royal_list:
+                    act_dict.update({actions: (self.twoAction, [x, target])})
+                    actions += 1
+
+        # Three: Grab a card from scrap
+        for x in self.point_indicies[2]:
+            for target in range(52):
+                act_dict.update({actions: (self.threeAction, [x, target])})
+                actions += 1
+
         for x in self.point_indicies[4]:
             # 13 cards per rank, we are looking for rank 4 (Five)
             act_dict.update({actions: (self.fiveAction, [x])})
+            actions += 1
+
+        for x in self.point_indicies[5]:
+            # 13 cards per rank, we are looking for rank 5 (Six)
+            act_dict.update({actions: (self.sixAction, [x])})
             actions += 1
 
         for x in self.point_indicies[8]:
@@ -331,6 +393,7 @@ class CuttleEnvironment(gym.Env):
         inhand = np.where(self.current_zones["Hand"])
         self_field = np.where(self.current_zones["Field"])
         onfield = np.where(self.off_zones["Field"])
+        scrap = np.where(self.scrap)[0]
         # Need this later for four
         # trunk-ignore(ruff/F841)
         opp_hand = np.where(self.off_zones["Hand"])
@@ -381,6 +444,22 @@ class CuttleEnvironment(gym.Env):
                         valid_actions.append(act_index)
                     elif not selfhit and onfield[0].size > 0 and target in onfield[0]:
                         valid_actions.append(act_index)
+            elif moveType == self.twoAction:
+                card = args[0]
+                if card in inhand[0]:
+                    target = args[1]
+                    if target in onfield[0]:
+                        valid_actions.append(act_index)
+            elif moveType == self.threeAction:
+                card = args[0]
+                if card in inhand[0]:
+                    target = args[1]
+                    if target in scrap:
+                        valid_actions.append(act_index)
+            elif moveType == self.sixAction:
+                card = args[0]
+                if card in inhand[0]:
+                    valid_actions.append(act_index)
 
         return valid_actions
 

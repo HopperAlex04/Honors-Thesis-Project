@@ -11,7 +11,7 @@ user_ended = False
 
 env = CuttleEnvironment()
 actions = env.actions
-model = NeuralNetwork(260, actions, None)
+model = NeuralNetwork(env.observation_space, 2, actions, None)
 
 #Eventually make these adjustable as well
 BATCH_SIZE = 8192

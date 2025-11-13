@@ -83,12 +83,21 @@ class Agent(Player):
 
     #States are dim 1 tensors (think [1, 0, 0, 1, 0, 1])
     def get_state(self, ob):
-        state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Off-Player Zones"]["Hand"], ob["Deck"], ob["Scrap"]), axis = 0)
+        state = np.concatenate((ob["Current Zones"]["Hand"], ob["Current Zones"]["Field"], ob["Current Zones"]["Revealed"],
+                                ob["Off-Player Field"], ob["Off-Player Revealed"], ob["Deck"], ob["Scrap"]), axis = 0)
+        embed_stack = self.model.embedding(torch.tensor(ob["Stack"]))
+        embed_effect = self.model.embedding(torch.tensor(ob["Effect-Shown"]))
         state_tensor = torch.from_numpy(np.array(state)).float()
-        return state_tensor
+
+        embed_stack = torch.flatten(embed_stack, end_dim=-1)
+        embed_effect = torch.flatten(embed_effect, end_dim=-1)
+
+        final = torch.cat([state_tensor, embed_stack, embed_effect])
+
+        return final
 
     def optimize(self):
-        if len(self.memory) < self.batch_size: 
+        if len(self.memory) < self.batch_size:
             return
 
         transitions = self.memory.sample(self.batch_size)

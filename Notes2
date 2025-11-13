@@ -38,3 +38,6 @@ Multi-Stage Decsions (4s, 7s)
 Implementation help: Create lists for score card indicies and royal indicies
 
 Add flags for the eights and keep track of number of queens.
+
+TODO:
+Move get_state into the model itself and just have it eat the ob, that'll fix the state stuff in the training I think
