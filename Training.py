@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 from GameEnvironment import CuttleEnvironment
@@ -70,10 +69,10 @@ class WinRewardTraining:
                 else:
                     draw_counter = 0
 
-                self.p1_state = self.get_state(ob)
+                self.p1_state = ob
                 ob, p1score, terminated, truncated = self.env.step(self.p1_act)
 
-                self.p2_next = self.get_state(ob)
+                self.p2_next = ob
 
                 truncated = draw_counter >= 6
 
@@ -88,9 +87,9 @@ class WinRewardTraining:
                     break
                 elif isinstance(self.player2, Agent) and turn > 1:
                     self.player2.memory.push(
-                        torch.tensor(self.p2_state),
+                        self.p2_state,
                         torch.tensor([self.p2_act]),
-                        torch.tensor(self.p2_next),
+                        self.p2_next,
                         torch.tensor([0]),
                     )
 
@@ -113,11 +112,11 @@ class WinRewardTraining:
                 else:
                     draw_counter = 0
 
-                self.p2_state = self.get_state(ob)
+                self.p2_state = ob
 
                 ob, p2score, terminated, truncated = self.env.step(self.p2_act)
 
-                self.p1_next = self.get_state(ob)
+                self.p1_next = ob
 
                 truncated = draw_counter >= 6
 
@@ -256,30 +255,6 @@ class WinRewardTraining:
             self.writelog(p1log, p2log)
 
         return p1wr, p2wr
-
-    def get_state(self, ob):
-        state = np.concatenate(
-            (
-                ob["Current Zones"]["Hand"],
-                ob["Current Zones"]["Field"],
-                ob["Current Zones"]["Revealed"],
-                ob["Off-Player Field"],
-                ob["Off-Player Revealed"],
-                ob["Deck"],
-                ob["Scrap"],
-            ),
-            axis=0,
-        )
-        embed_stack = self.model.embedding(torch.tensor(ob["Stack"]))
-        embed_effect = self.model.embedding(torch.tensor(ob["Effect-Shown"]))
-        state_tensor = torch.from_numpy(np.array(state)).float()
-
-        embed_stack = torch.flatten(embed_stack, end_dim=-1)
-        embed_effect = torch.flatten(embed_effect, end_dim=-1)
-
-        final = torch.cat([state_tensor, embed_stack, embed_effect])
-
-        return final
 
     def p1Win(self):
         if isinstance(self.player1, Agent):

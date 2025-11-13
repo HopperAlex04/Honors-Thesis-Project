@@ -3,7 +3,6 @@ import random
 from abc import ABC, abstractmethod
 from collections import deque, namedtuple
 
-import numpy as np
 import torch
 
 
@@ -71,7 +70,7 @@ class Agent(Player):
             -1.0 * steps__done / self.eps_decay
         )
         # ob should be of the form [dict, dict, zone, zone] so the dicts need to be broken down by get_state()
-        state = self.get_state(ob)
+        state = ob
 
         if sample > eps__threshold:
             with torch.no_grad():
@@ -85,31 +84,6 @@ class Agent(Player):
                 return act_out.argmax().item()
         else:
             return random.choice(mask)
-
-    # States are dim 1 tensors (think [1, 0, 0, 1, 0, 1])
-    def get_state(self, ob):
-        state = np.concatenate(
-            (
-                ob["Current Zones"]["Hand"],
-                ob["Current Zones"]["Field"],
-                ob["Current Zones"]["Revealed"],
-                ob["Off-Player Field"],
-                ob["Off-Player Revealed"],
-                ob["Deck"],
-                ob["Scrap"],
-            ),
-            axis=0,
-        )
-        embed_stack = self.model.embedding(torch.tensor(ob["Stack"]))
-        embed_effect = self.model.embedding(torch.tensor(ob["Effect-Shown"]))
-        state_tensor = torch.from_numpy(np.array(state)).float()
-
-        embed_stack = torch.flatten(embed_stack, end_dim=-1)
-        embed_effect = torch.flatten(embed_effect, end_dim=-1)
-
-        final = torch.cat([state_tensor, embed_stack, embed_effect])
-
-        return final
 
     def optimize(self):
         if len(self.memory) < self.batch_size:
@@ -131,13 +105,13 @@ class Agent(Player):
 
         # Compute a mask of non-final states and concatenate the batch elements
         # (a final state would've been the one after which simulation ended)
+
         non_final_mask = torch.tensor(
             tuple(map(lambda s: s is not None, batch.next_state)), dtype=torch.bool
         )
-        non_final_next_states = torch.stack(
-            [s for s in batch.next_state if s is not None]
-        )
-        state_batch = torch.stack(batch.state)
+        non_final_next_states = [s for s in batch.next_state if s is not None]
+
+        state_batch = batch.state
         action_batch = torch.stack(batch.action)
         reward_batch = torch.stack(batch.reward)
 
