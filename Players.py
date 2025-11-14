@@ -31,6 +31,7 @@ class HueristicHighCard(Player):
         for x in mask:
             if x in range(1, 53):
                 act_out = x
+
         return act_out
 
 
