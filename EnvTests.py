@@ -202,4 +202,10 @@ def nineTest():
     env.passControl()
     valid_actions = env.generateActionMask()
     print(valid_actions)
-nineTest()
+
+def fourTest():
+    env = CuttleEnvironment()
+    env.current_zones["Hand"][3] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+fourTest()

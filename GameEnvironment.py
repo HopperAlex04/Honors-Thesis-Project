@@ -305,8 +305,26 @@ class CuttleEnvironment:
         return f"Recovered {target} with {card}"
 
     # TODO
-    def fourAction(self):
-        pass
+    def fourAction(self, card):
+        self.stack[0] = 4
+
+        hand = self.current_zones.get("Hand")
+        scrap = self.scrap
+
+        hand[card] = False  # type: ignore
+        scrap[card] = True
+
+    def resolveFour(self, targets):
+        hand = self.current_zones.get("Hand")
+        scrap = self.scrap
+        if len(targets) > 0:
+            t1 = targets[0]
+            hand[t1] = False  # type: ignore
+            scrap[t1] = True
+        if len(targets) > 1:
+            t2 = targets[1]
+            hand[t1] = False  # type: ignore
+            scrap[t2] = True
 
     def fiveAction(self, card):
         hand = self.current_zones.get("Hand")
@@ -427,6 +445,25 @@ class CuttleEnvironment:
                 act_dict.update({actions: (self.threeAction, [x, target])})
                 actions += 1
 
+        for x in self.point_indicies[3]:
+            act_dict.update({actions: (self.fourAction, [x])})
+            actions += 1
+
+        fourTargets = []
+        act_dict.update({actions: (self.resolveFour, fourTargets)})
+        actions += 1
+        for x in range(52):
+            fourTargets = []
+            fourTargets.append(x)
+            act_dict.update({actions: (self.resolveFour, fourTargets)})
+            actions += 1
+            for y in range(52):
+                if x != y:
+                    fourTargets.append(x)
+                    act_dict.update({actions: (self.resolveFour, fourTargets)})
+                    actions += 1
+
+
         for x in self.point_indicies[4]:
             # 13 cards per rank, we are looking for rank 4 (Five)
             act_dict.update({actions: (self.fiveAction, [x])})
@@ -535,6 +572,10 @@ class CuttleEnvironment:
             elif moveType == self.sevenAction02 and self.stack[0] == 7:
                 target = args[0]
                 if target != 0 and target in self.effect_shown:
+                    valid_actions.append(act_index)
+            elif moveType == self.fourAction:
+                card = args[0]
+                if card in inhand[0]:
                     valid_actions.append(act_index)
         return valid_actions
 
