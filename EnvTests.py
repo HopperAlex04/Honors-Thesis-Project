@@ -191,4 +191,15 @@ def sevenTest():
     env.step(valid_actions[1])
     env.step(valid_actions[0])
     env.render()
-sevenTest()
+
+def nineTest():
+    env = CuttleEnvironment()
+    env.current_zones["Hand"][8] = True
+    env.off_zones["Field"][4] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[3])
+    env.passControl()
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+nineTest()

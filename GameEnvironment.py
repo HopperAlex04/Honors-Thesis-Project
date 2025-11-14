@@ -40,6 +40,8 @@ class CuttleEnvironment:
             0,
         ]  # Contains the cards revealed by an effect after an action has been decided, in a model this is embedded when the observation is passed in
         self.top_deck = []
+        self.current_bounced = []
+        self.off_bounced = []
         # Revealed: When a card becomes known to the opponent, it becomes revealed
         # Defines who owns what zones, allows for easy access to fields
         self.player_zones = {
@@ -156,6 +158,7 @@ class CuttleEnvironment:
         truncated = False
 
         # ob is of the form [dict, dict] and should be broken up when reading a state
+        # print(act)
         return ob, score, terminated, truncated
 
     def render(self):
@@ -220,6 +223,7 @@ class CuttleEnvironment:
             # trunk-ignore(bandit/B311)
             if self.top_deck:
                 index = self.top_deck[0]
+                self.top_deck = []
             else:
                 index = possible_draws[random.randint(0, len(possible_draws) - 1)]
 
@@ -339,18 +343,20 @@ class CuttleEnvironment:
         hand[card] = False  # type: ignore
         scrap[card] = True
         self.reveal_two()
+        if self.effect_shown == [0, 0]:
+            self.stack[0] = 7
 
     def sevenAction02(self, target):
         field = self.current_zones.get("Field")
-        scrap = self.scrap
 
         field[target] = True  # type: ignore
-        scrap[target] = True
-
-        to_top = self.effect_shown[1 - self.effect_shown.index(target)]
+        print (self.effect_shown)
+        to_top = self.effect_shown[1 - self.effect_shown.index(target)] - 1
 
         self.top_deck = [to_top]
         self.deck[to_top] = True
+        self.stack = [0, 0, 0, 0, 0]
+        self.effect_shown = [0, 0]
 
     # TODO
     def eightRoyal(self):
@@ -373,9 +379,11 @@ class CuttleEnvironment:
         if self_hit:
             curr_field[target] = False  # type: ignore
             curr_hand[target] = True  # type: ignore
+            self.current_bounced = [target]
         else:
             off_field[target] = False  # type: ignore
             off_hand[target] = True  # type: ignore
+            self.off_bounced = [target]
 
     def generateActions(self):
         # Initializes storage mediums
@@ -463,13 +471,13 @@ class CuttleEnvironment:
         for act_index, move in self.action_to_move.items():
             moveType = move[0]
             args = move[1]
-            if moveType == self.drawAction:
+            if moveType == self.drawAction and self.stack[0] == 0:
                 valid_actions.append(act_index)
-            elif moveType == self.scoreAction:
+            elif moveType == self.scoreAction and self.stack[0] == 0:
                 card = args
-                if card in inhand[0]:
+                if card in inhand[0] and card not in self.current_bounced:
                     valid_actions.append(act_index)
-            elif moveType == self.scuttleAction:
+            elif moveType == self.scuttleAction and self.stack[0] == 0:
                 card = args[0]
                 if card in inhand[0]:
                     target = args[1]
@@ -486,15 +494,15 @@ class CuttleEnvironment:
                         and (cRank > tRank or (cRank == tRank and cSuit > tSuit))
                     ):
                         valid_actions.append(act_index)
-            elif moveType == self.aceAction:
+            elif moveType == self.aceAction and self.stack[0] == 0:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
-            elif moveType == self.fiveAction:
+            elif moveType == self.fiveAction and self.stack[0] == 0:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
-            elif moveType == self.nineAction:
+            elif moveType == self.nineAction and self.stack[0] == 0:
                 card = move[1][0]
                 if card in inhand[0]:
                     target = move[1][1]
@@ -504,31 +512,30 @@ class CuttleEnvironment:
                         valid_actions.append(act_index)
                     elif not selfhit and onfield[0].size > 0 and target in onfield[0]:
                         valid_actions.append(act_index)
-            elif moveType == self.twoAction:
+            elif moveType == self.twoAction and self.stack[0] == 0:
                 card = args[0]
                 if card in inhand[0]:
                     target = args[1]
                     if target in onfield[0]:
                         valid_actions.append(act_index)
-            elif moveType == self.threeAction:
+            elif moveType == self.threeAction and self.stack[0] == 0:
                 card = args[0]
                 if card in inhand[0]:
                     target = args[1]
                     if target in scrap:
                         valid_actions.append(act_index)
-            elif moveType == self.sixAction:
+            elif moveType == self.sixAction and self.stack[0] == 0:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
-            elif moveType == self.sevenAction01:
+            elif moveType == self.sevenAction01 and self.stack[0] == 0:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
-            elif moveType == self.sevenAction02:
+            elif moveType == self.sevenAction02 and self.stack[0] == 7:
                 target = args[0]
-                if target in self.effect_shown:
+                if target != 0 and target in self.effect_shown:
                     valid_actions.append(act_index)
-
         return valid_actions
 
     # Cards are generated as follows:
@@ -573,6 +580,9 @@ class CuttleEnvironment:
         return score, threshold
 
     def passControl(self):
+        temp = self.current_bounced
+        self.current_bounced = self.off_bounced
+        self.off_bounced = temp
         if self.current_zones is self.player_zones:
             self.current_zones = self.dealer_zones
             self.off_zones = self.player_zones
@@ -592,9 +602,13 @@ class CuttleEnvironment:
             # trunk-ignore(bandit/B311)
             index1 = possible_draws[random.randint(0, len(possible_draws) - 1)]
             self.deck[index1] = False
-            self.effect_shown[0] = index1
+            self.effect_shown[0] = index1 + 1
+        possible_draws = np.where(self.deck)[0]
         if possible_draws.any():
             # trunk-ignore(bandit/B311)
             index2 = possible_draws[random.randint(0, len(possible_draws) - 1)]
             self.deck[index2] = False
-            self.effect_shown[1] = index2
+            self.effect_shown[1] = index2 + 1
+
+    def end_turn(self):
+        self.current_bounced = []

@@ -71,6 +71,16 @@ class WinRewardTraining:
 
                 self.p1_state = ob
                 ob, p1score, terminated, truncated = self.env.step(self.p1_act)
+                if self.env.stack[0] != 0:
+                    mask = self.env.generateActionMask()
+                    if isinstance(self.player1, Agent):
+                        self.p1_act = self.player1.getAction(
+                            ob, mask, self.env.actions, turn
+                        )
+                    else:
+                        self.p1_act = self.player1.getAction(ob, mask)
+                    ob, p1score, terminated, truncated = self.env.step(self.p1_act)
+
 
                 self.p2_next = ob
 
@@ -92,7 +102,7 @@ class WinRewardTraining:
                         self.p2_next,
                         torch.tensor([0]),
                     )
-
+                self.env.end_turn()
                 self.env.passControl()
 
                 # get an action from the 'dealer'
@@ -116,6 +126,15 @@ class WinRewardTraining:
 
                 ob, p2score, terminated, truncated = self.env.step(self.p2_act)
 
+                if self.env.stack[0] != 0:
+                    mask = self.env.generateActionMask()
+                    if isinstance(self.player2, Agent):
+                        self.p2_act = self.player2.getAction(
+                            ob, mask, self.env.actions, turn
+                        )
+                    else:
+                        self.p2_act = self.player2.getAction(ob, mask)
+
                 self.p1_next = ob
 
                 truncated = draw_counter >= 6
@@ -136,7 +155,7 @@ class WinRewardTraining:
                         self.p1_next,
                         torch.tensor([0]),
                     )
-
+                self.env.end_turn()
                 self.env.passControl()
 
             print(
