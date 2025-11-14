@@ -323,7 +323,7 @@ class CuttleEnvironment:
             scrap[t1] = True
         if len(targets) > 1:
             t2 = targets[1]
-            hand[t1] = False  # type: ignore
+            hand[t2] = False  # type: ignore
             scrap[t2] = True
 
     def fiveAction(self, card):
@@ -453,13 +453,12 @@ class CuttleEnvironment:
         act_dict.update({actions: (self.resolveFour, fourTargets)})
         actions += 1
         for x in range(52):
-            fourTargets = []
-            fourTargets.append(x)
+            fourTargets = [x]
             act_dict.update({actions: (self.resolveFour, fourTargets)})
             actions += 1
             for y in range(52):
-                if x != y:
-                    fourTargets.append(x)
+                if x < y:
+                    fourTargets = [x, y]
                     act_dict.update({actions: (self.resolveFour, fourTargets)})
                     actions += 1
 
@@ -501,7 +500,7 @@ class CuttleEnvironment:
         scrap = np.where(self.scrap)[0]
         # Need this later for four
         # trunk-ignore(ruff/F841)
-        opp_hand = np.where(self.off_zones["Hand"])
+        opp_hand = np.where(self.off_zones["Hand"])[0]
 
         valid_actions = []
 
@@ -573,10 +572,26 @@ class CuttleEnvironment:
                 target = args[0]
                 if target != 0 and target in self.effect_shown:
                     valid_actions.append(act_index)
-            elif moveType == self.fourAction:
+            elif moveType == self.fourAction and self.stack[0] == 0:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
+            elif moveType == self.resolveFour and self.stack[0] == 4:
+                if len(args) == 0:
+                    if len(inhand[0]) == 0:
+                        valid_actions.append(act_index)
+                elif len(args) == 1:
+                    if len(inhand[0]) == 1:
+                        t1 = args[0]
+                        if t1 in inhand[0]:
+                            valid_actions.append(act_index)
+                elif len(args) >= 2:
+                    if len(inhand[0]) >= 2:
+                        t1 = args[0]
+                        t2 = args[1]
+                        if t1 in inhand[0] and t2 in inhand[0]:
+                            valid_actions.append(act_index)
+
         return valid_actions
 
     # Cards are generated as follows:

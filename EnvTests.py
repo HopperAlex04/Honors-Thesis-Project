@@ -205,7 +205,44 @@ def nineTest():
 
 def fourTest():
     env = CuttleEnvironment()
+    #Opp hand empty
     env.current_zones["Hand"][3] = True
     valid_actions = env.generateActionMask()
     print(valid_actions)
+    env.step(valid_actions[2])
+    env.passControl()
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[0])
+    env.render()
+
+    env = CuttleEnvironment()
+    #Opp hand 1
+    env.current_zones["Hand"][3] = True
+    env.off_zones["Hand"][5] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[2])
+    env.passControl()
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[0])
+    env.render()
+
+    env = CuttleEnvironment()
+    #Opp hand 2
+    env.current_zones["Hand"][3] = True
+    env.off_zones["Hand"][5] = True
+    env.off_zones["Hand"][6] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[2])
+    env.passControl()
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[0])
+    env.render()
+
+
+
 fourTest()
