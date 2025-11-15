@@ -317,6 +317,7 @@ class CuttleEnvironment:
     def resolveFour(self, targets):
         hand = self.current_zones.get("Hand")
         scrap = self.scrap
+        self.stack[0] = 0
         if len(targets) > 0:
             t1 = targets[0]
             hand[t1] = False  # type: ignore
@@ -362,13 +363,12 @@ class CuttleEnvironment:
         scrap[card] = True
         self.reveal_two()
         if self.effect_shown == [0, 0]:
-            self.stack[0] = 7
+            self.stack[0] = 0
 
     def sevenAction02(self, target):
         field = self.current_zones.get("Field")
 
         field[target] = True  # type: ignore
-        print (self.effect_shown)
         to_top = self.effect_shown[1 - self.effect_shown.index(target)] - 1
 
         self.top_deck = [to_top]
@@ -461,7 +461,6 @@ class CuttleEnvironment:
                     fourTargets = [x, y]
                     act_dict.update({actions: (self.resolveFour, fourTargets)})
                     actions += 1
-
 
         for x in self.point_indicies[4]:
             # 13 cards per rank, we are looking for rank 4 (Five)

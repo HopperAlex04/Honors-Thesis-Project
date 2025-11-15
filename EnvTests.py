@@ -179,6 +179,7 @@ def sixTest():
     env.step(valid_actions[2])
     env.render()
 
+
 def sevenTest():
     env = CuttleEnvironment()
     env.current_zones["Hand"][6] = True
@@ -192,6 +193,7 @@ def sevenTest():
     env.step(valid_actions[0])
     env.render()
 
+
 def nineTest():
     env = CuttleEnvironment()
     env.current_zones["Hand"][8] = True
@@ -203,9 +205,10 @@ def nineTest():
     valid_actions = env.generateActionMask()
     print(valid_actions)
 
+
 def fourTest():
     env = CuttleEnvironment()
-    #Opp hand empty
+    # Opp hand empty
     env.current_zones["Hand"][3] = True
     valid_actions = env.generateActionMask()
     print(valid_actions)
@@ -217,7 +220,7 @@ def fourTest():
     env.render()
 
     env = CuttleEnvironment()
-    #Opp hand 1
+    # Opp hand 1
     env.current_zones["Hand"][3] = True
     env.off_zones["Hand"][5] = True
     valid_actions = env.generateActionMask()
@@ -230,7 +233,7 @@ def fourTest():
     env.render()
 
     env = CuttleEnvironment()
-    #Opp hand 2
+    # Opp hand 2
     env.current_zones["Hand"][3] = True
     env.off_zones["Hand"][5] = True
     env.off_zones["Hand"][6] = True
@@ -242,7 +245,6 @@ def fourTest():
     print(valid_actions)
     env.step(valid_actions[0])
     env.render()
-
 
 
 fourTest()
