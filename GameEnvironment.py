@@ -1,4 +1,5 @@
 import random
+import time
 from typing import Optional
 
 import gymnasium as gym
@@ -20,6 +21,8 @@ class CuttleEnvironment:
         self.player_hand = np.zeros(52, dtype=bool)
         self.deck = np.ones(52, dtype=bool)
         self.scrap = np.zeros(52, dtype=bool)
+
+        #self.pain_lock = threading.Lock()
 
         # Special Zones which tell a player information about the game state
         self.stack = [
@@ -77,11 +80,23 @@ class CuttleEnvironment:
                 rank_list.append(self.getIndex(rank, suit))
             self.royal_indicies.append(rank_list)
 
+        self.cur_eight_royals = [False, False, False, False]
+        self.off_eight_royals = [False, False, False, False]
+
+        self.cur_seen = []
+        self.off_seen = []
+
+        self.cur_queens = 0
+        self.off_queens = 0
+
+        self.countered = False
+        self.passed = False
         # Generates the actions, as well as determining how many actions are in the environment.
         # Actions from the action_to_move dict are of the form (moveType, [args]),
         # where moveType is one of the functions below.
         self.action_to_move, self.actions = self.generateActions()
 
+        self.one_offs = {self.aceAction: 1, self.twoAction: 2, self.threeAction: 3, self.fourAction: 4, self.fiveAction: 5, self.sixAction: 6, self.sevenAction01: 7, self.nineAction: 8, self.twoCounter:2}
         # Gym helps us out so we make gym spaces
         self.observation_space = self.get_obs()
 
@@ -92,6 +107,7 @@ class CuttleEnvironment:
         # while off_ zones are the opposite player_'s hand and field
         # This allows passControl to affect what will be visible to who
         # when turns or priority changes.
+        self.updateRevealed()
         return {
             "Current Zones": self.current_zones,
             "Off-Player Field": self.off_zones["Field"],
@@ -155,7 +171,7 @@ class CuttleEnvironment:
         ob = self.get_obs()
         score, threshold = self.scoreState()
         terminated = score >= threshold
-        truncated = False
+        truncated = not np.any(self.deck)
 
         # ob is of the form [dict, dict] and should be broken up when reading a state
         # print(act)
@@ -266,12 +282,13 @@ class CuttleEnvironment:
 
         hand[card] = False  # type: ignore
         scrap[card] = True
-        for rank_list in self.point_indicies:
-            for card in rank_list:
-                if oppfield[card] or selfField[card]:  # type:ignore
-                    oppfield[card] = False  # type:ignore
-                    selfField[card] = False  # type:ignore
-                    scrap[card] = True
+        if not self.countered:
+            for rank_list in self.point_indicies:
+                for card in rank_list:
+                    if oppfield[card] or selfField[card]:  # type:ignore
+                        oppfield[card] = False  # type:ignore
+                        selfField[card] = False  # type:ignore
+                        scrap[card] = True
 
     def twoAction(self, cardAndTarget):
         hand = self.current_zones.get("Hand")
@@ -282,11 +299,23 @@ class CuttleEnvironment:
         target = cardAndTarget[1]
 
         hand[card] = False  # type: ignore
-        oppfield[target] = False  # type: ignore
         scrap[card] = True
-        scrap[target] = True
+        if not self.countered:
+            oppfield[target] = False  # type: ignore
+            scrap[target] = True
 
         return f"Scrapped {target} with {card}"
+
+    def twoCounter(self, card):
+        hand = self.current_zones.get("Hand")
+        scrap = self.scrap
+
+        hand[card] = False
+        scrap[card] = True
+
+    def passPriority(self, *args):
+        self.passed = True
+        return "Passed Priority"
 
     def threeAction(self, cardAndTarget):
         hand = self.current_zones.get("Hand")
@@ -296,9 +325,10 @@ class CuttleEnvironment:
         target = cardAndTarget[1]
 
         hand[card] = False  # type: ignore
-        hand[target] = True  # type: ignore
         scrap[card] = True
-        scrap[target] = False
+        if not self.countered:
+            hand[target] = True  # type: ignore
+            scrap[target] = False
 
         # Mark target in revealed later
 
@@ -306,7 +336,8 @@ class CuttleEnvironment:
 
     # TODO
     def fourAction(self, card):
-        self.stack[0] = 4
+        if not self.countered:
+            self.stack[0] = 4
 
         hand = self.current_zones.get("Hand")
         scrap = self.scrap
@@ -333,9 +364,9 @@ class CuttleEnvironment:
 
         hand[card] = False  # type: ignore
         scrap[card] = True
-
-        self.drawAction()
-        self.drawAction()
+        if not self.countered:
+            self.drawAction()
+            self.drawAction()
 
     def sixAction(self, card):
         hand = self.current_zones.get("Hand")
@@ -345,17 +376,19 @@ class CuttleEnvironment:
 
         hand[card] = False  # type: ignore
         scrap[card] = True
-        for rank_list in self.royal_indicies:
-            for card in rank_list:
-                if oppfield[card] or selfField[card]:  # type:ignore
-                    oppfield[card] = False  # type:ignore
-                    selfField[card] = False  # type:ignore
-                    scrap[card] = True
+        if not self.countered:
+            for rank_list in self.royal_indicies:
+                for card in rank_list:
+                    if oppfield[card] or selfField[card]:  # type:ignore
+                        oppfield[card] = False  # type:ignore
+                        selfField[card] = False  # type:ignore
+                        scrap[card] = True
 
     # TODO
     def sevenAction01(self, card):
         # If a seven isn't already being resolved, reveal the top
-        self.stack[0] = 7
+        if not self.countered:
+            self.stack[0] = 7
         hand = self.current_zones.get("Hand")
         scrap = self.scrap
 
@@ -369,7 +402,7 @@ class CuttleEnvironment:
         field = self.current_zones.get("Field")
 
         field[target] = True  # type: ignore
-        to_top = self.effect_shown[1 - self.effect_shown.index(target)] - 1
+        to_top = self.effect_shown[1 - self.effect_shown.index(np.int64(target)[0])] - 1
 
         self.top_deck = [to_top]
         self.deck[to_top] = True
@@ -377,8 +410,16 @@ class CuttleEnvironment:
         self.effect_shown = [0, 0]
 
     # TODO
-    def eightRoyal(self):
-        pass
+    def eightRoyal(self, card):
+        hand = self.current_zones["Hand"]
+        field = self.current_zones["Field"]
+
+        hand[card] = False
+        field[card] = True
+        i = self.point_indicies[7].index(card[0])
+        self.cur_eight_royals[i] = True
+
+
 
     def nineAction(self, cardtargetself_hit):
         curr_hand = self.current_zones.get("Hand")
@@ -393,15 +434,19 @@ class CuttleEnvironment:
 
         curr_hand[card] = False  # type: ignore
         scrap[card] = True
-
-        if self_hit:
-            curr_field[target] = False  # type: ignore
-            curr_hand[target] = True  # type: ignore
-            self.current_bounced = [target]
-        else:
-            off_field[target] = False  # type: ignore
-            off_hand[target] = True  # type: ignore
-            self.off_bounced = [target]
+        if not self.countered:
+            if self_hit:
+                curr_field[target] = False  # type: ignore
+                curr_hand[target] = True  # type: ignore
+                self.current_bounced = [target]
+                self.current_zones["Revealed"][target] = True
+                self.cur_seen.append(target)
+            else:
+                off_field[target] = False  # type: ignore
+                off_hand[target] = True  # type: ignore
+                self.off_bounced = [target]
+                self.off_zones["Revealed"][target] = True
+                self.off_seen.append(target)
 
     def generateActions(self):
         # Initializes storage mediums
@@ -439,6 +484,12 @@ class CuttleEnvironment:
                     act_dict.update({actions: (self.twoAction, [x, target])})
                     actions += 1
 
+        for x in self.point_indicies[1]:
+            act_dict.update({actions: (self.twoCounter, [x])})
+            actions += 1
+
+        act_dict.update({actions: (self.passPriority, [])})
+        actions += 1
         # Three: Grab a card from scrap
         for x in self.point_indicies[2]:
             for target in range(52):
@@ -480,6 +531,10 @@ class CuttleEnvironment:
             act_dict.update({actions: (self.sevenAction02, [x])})
             actions += 1
 
+        for x in self.point_indicies[7]:
+            act_dict.update({actions: (self.eightRoyal, [x])})
+            actions += 1
+
         for x in self.point_indicies[8]:
             # 13 cards per rank, we are looking for rank 8 (Nine), one for each card
             for y in range(52):
@@ -492,21 +547,21 @@ class CuttleEnvironment:
 
         return act_dict, actions
 
-    def generateActionMask(self):
+    def generateActionMask(self, countering = False):
         inhand = np.where(self.current_zones["Hand"])
         self_field = np.where(self.current_zones["Field"])
         onfield = np.where(self.off_zones["Field"])
         scrap = np.where(self.scrap)[0]
         # Need this later for four
         # trunk-ignore(ruff/F841)
-        opp_hand = np.where(self.off_zones["Hand"])[0]
 
         valid_actions = []
 
         for act_index, move in self.action_to_move.items():
             moveType = move[0]
             args = move[1]
-            if moveType == self.drawAction and self.stack[0] == 0:
+            if moveType == self.drawAction and self.stack[0] == 0 and len(inhand[0]) < 9:
+                #print(inhand[0])
                 valid_actions.append(act_index)
             elif moveType == self.scoreAction and self.stack[0] == 0:
                 card = args
@@ -537,22 +592,31 @@ class CuttleEnvironment:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
-            elif moveType == self.nineAction and self.stack[0] == 0:
+            elif moveType == self.nineAction and self.stack[0] == 0: # Queen adjust
                 card = move[1][0]
                 if card in inhand[0]:
                     target = move[1][1]
                     selfhit = move[1][2]
 
                     if selfhit and self_field[0].size > 0 and target in self_field[0]:
-                        valid_actions.append(act_index)
+                        if self.cur_queens == 1 and target in self.royal_indicies[1]:
+                            valid_actions.append(act_index)
+                        elif self.cur_queens == 0:
+                            valid_actions.append(act_index)
                     elif not selfhit and onfield[0].size > 0 and target in onfield[0]:
-                        valid_actions.append(act_index)
-            elif moveType == self.twoAction and self.stack[0] == 0:
+                        if self.off_queens == 1 and target in self.royal_indicies[1]:
+                            valid_actions.append(act_index)
+                        elif self.off_queens == 0:
+                            valid_actions.append(act_index)
+            elif moveType == self.twoAction and self.stack[0] == 0: # Queen adjust
                 card = args[0]
                 if card in inhand[0]:
                     target = args[1]
                     if target in onfield[0]:
-                        valid_actions.append(act_index)
+                        if self.off_queens == 1 and target in self.royal_indicies[1]:
+                            valid_actions.append(act_index)
+                        elif self.off_queens == 0:
+                            valid_actions.append(act_index)
             elif moveType == self.threeAction and self.stack[0] == 0:
                 card = args[0]
                 if card in inhand[0]:
@@ -567,7 +631,7 @@ class CuttleEnvironment:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
-            elif moveType == self.sevenAction02 and self.stack[0] == 7:
+            elif moveType == self.sevenAction02 and self.stack[0] == 7 and not countering:
                 target = args[0]
                 if target != 0 and target in self.effect_shown:
                     valid_actions.append(act_index)
@@ -575,7 +639,7 @@ class CuttleEnvironment:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
-            elif moveType == self.resolveFour and self.stack[0] == 4:
+            elif moveType == self.resolveFour and self.stack[0] == 4 and not countering:
                 if len(args) == 0:
                     if len(inhand[0]) == 0:
                         valid_actions.append(act_index)
@@ -590,7 +654,16 @@ class CuttleEnvironment:
                         t2 = args[1]
                         if t1 in inhand[0] and t2 in inhand[0]:
                             valid_actions.append(act_index)
-
+            elif moveType == self.twoCounter and countering and self.off_queens == 0: # Queen adjust
+                card = args[0]
+                if card in inhand[0]:
+                    valid_actions.append(act_index)
+            elif moveType == self.passPriority and countering:
+                valid_actions.append(act_index)
+            elif moveType == self.eightRoyal and self.stack[0] == 0:
+                card = args[0]
+                if card in inhand[0]:
+                    valid_actions.append(act_index)
         return valid_actions
 
     # Cards are generated as follows:
@@ -612,11 +685,14 @@ class CuttleEnvironment:
         index = 0
         score = 0
         king_count = 0
+        self.cur_queens = 0
         for _ in range(4):
             for rank in range(13):
                 if field_scored[index]:
                     if rank == 12:
                         king_count += 1
+                    elif rank == 11:
+                        self.cur_queens += 1
                     else:
                         score += rank + 1
                 index += 1
@@ -630,6 +706,8 @@ class CuttleEnvironment:
                 threshold = 10
             case 3:
                 threshold = 5
+            case 4:
+                threshold = 0
             case _:
                 threshold = 21
         return score, threshold
@@ -638,6 +716,15 @@ class CuttleEnvironment:
         temp = self.current_bounced
         self.current_bounced = self.off_bounced
         self.off_bounced = temp
+
+        temp = self.cur_eight_royals
+        self.cur_eight_royals = self.off_eight_royals
+        self.off_eight_royals = temp
+
+        temp = self.cur_queens
+        self.cur_queens = self.off_queens
+        self.off_queens = temp
+
         if self.current_zones is self.player_zones:
             self.current_zones = self.dealer_zones
             self.off_zones = self.player_zones
@@ -667,3 +754,60 @@ class CuttleEnvironment:
 
     def end_turn(self):
         self.current_bounced = []
+
+    def updateStack(self, action, depth = 0):
+        moveType = self.action_to_move[action][0]
+
+        if moveType in self.one_offs.keys():
+            self.stack[depth] = self.one_offs[moveType]
+        else:
+            self.stack[depth] = -1
+
+    def checkResponses(self):
+        if self.passed:
+            self.passed = False
+            return False
+        response = False
+        if self.stack[0] != -1 and self.stack[0] != 0:
+            inhand = np.where(self.off_zones["Hand"])[0]
+
+            for x in self.point_indicies[1]:
+                if x in inhand:
+                    response = True
+        return response
+
+    def stackTop(self):
+        return self.stack[0]
+
+    def emptyStack(self):
+        self.stack = [0, 0, 0, 0, 0]
+
+    def resolveStack(self):
+        counters = 0
+        for x in range(1,5):
+            if self.stack[x] == 2:
+                counters += 1
+            self.stack[x] = 0
+        if counters % 2 == 1:
+            self.stack[0] = 0
+        self.countered = counters % 2 == 1
+
+    def updateRevealed(self):
+
+        for x in self.point_indicies[7]:
+            if not self.current_zones["Field"][x]:
+                i = self.point_indicies[7].index(x)
+                self.cur_eight_royals[i] = False
+
+        if any(self.cur_eight_royals):
+            for x in range(len(self.off_zones["Hand"])):
+                self.off_zones["Revealed"] = self.off_zones["Hand"]
+        else:
+            for x in range(len(self.off_zones["Revealed"])):
+                self.off_zones["Revealed"][x] = False
+
+        for x in self.off_seen:
+            if self.off_zones["Hand"][x]:
+                self.off_zones["Revealed"][x] = True
+            else:
+                self.off_zones["Revealed"][x] = False

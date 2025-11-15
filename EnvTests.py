@@ -201,9 +201,31 @@ def nineTest():
     valid_actions = env.generateActionMask()
     print(valid_actions)
     env.step(valid_actions[3])
+    env.get_obs()
+    print(env.off_zones["Revealed"])
     env.passControl()
     valid_actions = env.generateActionMask()
     print(valid_actions)
+    env.step(valid_actions[0])
+    env.end_turn()
+    env.passControl()
+    env.get_obs()
+    print(env.off_zones["Revealed"])
+    env.off_zones["Hand"][4] = False
+    env.get_obs()
+    print(env.off_zones["Revealed"])
+
+    env.current_zones["Field"][7] = True
+    env.cur_eight_royals[0] = True
+
+    env.get_obs()
+    print(env.off_zones["Revealed"])
+
+    env.current_zones["Field"][7] = False
+    env.cur_eight_royals[0] = True
+
+    env.get_obs()
+    print(env.off_zones["Revealed"])
 
 
 def fourTest():
@@ -246,5 +268,41 @@ def fourTest():
     env.step(valid_actions[0])
     env.render()
 
+def eightTest():
+    env = CuttleEnvironment()
+    # Opp hand 2
+    env.current_zones["Hand"][7] = True
+    env.off_zones["Hand"][5] = True
+    env.off_zones["Hand"][6] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[2])
+    env.get_obs()
+    print(env.off_zones["Revealed"])
 
-fourTest()
+    env.current_zones["Field"][7] = False
+    env.get_obs()
+    print(env.off_zones["Revealed"])
+
+def queenTest():
+    env = CuttleEnvironment()
+    # Opp hand 2
+    env.current_zones["Hand"][11] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[1])
+    env.render()
+    env.off_zones["Hand"][1] = True
+    env.off_zones["Hand"][8] = True
+    env.current_zones["Field"][9] = True
+    env.current_zones["Hand"][24] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[1])
+    env.render()
+    env.passControl()
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+
+
+queenTest()

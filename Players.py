@@ -73,7 +73,7 @@ class Agent(Player):
         # ob should be of the form [dict, dict, zone, zone] so the dicts need to be broken down by get_state()
         state = ob
 
-        if sample > eps__threshold:
+        if sample > eps__threshold and False:
             with torch.no_grad():
                 # t.max(1) will return the largest column value of each row.
                 # second column on max result is index of where max element was
@@ -84,6 +84,8 @@ class Agent(Player):
                         act_out[x] = float("-inf")
                 return act_out.argmax().item()
         else:
+            if not mask:
+                return 0
             return random.choice(mask)
 
     def optimize(self):
