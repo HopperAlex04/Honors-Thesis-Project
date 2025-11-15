@@ -1,355 +1,199 @@
-import torch
-
+import Players
+import time
 from GameEnvironment import CuttleEnvironment
-from Players import Agent, Player
 
+def selfPlayTraining(p1: Players.Agent, p2: Players.Agent, episodes):
+    env = CuttleEnvironment()
+    actions = env.actions
+    currPlayer = p1
+    steps = 0
 
-class WinRewardTraining:
-    def __init__(self, player1: Player, player2: Player):
-        self.player1 = player1
-        self.player2 = player2
-        self.total_steps = 0
-        self.p1_state = None
-        self.p1_act = 0
-        self.p1_next = None
-        self.p2_state = None
-        self.p2_act = 0
-        self.p2_next = None
+    for ep in range(episodes):
+        env.reset()
+        p1_states = []
+        p1_actions = []
+        p1_next_state = None
+        p1_reward = 0
+        turns = 0
+        p2_actions = []
+        p2_states = []
+        p2_next_state = None
+        p2_reward = 0
 
-    def trainLoop(self, episodes=1):
-        # Data for tracking performace
-        self.total_steps = 0
-        p1wins = 0
-        p2wins = 0
+        terminated = False
+        truncated = False
 
-        # Initializing environment
-        self.env = CuttleEnvironment()
+        while not terminated and not truncated:
+            steps += 1
+            currPlayer = p1
 
-        for episode in range(episodes):
-            # Resets the deck and zones, then fills player hands.
-            self.env.reset()
-            turn = 0
-            p1score = 0
-            p2score = 0
+            ob = env.get_obs()
 
-            draw_counter = 0
-            # Game Loop
-            terminated = False
+            p1_states.append(ob)
 
-            self.p1_state = None
-            self.p1_act = 0
-            self.p1_next = None
-
-            self.p2_state = None
-            self.p2_act = 0
-            self.p2_next = None
-
-            while not terminated:
-                turn += 1
-                self.total_steps += 1
-
-                print(
-                    f"{self.player1.name} Score: {p1score}, {self.player2.name} Score: {p2score}, Turns: {turn}"
-                )
-
-                # get an action from 'player'
-                mask = self.env.generateActionMask()
-                ob = self.env.get_obs()
-
-                # Gets an action, needs more parameters for agent actions
-                if isinstance(self.player1, Agent):
-                    self.p1_act = self.player1.getAction(
-                        ob, mask, self.env.actions, turn
-                    )
+            valid_actions = env.generateActionMask()
+            p1_act = p1.getAction(ob, valid_actions, actions, steps)
+            print(valid_actions)
+            p1_actions.append(p1_act)
+            env.updateStack(p1_act)
+            depth = 1
+            while env.checkResponses():
+                if currPlayer == p1:
+                    currPlayer = p2
                 else:
-                    self.p1_act = self.player1.getAction(ob, mask)
-
-                if self.p1_act == 0:
-                    draw_counter += 1
+                    currPlayer = p1
+                env.passControl()
+                #Maybe add a mode flag?
+                valid_actions = env.generateActionMask(countering=True)
+                ob = env.get_obs()
+                response = currPlayer.getAction(ob, valid_actions, actions, steps)
+                env.step(response)
+                if currPlayer == p1:
+                    p1_states.append(ob)
+                    p1_actions.append(response)
                 else:
-                    draw_counter = 0
+                    p2_states.append(ob)
+                    p2_actions.append(response)
+                env.updateStack(response, depth)
+                depth += 1
+            depth = 0
 
-                self.p1_state = ob
-                ob, p1score, terminated, truncated = self.env.step(self.p1_act)
+            env.resolveStack()
 
-                # If the stack isnt empty
-                #   pass control
-                #   Request 2 action, do this 4 times, if no action can be taken, dont call step
-                if self.env.stack[0] == 7:
-                    mask = self.env.generateActionMask()
-                    if isinstance(self.player1, Agent):
-                        self.p1_act = self.player1.getAction(
-                            ob, mask, self.env.actions, turn
-                        )
-                    else:
-                        self.p1_act = self.player1.getAction(ob, mask)
-                    ob, p1score, terminated, truncated = self.env.step(self.p1_act)
-                elif self.env.stack[0] == 4:
-                    self.env.passControl()
-                    if isinstance(self.player2, Agent):
-                        self.p2_act = self.player2.getAction(
-                            ob, mask, self.env.actions, turn
-                        )
-                    else:
-                        self.p2_act = self.player2.getAction(ob, mask)
-                    ob, p1score, terminated, truncated = self.env.step(self.p1_act)
+            if currPlayer == p2:
+                currPlayer = p1
+                env.passControl()
+            if env.stackTop() != 0:
+                env.emptyStack()
+                print(p1_act)
+                ob, p1score, terminated, truncated = env.step(p1_act)
 
-                self.p2_next = ob
+            if env.stackTop() == 7:
+                valid_actions = env.generateActionMask()
+                ob = env.get_obs()
+                p1_states.append(ob)
+                p1_act = p1.getAction (ob, valid_actions, actions, steps)
+                p1_actions.append(p1_act)
+                ob, p1score, terminated, truncated = env.step(p1_act)
 
-                truncated = draw_counter >= 6
+            if env.stackTop()== 4:
+                env.passControl()
+                ob = env.get_obs()
+                p2_states.append(ob)
+                valid_actions = env.generateActionMask()
+                p2_act = p2.getAction(ob, valid_actions, actions, steps)
+                p2_actions.append(p2_act)
+                ob, p2score, terminated, truncated = env.step(p2_act)
+                env.passControl()
 
-                if terminated and turn > 1:
-                    p1wins += 1
-                    if isinstance(self.player1, Agent):
-                        self.p1Win()
+            if terminated:
+                for x in range(len(p1_actions)):
+                    p1.memory.push(p1_states[x], p1_actions[x], None, 1)
+                for x in range(len(p2_actions)):
+                    p2.memory.push(p2_states[x], p2_actions[x], None, -1)
+                break
+            if truncated:
+                for x in range(len(p1_actions)):
+                    p1.memory.push(p1_states[x], p1_actions[x], None, 0)
+                for x in range(len(p2_actions)):
+                    p2.memory.push(p2_states[x], p2_actions[x], None, 0)
                     break
-                elif truncated and turn > 1:
-                    if isinstance(self.player1, Agent):
-                        self.draw()
-                    break
-                elif isinstance(self.player2, Agent) and turn > 1:
-                    self.player2.memory.push(
-                        self.p2_state,
-                        torch.tensor([self.p2_act]),
-                        self.p2_next,
-                        torch.tensor([0]),
-                    )
-                self.env.end_turn()
-                self.env.passControl()
+            #env.render()
 
-                # get an action from the 'dealer'
-                mask = self.env.generateActionMask()
-                ob = self.env.get_obs()
+            # Push P2 stuff and then reset them
 
-                # Gets an action, needs more parameters for agent actions
-                if isinstance(self.player2, Agent):
-                    self.p2_act = self.player2.getAction(
-                        ob, mask, self.env.actions, turn
-                    )
+            env.emptyStack()
+            env.passControl()
+            env.end_turn()
+            p2_next_state = env.get_obs()
+            for x in range(len(p2_actions)):
+                p2.memory.push(p2_states[x], p2_actions[x], p2_next_state, 0)
+
+            p2_states = []
+            p2_actions = []
+
+            currPlayer = p2
+
+            ob = env.get_obs()
+
+            p2_states.append(ob)
+
+            valid_actions = env.generateActionMask()
+            p2_act = p2.getAction(ob, valid_actions, actions, steps)
+            p2_actions.append(p2_act)
+            env.updateStack(p2_act)
+            depth = 1
+            while env.checkResponses():
+                if currPlayer == p2:
+                    currPlayer = p1
                 else:
-                    self.p2_act = self.player2.getAction(ob, mask)
-
-                if self.p2_act == 0:
-                    draw_counter += 1
+                    currPlayer = p2
+                env.passControl()
+                #Maybe add a mode flag?
+                valid_actions = env.generateActionMask(countering=True)
+                ob = env.get_obs()
+                response = currPlayer.getAction(ob, valid_actions, actions, steps)
+                env.step(response)
+                if currPlayer == p1:
+                    p1_states.append(ob)
+                    p1_actions.append(response)
                 else:
-                    draw_counter = 0
+                    p2_states.append(ob)
+                    p2_actions.append(response)
+                env.updateStack(response, depth)
+                depth += 1
+            depth = 0
 
-                self.p2_state = ob
+            env.resolveStack()
 
-                ob, p2score, terminated, truncated = self.env.step(self.p2_act)
+            if currPlayer == p1:
+                currPlayer = p2
+                env.passControl()
+            if env.stackTop() != 0:
+                env.emptyStack()
+                ob, p2score, terminated, truncated = env.step(p2_act)
 
-                if self.env.stack[0] == 7:
-                    mask = self.env.generateActionMask()
-                    if isinstance(self.player1, Agent):
-                        self.p1_act = self.player1.getAction(
-                            ob, mask, self.env.actions, turn
-                        )
-                    else:
-                        self.p1_act = self.player1.getAction(ob, mask)
-                    ob, p1score, terminated, truncated = self.env.step(self.p1_act)
-                elif self.env.stack[0] == 4:
-                    self.env.passControl()
-                    mask = self.env.generateActionMask()
-                    if isinstance(self.player2, Agent):
-                        self.p2_act = self.player2.getAction(
-                            ob, mask, self.env.actions, turn
-                        )
-                    else:
-                        self.p2_act = self.player2.getAction(ob, mask)
-                    ob, p1score, terminated, truncated = self.env.step(self.p2_act)
 
-                self.p1_next = ob
+            if env.stackTop() == 7:
+                valid_actions = env.generateActionMask()
+                ob = env.get_obs()
+                p2_states.append(ob)
+                p2_act = p2.getAction (ob, valid_actions, actions, steps)
+                p2_actions.append(p2_act)
+                ob, p2score, terminated, truncated = env.step(p2_act)
 
-                truncated = draw_counter >= 6
+            if env.stackTop() == 4:
+                env.passControl()
+                ob = env.get_obs()
+                p1_states.append(ob)
+                valid_actions = env.generateActionMask()
+                p1_act = p1.getAction(ob, valid_actions, actions, steps)
+                p1_actions.append(p1_act)
+                ob, p1score, terminated, truncated = env.step(p1_act)
+                env.passControl()
 
-                if terminated:
-                    p2wins += 1
-                    if isinstance(self.player1, Agent):
-                        self.p2Win()
-                    break
-                elif truncated:
-                    if isinstance(self.player1, Agent):
-                        self.draw()
-                    break
-                elif isinstance(self.player1, Agent):
-                    self.player1.memory.push(
-                        self.p1_state,
-                        torch.tensor([self.p1_act]),
-                        self.p1_next,
-                        torch.tensor([0]),
-                    )
-                self.env.end_turn()
-                self.env.passControl()
 
-            print(
-                f"Episode {episode}| {self.player1.name} WR: {p1wins/(episode + 1)} | {self.player2.name} WR {p2wins/(episode + 1)} | Average Turns: {self.total_steps/(episode + 1)}"
-            )
-            if isinstance(self.player1, Agent):
-                self.player1.optimize()
-            if isinstance(self.player2, Agent) and self.player1 != self.player2:
-                self.player2.optimize()
-
-    def validLoop(self, p1, new_player, logging=False, episodes=1):
-        # Allows the ability to validate against other opponents
-        self.player1 = p1
-        self.player2 = new_player
-        total_turns = 0
-        # Data for tracking performace
-        p1wins = 0
-        p2wins = 0
-
-        # Initializing environment
-        self.env = CuttleEnvironment()
-
-        p1log = [0] * self.env.actions
-        p2log = [0] * self.env.actions
-        for episode in range(episodes):
-            # Resets the deck and zones, then fills player hands.
-            self.env.reset()
-            turn = 0
-            p1score = 0
-            p2score = 0
-            draw_counter = 0
-            # Game Loop
-            terminated = False
-
-            while not terminated:
-                turn += 1
-                total_turns += 1
-
-                # get an action from 'player'
-                mask = self.env.generateActionMask()
-                ob = self.env.get_obs()
-
-                # Gets an action, needs more parameters for agent actions
-                if isinstance(self.player1, Agent):
-                    self.p1_act = self.player1.getAction(
-                        ob, mask, self.env.actions, turn
-                    )
-                else:
-                    self.p1_act = self.player1.getAction(ob, mask)
-
-                if logging:
-                    p1log[self.p1_act] += 1
-
-                if len(mask) == 1:
-                    draw_counter += 1
-                else:
-                    draw_counter = 0
-
-                ob, p1score, terminated, truncated = self.env.step(self.p1_act)
-
-                if not truncated:
-                    truncated = draw_counter >= 6
-
-                if terminated and turn > 1:
-                    p1wins += 1
-                    break
-                elif truncated and turn > 1:
+            if terminated:
+                for x in range(len(p1_actions)):
+                    p1.memory.push(p1_states[x], p1_actions[x], None, 1)
+                for x in range(len(p2_actions)):
+                    p2.memory.push(p2_states[x], p2_actions[x], None, -1)
+                break
+            if truncated:
+                for x in range(len(p1_actions)):
+                    p1.memory.push(p1_states[x], p1_actions[x], None, 0)
+                for x in range(len(p2_actions)):
+                    p2.memory.push(p2_states[x], p2_actions[x], None, 0)
                     break
 
-                self.env.passControl()
+            env.emptyStack()
+            env.end_turn()
+            env.passControl()
+            p1_next_state = env.get_obs()
+            p1_states = []
+            p1_actions = []
+            for x in range(len(p1_actions)):
+                p1.memory.push(p1_states[x], p1_actions[x], p1_next_state, 0)
+        print(f"Episode {ep}")
 
-                # get an action from the 'dealer'
-                mask = self.env.generateActionMask()
-                ob = self.env.get_obs()
 
-                # Gets an action, needs more parameters for agent actions
-                if isinstance(self.player1, Agent):
-                    self.p2_act = self.player1.getAction(
-                        ob, mask, self.env.actions, turn
-                    )
-                else:
-                    self.p2_act = self.player1.getAction(ob, mask)
-
-                if logging:
-                    p2log[self.p2_act] += 1
-
-                if len(mask) == 1:
-                    draw_counter += 1
-                else:
-                    draw_counter = 0
-
-                ob, p2score, terminated, truncated = self.env.step(self.p2_act)
-
-                if not truncated:
-                    truncated = draw_counter >= 6
-
-                if terminated:
-                    p2wins += 1
-                    break
-                elif truncated:
-                    break
-
-                self.env.passControl()
-
-                print(
-                    f"{self.player1.name} Score: {p1score}, {self.player2.name} Score: {p2score}, Turns: {turn}"
-                )
-
-            print(
-                f"Episode {episode}| {self.player1.name} WR: {p1wins/(episode + 1)} | {self.player2.name} WR {p2wins/(episode + 1)} | Average Turns: {total_turns/(episode + 1)}"
-            )
-        p1wr = p1wins / (episode + 1)
-        p2wr = p2wins / (episode + 1)
-
-        if logging:
-            self.writelog(p1log, p2log)
-
-        return p1wr, p2wr
-
-    def p1Win(self):
-        if isinstance(self.player1, Agent):
-            self.player1.memory.push(
-                self.p1_state, torch.tensor([self.p1_act]), None, torch.tensor([1])
-            )
-        if isinstance(self.player2, Agent):
-            self.player2.memory.push(
-                self.p2_state, torch.tensor([self.p2_act]), None, torch.tensor([-1])
-            )
-
-    def p2Win(self):
-        if isinstance(self.player1, Agent):
-            self.player1.memory.push(
-                self.p1_state, torch.tensor([self.p1_act]), None, torch.tensor([-1])
-            )
-        if isinstance(self.player2, Agent):
-            self.player2.memory.push(
-                self.p2_state, torch.tensor([self.p2_act]), None, torch.tensor([1])
-            )
-
-    def draw(self):
-        if isinstance(self.player1, Agent):
-            self.player1.memory.push(
-                self.p1_state, torch.tensor([self.p1_act]), None, torch.tensor([0])
-            )
-        if isinstance(self.player2, Agent):
-            self.player2.memory.push(
-                self.p2_state, torch.tensor([self.p2_act]), None, torch.tensor([0])
-            )
-
-    def writelog(self, p1log, p2log):
-        with open("p1log.txt", "w", encoding="utf-8") as f:
-            current_type = None
-            total_taken = 0
-            for move, count in enumerate(p1log):
-                # Figure out the type of move if it is different from current, switch current
-                move_type = self.env.action_to_move[move][0]
-                if move_type != current_type:
-                    f.write(f"{current_type}\n{total_taken}\n")
-                    current_type = move_type
-                    total_taken = 0
-                total_taken += count
-            f.write(f"{current_type}\n{total_taken}\n")
-
-        with open("p2log.txt", "w", encoding="utf-8") as f:
-            current_type = None
-            total_taken = 0
-            for move, count in enumerate(p2log):
-                # Figure out the type of move if it is different from current, switch current
-                move_type = self.env.action_to_move[move][0]
-                if move_type != current_type:
-                    f.write(f"{current_type}\n{total_taken}\n")
-                    current_type = move_type
-                    total_taken = 0
-                total_taken += count

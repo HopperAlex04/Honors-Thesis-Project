@@ -3,7 +3,7 @@ import torch
 import Players
 from GameEnvironment import CuttleEnvironment
 from Networks import NeuralNetwork
-from Training import WinRewardTraining
+import Training
 
 input("Press enter to begin training:")
 
@@ -21,20 +21,23 @@ EPS_END = 0.01
 EPS_DECAY = 2500
 TAU = 0.005
 LR = 3e-4
-trainee = Players.Agent(
+traineePlayer = Players.Agent(
+    "Agent01", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR
+)
+
+traineeDealer = Players.Agent(
     "Agent01", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR
 )
 validation01 = Players.HueristicHighCard("HighCard")
-
-t = WinRewardTraining(trainee, trainee)
 
 while not user_ended:
     user_in = input("Enter 't' to train,'v' to validate, 's' to save, or q to quit")
     match user_in:
         case "t":
-            t.trainLoop(500)
+            Training.selfPlayTraining(traineePlayer, traineeDealer, 10000)
         case "v":
-            t.validLoop(trainee, validation01, True, 500)
+            #t.validLoop(trainee, validation01, True, 500)
+            pass
         case "s":
             model_name = input("Name the model")
             torch.save(trainee.model, f"models/{model_name}")
