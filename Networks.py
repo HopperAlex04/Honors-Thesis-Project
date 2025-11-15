@@ -19,11 +19,9 @@ class NeuralNetwork(nn.Module):
                         input_length += len(x)
                 if isinstance(item, np.ndarray):
                     input_length += len(item)
-                    print(input_length)
                 elif isinstance(item, list):
                     for _ in item:
                         input_length += embedding_size
-                        print(input_length)
             self.embedding = nn.Embedding(
                 53, embedding_size
             )  # 0 indicates nothing is there, 1-52 are cards

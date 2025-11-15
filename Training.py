@@ -71,7 +71,11 @@ class WinRewardTraining:
 
                 self.p1_state = ob
                 ob, p1score, terminated, truncated = self.env.step(self.p1_act)
-                if self.env.stack[0] != 0:
+
+                # If the stack isnt empty
+                #   pass control
+                #   Request 2 action, do this 4 times, if no action can be taken, dont call step
+                if self.env.stack[0] == 7:
                     mask = self.env.generateActionMask()
                     if isinstance(self.player1, Agent):
                         self.p1_act = self.player1.getAction(
@@ -80,7 +84,15 @@ class WinRewardTraining:
                     else:
                         self.p1_act = self.player1.getAction(ob, mask)
                     ob, p1score, terminated, truncated = self.env.step(self.p1_act)
-
+                elif self.env.stack[0] == 4:
+                    self.env.passControl()
+                    if isinstance(self.player2, Agent):
+                        self.p2_act = self.player2.getAction(
+                            ob, mask, self.env.actions, turn
+                        )
+                    else:
+                        self.p2_act = self.player2.getAction(ob, mask)
+                    ob, p1score, terminated, truncated = self.env.step(self.p1_act)
 
                 self.p2_next = ob
 
@@ -126,7 +138,17 @@ class WinRewardTraining:
 
                 ob, p2score, terminated, truncated = self.env.step(self.p2_act)
 
-                if self.env.stack[0] != 0:
+                if self.env.stack[0] == 7:
+                    mask = self.env.generateActionMask()
+                    if isinstance(self.player1, Agent):
+                        self.p1_act = self.player1.getAction(
+                            ob, mask, self.env.actions, turn
+                        )
+                    else:
+                        self.p1_act = self.player1.getAction(ob, mask)
+                    ob, p1score, terminated, truncated = self.env.step(self.p1_act)
+                elif self.env.stack[0] == 4:
+                    self.env.passControl()
                     mask = self.env.generateActionMask()
                     if isinstance(self.player2, Agent):
                         self.p2_act = self.player2.getAction(
@@ -134,6 +156,7 @@ class WinRewardTraining:
                         )
                     else:
                         self.p2_act = self.player2.getAction(ob, mask)
+                    ob, p1score, terminated, truncated = self.env.step(self.p2_act)
 
                 self.p1_next = ob
 
