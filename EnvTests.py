@@ -304,5 +304,33 @@ def queenTest():
     valid_actions = env.generateActionMask()
     print(valid_actions)
 
+def jackTest01():
+    env = CuttleEnvironment()
+    env.current_zones["Hand"][10] = True
+    env.off_zones["Field"][5] = True
+    env.off_zones["Field"][11] = True
+    env.off_zones["Field"][12] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[1])
+    print(env.jackreg)
+    env.render()
+    env.jackmovement()
+    env.render()
 
-queenTest()
+    env.passControl()
+    env.current_zones["Hand"][23] = True
+    valid_actions = env.generateActionMask()
+    print(valid_actions)
+    env.step(valid_actions[1])
+    print(env.jackreg)
+    env.render()
+    env.jackmovement()
+    env.render()
+
+    env.current_zones["Field"][5] = False
+    env.jackmovement()
+    env.render()
+
+
+jackTest01()
