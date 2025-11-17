@@ -89,6 +89,8 @@ class CuttleEnvironment:
         self.cur_queens = 0
         self.off_queens = 0
 
+        self.jackreg = {}
+
         self.countered = False
         self.passed = False
         # Generates the actions, as well as determining how many actions are in the environment.
@@ -419,8 +421,6 @@ class CuttleEnvironment:
         i = self.point_indicies[7].index(card[0])
         self.cur_eight_royals[i] = True
 
-
-
     def nineAction(self, cardtargetself_hit):
         curr_hand = self.current_zones.get("Hand")
         curr_field = self.current_zones.get("Field")
@@ -448,6 +448,24 @@ class CuttleEnvironment:
                 self.off_zones["Revealed"][target] = True
                 self.off_seen.append(target)
 
+    def jackPlay(self, cardandtarget):
+        hand = self.current_zones["Hand"]
+        field = self.current_zones["Field"]
+
+        card = cardandtarget[0]
+        target = cardandtarget[1]
+
+        hand[card] = False
+        field[card] = True
+
+        if target in self.jackreg:
+            self.jackreg[target][1].append(card)
+        else:
+            if field is self.player_field:
+                self.jackreg.update({target: ("dealer", [card])})
+            else:
+                self.jackreg.update({target: ("player", [card])})
+
     def generateActions(self):
         # Initializes storage mediums
         act_dict = {}
@@ -459,17 +477,20 @@ class CuttleEnvironment:
 
         # Adds score actions
         for x in range(52):
-            act_dict.update({actions: (self.scoreAction, x)})
-            actions += 1
+            if x not in self.royal_indicies[0]:
+                act_dict.update({actions: (self.scoreAction, x)})
+                actions += 1
 
         # Adds Scuttle actions
         for x in range(52):
             card_used = self.card_dict[x]  # type: ignore
-            for y in range(52):
-                target = self.card_dict[y]  # type: ignore
-                if target["rank"] < card_used["rank"] or (target["rank"] == card_used["rank"] and target["suit"] < card_used["suit"]):  # type: ignore
-                    act_dict.update({actions: (self.scuttleAction, [x, y])})
-                    actions += 1
+            if not any(x in royal_list for royal_list in self.royal_indicies):
+                for y in range(52):
+                    target = self.card_dict[y]  # type: ignore
+                    if not any(y in royal_list for royal_list in self.royal_indicies):
+                        if target["rank"] < card_used["rank"] or (target["rank"] == card_used["rank"] and target["suit"] < card_used["suit"]):  # type: ignore
+                            act_dict.update({actions: (self.scuttleAction, [x, y])})
+                            actions += 1
 
         # Ace special action: boardwipe
         for x in self.point_indicies[0]:
@@ -545,6 +566,11 @@ class CuttleEnvironment:
                     act_dict.update({actions: (self.nineAction, [x, y, False])})
                     actions += 1
 
+        for x in self.royal_indicies[0]:
+                for y in range(52):
+                    if x != y:
+                        act_dict.update({actions: (self.jackPlay, [x, y])})
+                        actions += 1
         return act_dict, actions
 
     def generateActionMask(self, countering = False):
@@ -664,6 +690,12 @@ class CuttleEnvironment:
                 card = args[0]
                 if card in inhand[0]:
                     valid_actions.append(act_index)
+            elif moveType == self.jackPlay and self.stack[0] == 0:
+                card = args[0]
+                if card in inhand[0]:
+                    target = args[1]
+                    if target in onfield[0] and not any(target in r_list for r_list in self.royal_indicies):
+                        valid_actions.append(act_index)
         return valid_actions
 
     # Cards are generated as follows:
@@ -761,14 +793,14 @@ class CuttleEnvironment:
         if moveType in self.one_offs.keys():
             self.stack[depth] = self.one_offs[moveType]
         else:
-            self.stack[depth] = -1
+            self.stack[depth] = 53
 
     def checkResponses(self):
         if self.passed:
             self.passed = False
             return False
         response = False
-        if self.stack[0] != -1 and self.stack[0] != 0:
+        if self.stack[0] != 53 and self.stack[0] != 0:
             inhand = np.where(self.off_zones["Hand"])[0]
 
             for x in self.point_indicies[1]:
@@ -811,3 +843,38 @@ class CuttleEnvironment:
                 self.off_zones["Revealed"][x] = True
             else:
                 self.off_zones["Revealed"][x] = False
+
+    def jackmovement(self):
+        pfield = self.player_field
+        dfield = self.dealer_field
+        killed_keys = []
+        for x in self.jackreg.keys():
+            if pfield[x] or dfield[x]:
+                pfield[x] = False
+                dfield[x] = False
+
+                if self.jackreg[x][0] == "player":
+                    pfield[x] = True
+                else:
+                    dfield[x] = True
+
+                for card in self.jackreg[x][1]:
+                    if not (pfield[card] or dfield[card]):
+                        self.jackreg[x][1].remove(card)
+
+                if len(self.jackreg[x][1]) % 2 == 1:
+                    if self.jackreg[x][0] == "player":
+                        dfield[x] = True
+                        pfield[x] = False
+                    else:
+                        pfield[x] = True
+                        dfield[x] = False
+            else:
+                for card in self.jackreg[x][1]:
+                    pfield[card] = False
+                    dfield[card] = False
+                    self.scrap[card] = True
+                killed_keys.append(x)
+        for key in killed_keys:
+            self.jackreg.pop(key, 0)
+

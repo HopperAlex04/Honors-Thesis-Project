@@ -73,7 +73,7 @@ class Agent(Player):
         # ob should be of the form [dict, dict, zone, zone] so the dicts need to be broken down by get_state()
         state = ob
 
-        if sample > eps__threshold and False:
+        if sample > eps__threshold:
             with torch.no_grad():
                 # t.max(1) will return the largest column value of each row.
                 # second column on max result is index of where max element was
@@ -115,15 +115,15 @@ class Agent(Player):
         non_final_next_states = [s for s in batch.next_state if s is not None]
 
         state_batch = batch.state
-        action_batch = torch.stack(batch.action)
-        reward_batch = torch.stack(batch.reward)
-
+        action_batch = torch.cat(batch.action)
+        reward_batch = torch.cat(batch.reward)
         # print(torch.stack(action_batch))
-        state_action_values = self.policy(state_batch).gather(1, action_batch)
+        state_action_values = self.policy(state_batch).gather(1, action_batch.unsqueeze(0))
         next_state_values = torch.zeros(self.batch_size)
 
         with torch.no_grad():
-            next_state_values[non_final_mask] = self.policy(non_final_next_states).max(1).values  # type: ignore
+            if len(non_final_next_states) > 0:
+                next_state_values[non_final_mask] = self.policy(non_final_next_states).max(1).values  # type: ignore
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * self.gamma) + reward_batch
 

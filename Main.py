@@ -14,7 +14,7 @@ actions = env.actions
 model = NeuralNetwork(env.observation_space, 2, actions, None)
 
 # Eventually make these adjustable as well
-BATCH_SIZE = 4096
+BATCH_SIZE = 128
 GAMMA = 0.4
 EPS_START = 0.9
 EPS_END = 0.01

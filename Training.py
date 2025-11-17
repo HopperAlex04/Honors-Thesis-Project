@@ -1,5 +1,5 @@
 import Players
-import time
+import torch
 from GameEnvironment import CuttleEnvironment
 
 def selfPlayTraining(p1: Players.Agent, p2: Players.Agent, episodes):
@@ -33,7 +33,6 @@ def selfPlayTraining(p1: Players.Agent, p2: Players.Agent, episodes):
 
             valid_actions = env.generateActionMask()
             p1_act = p1.getAction(ob, valid_actions, actions, steps)
-            print(valid_actions)
             p1_actions.append(p1_act)
             env.updateStack(p1_act)
             depth = 1
@@ -65,7 +64,6 @@ def selfPlayTraining(p1: Players.Agent, p2: Players.Agent, episodes):
                 env.passControl()
             if env.stackTop() != 0:
                 env.emptyStack()
-                print(p1_act)
                 ob, p1score, terminated, truncated = env.step(p1_act)
 
             if env.stackTop() == 7:
@@ -88,15 +86,15 @@ def selfPlayTraining(p1: Players.Agent, p2: Players.Agent, episodes):
 
             if terminated:
                 for x in range(len(p1_actions)):
-                    p1.memory.push(p1_states[x], p1_actions[x], None, 1)
+                    p1.memory.push(p1_states[x], torch.tensor([p1_actions[x]]), None, torch.tensor([1]))
                 for x in range(len(p2_actions)):
-                    p2.memory.push(p2_states[x], p2_actions[x], None, -1)
+                    p2.memory.push(p2_states[x], torch.tensor([p2_actions[x]]), None, torch.tensor([-1]))
                 break
             if truncated:
                 for x in range(len(p1_actions)):
-                    p1.memory.push(p1_states[x], p1_actions[x], None, 0)
+                    p1.memory.push(p1_states[x], torch.tensor([p1_actions[x]]), None, torch.tensor([0]))
                 for x in range(len(p2_actions)):
-                    p2.memory.push(p2_states[x], p2_actions[x], None, 0)
+                    p2.memory.push(p2_states[x], torch.tensor([p2_actions[x]]), None, torch.tensor([0]))
                     break
             #env.render()
 
@@ -107,7 +105,7 @@ def selfPlayTraining(p1: Players.Agent, p2: Players.Agent, episodes):
             env.end_turn()
             p2_next_state = env.get_obs()
             for x in range(len(p2_actions)):
-                p2.memory.push(p2_states[x], p2_actions[x], p2_next_state, 0)
+                p2.memory.push(p2_states[x], torch.tensor([p2_actions[x]]), p2_next_state, torch.tensor([0]))
 
             p2_states = []
             p2_actions = []
@@ -175,15 +173,15 @@ def selfPlayTraining(p1: Players.Agent, p2: Players.Agent, episodes):
 
             if terminated:
                 for x in range(len(p1_actions)):
-                    p1.memory.push(p1_states[x], p1_actions[x], None, 1)
+                    p1.memory.push(p1_states[x], torch.tensor([p1_actions[x]]), None, torch.tensor([1]))
                 for x in range(len(p2_actions)):
-                    p2.memory.push(p2_states[x], p2_actions[x], None, -1)
+                    p2.memory.push(p2_states[x], torch.tensor([p2_actions[x]]), None, torch.tensor([-1]))
                 break
             if truncated:
                 for x in range(len(p1_actions)):
-                    p1.memory.push(p1_states[x], p1_actions[x], None, 0)
+                    p1.memory.push(p1_states[x], torch.tensor([p1_actions[x]]), None, torch.tensor([0]))
                 for x in range(len(p2_actions)):
-                    p2.memory.push(p2_states[x], p2_actions[x], None, 0)
+                    p2.memory.push(p2_states[x], torch.tensor([p2_actions[x]]), None, torch.tensor([0]))
                     break
 
             env.emptyStack()
@@ -193,7 +191,10 @@ def selfPlayTraining(p1: Players.Agent, p2: Players.Agent, episodes):
             p1_states = []
             p1_actions = []
             for x in range(len(p1_actions)):
-                p1.memory.push(p1_states[x], p1_actions[x], p1_next_state, 0)
+                p1.memory.push(p1_states[x], torch.tensor([p1_actions[x]]), p1_next_state, torch.tensor([0]))
+        p1.optimize()
+        p2.optimize()
+
         print(f"Episode {ep}")
 
 

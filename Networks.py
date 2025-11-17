@@ -23,7 +23,7 @@ class NeuralNetwork(nn.Module):
                     for _ in item:
                         input_length += embedding_size
             self.embedding = nn.Embedding(
-                53, embedding_size
+                54, embedding_size
             )  # 0 indicates nothing is there, 1-52 are cards
             self.linear_relu_stack = nn.Sequential(
                 nn.Linear(input_length, actions), nn.Tanh()
@@ -63,5 +63,8 @@ class NeuralNetwork(nn.Module):
             final_list = []
             for state in x:
                 final_list.append(self.get_state(state))
-            final_ten = torch.stack(final_list)
+            final_ten = torch.empty(378, 3503)
+            if final_list:
+                final_ten = torch.stack(final_list)
+
             return final_ten
