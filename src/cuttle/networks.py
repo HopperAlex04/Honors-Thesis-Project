@@ -5,7 +5,7 @@ This module provides a neural network that processes game observations
 and outputs Q-values for all possible actions.
 """
 
-from typing import Dict, List, Union, Optional, Any
+from typing import Dict, List, Union, Optional, Any, Tuple
 import numpy as np
 import torch
 from torch import nn
@@ -69,9 +69,14 @@ class NeuralNetwork(nn.Module):
             # Vocab size 54: 0 = empty, 1-52 = cards, 53+ = special values
             self.embedding = nn.Embedding(EMBEDDING_VOCAB_SIZE, embedding_size)
             
-            # Default network: single linear layer with Tanh activation
+            # Default network: two hidden layers with ReLU activations
+            # Conservative architecture: 256 → 128 → num_actions
             self.linear_relu_stack = nn.Sequential(
-                nn.Linear(input_length, num_actions),
+                nn.Linear(input_length, 256),
+                nn.ReLU(),
+                nn.Linear(256, 128),
+                nn.ReLU(),
+                nn.Linear(128, num_actions),
                 nn.Tanh()
             )
     
@@ -109,13 +114,13 @@ class NeuralNetwork(nn.Module):
     
     def forward(
         self,
-        observation: Union[Dict[str, Any], List[Dict[str, Any]]]
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
     ) -> torch.Tensor:
         """
         Forward pass through the network.
         
         Args:
-            observation: Single observation dict or list of observations for batching
+            observation: Single observation dict, list of observations, or tuple of observations for batching
             
         Returns:
             Q-values tensor of shape [batch_size, num_actions] or [num_actions]
@@ -126,24 +131,24 @@ class NeuralNetwork(nn.Module):
     
     def _preprocess_observation(
         self,
-        observation: Union[Dict[str, Any], List[Dict[str, Any]]]
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
     ) -> torch.Tensor:
         """
         Preprocess observation(s) into network input tensor.
         
         Args:
-            observation: Single observation dict or list of observations
+            observation: Single observation dict, list of observations, or tuple of observations
             
         Returns:
             Preprocessed tensor ready for network input
         """
         if isinstance(observation, dict):
             return self._preprocess_single(observation)
-        elif isinstance(observation, list):
-            return self._preprocess_batch(observation)
+        elif isinstance(observation, (list, tuple)):
+            return self._preprocess_batch(list(observation))
         else:
             raise TypeError(
-                f"Expected dict or list of dicts, got {type(observation)}"
+                f"Expected dict, list, or tuple of dicts, got {type(observation)}"
             )
     
     def _preprocess_single(self, obs: Dict[str, Any]) -> torch.Tensor:
@@ -185,16 +190,22 @@ class NeuralNetwork(nn.Module):
         
         return final
     
-    def _preprocess_batch(self, observations: List[Dict[str, Any]]) -> torch.Tensor:
+    def _preprocess_batch(
+        self, 
+        observations: Union[List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
+    ) -> torch.Tensor:
         """
         Preprocess a batch of observations.
         
         Args:
-            observations: List of observation dictionaries
+            observations: List or tuple of observation dictionaries
             
         Returns:
             Preprocessed tensor of shape [batch_size, feature_dim]
         """
+        # Convert tuple to list for consistent processing
+        if isinstance(observations, tuple):
+            observations = list(observations)
         if not observations:
             # Return empty tensor with correct shape
             device = next(self.parameters()).device

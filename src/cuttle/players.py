@@ -384,7 +384,7 @@ class Agent(Player):
         self.lr = lr
 
         # Replay Memory
-        self.memory = ReplayMemory(50000)
+        self.memory = ReplayMemory(100000)  # Increased capacity for better learning
 
         # Using Adam optimization
         self.optimizer = torch.optim.Adam(
