@@ -127,6 +127,218 @@ class HeuristicHighCard(Player):
         return act_out if act_out > 0 else (valid_actions[0] if valid_actions else 0)
 
 
+class ScoreGapMaximizer(Player):
+    """
+    Player that selects actions to maximize the score gap (player_score - opponent_score).
+    
+    This player evaluates each valid action by estimating the change in score gap
+    that would result from taking that action, then selects the action that
+    maximizes this gap.
+    """
+    
+    def __init__(self, name: str):
+        """
+        Initialize a score gap maximizer player.
+        
+        Args:
+            name: Player's name/identifier
+        """
+        super().__init__(name)
+        # Create action registry once (it's static and doesn't depend on game state)
+        from GameEnvironment import CuttleEnvironment
+        temp_env = CuttleEnvironment()
+        self.action_registry = temp_env.action_registry
+    
+    def _calculate_card_value(self, card_index: int, card_dict: dict) -> int:
+        """
+        Calculate the point value of a card when scored.
+        
+        Args:
+            card_index: Index of the card (0-51)
+            card_dict: Dictionary mapping card indices to rank/suit info
+            
+        Returns:
+            Point value of the card (0 for Jacks, rank+1 for others, special for Kings)
+        """
+        card_info = card_dict.get(card_index, {})
+        rank = card_info.get("rank", 0)
+        
+        # Jacks (rank 10) cannot be scored, return 0
+        if rank == 10:
+            return 0
+        
+        # Kings (rank 12) don't add points but reduce threshold
+        # We'll give them a high value since they're very valuable
+        if rank == 12:
+            return 20  # High value for threshold reduction
+        
+        # Queens (rank 11) don't add points directly
+        if rank == 11:
+            return 5  # Moderate value for queen effects
+        
+        # All other cards: rank + 1 points
+        return rank + 1
+    
+    def _estimate_score_gap_change(
+        self, 
+        action_obj, 
+        observation: dict,
+        action_registry
+    ) -> float:
+        """
+        Estimate the change in score gap from taking an action.
+        
+        Args:
+            action_obj: Action object to evaluate
+            observation: Current game observation
+            action_registry: Action registry for card information
+            
+        Returns:
+            Estimated change in score gap (positive = good for us)
+        """
+        from Actions import ScoreAction, ScuttleAction, AceAction
+        
+        card_dict = action_registry.card_dict
+        current_field = observation["Current Zones"]["Field"]
+        opponent_field = observation["Off-Player Field"]
+        
+        gap_change = 0.0
+        
+        if isinstance(action_obj, ScoreAction):
+            # Scoring a card: adds points to our score
+            card = action_obj.card
+            card_value = self._calculate_card_value(card, card_dict)
+            gap_change = card_value
+        
+        elif isinstance(action_obj, ScuttleAction):
+            # Scuttling: removes opponent's card (good) but uses our card (bad)
+            our_card = action_obj.card
+            opponent_card = action_obj.target
+            
+            # Value we lose from using our card
+            our_card_value = self._calculate_card_value(our_card, card_dict)
+            
+            # Value opponent loses from losing their card
+            opponent_card_value = self._calculate_card_value(opponent_card, card_dict)
+            
+            # Net change: opponent loses more than we lose = positive gap change
+            gap_change = opponent_card_value - our_card_value
+        
+        elif isinstance(action_obj, AceAction):
+            # Ace wipes all point cards from both fields
+            # Calculate total points on both fields that would be destroyed
+            our_points_lost = 0
+            opponent_points_lost = 0
+            
+            point_indicies = action_registry.point_indicies
+            for rank_list in point_indicies:
+                for card_idx in rank_list:
+                    card_value = self._calculate_card_value(card_idx, card_dict)
+                    if current_field[card_idx]:
+                        our_points_lost += card_value
+                    if opponent_field[card_idx]:
+                        opponent_points_lost += card_value
+            
+            # Net change: if opponent loses more, it's good for us
+            gap_change = opponent_points_lost - our_points_lost
+        
+        else:
+            # Other actions (Draw, Two, Three, Five, Six, etc.) - use heuristics
+            from Actions import (
+                DrawAction, TwoAction, ThreeAction, FiveAction, 
+                SixAction, SevenAction01, NineAction
+            )
+            
+            if isinstance(action_obj, DrawAction):
+                # Draw: potentially good (more options), but no immediate score change
+                gap_change = 0.1  # Small positive value for drawing
+            
+            elif isinstance(action_obj, TwoAction):
+                # Two: Scraps opponent's royal card - good if opponent has valuable royals
+                target = action_obj.target
+                target_value = self._calculate_card_value(target, card_dict)
+                # If opponent has this royal on field, removing it is valuable
+                if opponent_field[target]:
+                    gap_change = target_value * 0.5  # Moderate value
+                else:
+                    gap_change = 0.0  # No immediate benefit
+            
+            elif isinstance(action_obj, ThreeAction):
+                # Three: Grabs card from scrap - could be valuable
+                gap_change = 2.0  # Moderate positive value
+            
+            elif isinstance(action_obj, FiveAction):
+                # Five: Draws 2 cards - good for options
+                gap_change = 0.2  # Small positive value
+            
+            elif isinstance(action_obj, SixAction):
+                # Six: Wipes all royal cards - calculate value
+                our_royals_lost = 0
+                opponent_royals_lost = 0
+                
+                royal_indicies = action_registry.royal_indicies
+                for royal_list in royal_indicies:
+                    for card_idx in royal_list:
+                        card_value = self._calculate_card_value(card_idx, card_dict)
+                        if current_field[card_idx]:
+                            our_royals_lost += card_value
+                        if opponent_field[card_idx]:
+                            opponent_royals_lost += card_value
+                
+                gap_change = opponent_royals_lost - our_royals_lost
+            
+            elif isinstance(action_obj, (SevenAction01, NineAction)):
+                # Seven and Nine have complex effects - moderate value
+                gap_change = 1.0
+            
+            else:
+                # Unknown action type - neutral
+                gap_change = 0.0
+        
+        return gap_change
+    
+    def getAction(
+        self,
+        observation: dict,
+        valid_actions: List[int],
+        total_actions: int,
+        steps_done: int,
+        force_greedy: bool = False
+    ) -> int:
+        """
+        Select action that maximizes score gap.
+        
+        Args:
+            observation: Current game observation
+            valid_actions: List of valid action indices
+            total_actions: Total number of possible actions
+            steps_done: Not used by this player
+            force_greedy: Not used by this player
+            
+        Returns:
+            Action index that maximizes expected score gap
+        """
+        if not valid_actions:
+            return 0
+        
+        # Evaluate each valid action
+        best_action = valid_actions[0]
+        best_gap_change = float("-inf")
+        
+        for action_id in valid_actions:
+            action_obj = self.action_registry.get_action(action_id)
+            if action_obj:
+                gap_change = self._estimate_score_gap_change(
+                    action_obj, observation, self.action_registry
+                )
+                
+                if gap_change > best_gap_change:
+                    best_gap_change = gap_change
+                    best_action = action_id
+        
+        return best_action
+
+
 class Agent(Player):
     """DQN-based agent that learns to play using deep reinforcement learning."""
     

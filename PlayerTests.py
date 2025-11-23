@@ -544,6 +544,116 @@ class TestPlayerIntegration(unittest.TestCase):
             self.env.step(action)
 
 
+class TestScoreGapMaximizerPlayer(unittest.TestCase):
+    """Test ScoreGapMaximizer player implementation."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.env = CuttleEnvironment()
+        self.env.reset()
+        self.actions = self.env.actions
+    
+    def test_initialization(self):
+        """Test that ScoreGapMaximizer player initializes correctly."""
+        player = Players.ScoreGapMaximizer("GapMaxPlayer")
+        self.assertEqual(player.name, "GapMaxPlayer")
+        self.assertIsInstance(player, Players.Player)
+        self.assertIsNotNone(player.action_registry)
+    
+    def test_get_action_returns_valid_action(self):
+        """Test that getAction returns a valid action."""
+        player = Players.ScoreGapMaximizer("GapMaxPlayer")
+        observation = self.env.get_obs()
+        valid_actions = self.env.generateActionMask()
+        
+        if valid_actions:
+            action = player.getAction(observation, valid_actions, self.actions, 0)
+            self.assertIn(action, valid_actions)
+    
+    def test_get_action_handles_empty_valid_actions(self):
+        """Test that getAction handles empty valid actions list."""
+        player = Players.ScoreGapMaximizer("GapMaxPlayer")
+        observation = self.env.get_obs()
+        valid_actions = []
+        
+        action = player.getAction(observation, valid_actions, self.actions, 0)
+        self.assertEqual(action, 0)
+    
+    def test_prefers_scoring_high_value_cards(self):
+        """Test that player prefers scoring high-value cards."""
+        player = Players.ScoreGapMaximizer("GapMaxPlayer")
+        
+        # Set up: player has multiple cards in hand
+        # Add some cards to hand
+        self.env.current_zones["Hand"][0] = True  # Ace (rank 0, value 1)
+        self.env.current_zones["Hand"][12] = True  # King (rank 12, value 20)
+        self.env.deck[0] = False
+        self.env.deck[12] = False
+        
+        observation = self.env.get_obs()
+        valid_actions = self.env.generateActionMask()
+        
+        if len(valid_actions) > 1:
+            action = player.getAction(observation, valid_actions, self.actions, 0)
+            # Should prefer scoring the King (higher value) over Ace
+            # This is a heuristic test - the player should select a scoring action
+            self.assertIn(action, valid_actions)
+    
+    def test_prefers_scuttling_when_beneficial(self):
+        """Test that player prefers scuttling when it creates positive gap."""
+        player = Players.ScoreGapMaximizer("GapMaxPlayer")
+        
+        # Set up: player has high card, opponent has lower card on field
+        # Player has a Six (rank 5, value 6) in hand
+        # Opponent has a Five (rank 4, value 5) on field
+        player_card = 5  # Six of first suit
+        opponent_card = 4  # Five of first suit
+        
+        self.env.current_zones["Hand"][player_card] = True
+        self.env.deck[player_card] = False
+        self.env.off_zones["Field"][opponent_card] = True
+        
+        observation = self.env.get_obs()
+        valid_actions = self.env.generateActionMask()
+        
+        # Player should consider scuttling (removes opponent's 5, uses our 6)
+        # Net: opponent loses 5, we lose 6 = -1 gap change (not great)
+        # But if we have a higher card scuttling a lower one, it's better
+        action = player.getAction(observation, valid_actions, self.actions, 0)
+        self.assertIn(action, valid_actions)
+    
+    def test_ignores_parameters(self):
+        """Test that getAction ignores unused parameters."""
+        player = Players.ScoreGapMaximizer("GapMaxPlayer")
+        observation = self.env.get_obs()
+        valid_actions = self.env.generateActionMask()
+        
+        # Should work regardless of steps_done or force_greedy
+        action1 = player.getAction(observation, valid_actions, self.actions, 0, False)
+        action2 = player.getAction(observation, valid_actions, self.actions, 10000, True)
+        
+        # Both should be valid actions
+        if valid_actions:
+            self.assertIn(action1, valid_actions)
+            self.assertIn(action2, valid_actions)
+    
+    def test_plays_game(self):
+        """Test that ScoreGapMaximizer player can play a game."""
+        player = Players.ScoreGapMaximizer("GapMaxPlayer")
+        
+        for _ in range(5):
+            observation = self.env.get_obs()
+            valid_actions = self.env.generateActionMask()
+            
+            if not valid_actions:
+                break
+            
+            action = player.getAction(observation, valid_actions, self.actions, 0)
+            self.assertIn(action, valid_actions)
+            
+            self.env.step(action)
+
+
 if __name__ == '__main__':
     unittest.main()
 

@@ -40,7 +40,9 @@ except Exception as e:
     print(f"Error saving initial checkpoint: {e}")
     raise
 
+validation00 = Players.Randomized("Randomized")
 validation01 = Players.HeuristicHighCard("HighCard")
+validation02 = Players.ScoreGapMaximizer("GapMaximizer")
 
 rounds = 10
 eps_per_round = 100
@@ -103,8 +105,22 @@ for x in range(rounds):
         print(f"Error saving checkpoint {new_checkpoint_path}: {e}")
 
     try:
+        p1w, p2w = Training.selfPlayTraining(trainee, validation00, eps_per_round, True)
+        print(f"Round {x}: Validation vs Randomized - p1w: {p1w}, p2w: {p2w}")
+    except Exception as e:
+        print(f"Error during randomized validation in round {x}: {e}")
+        continue
+    
+    try:
         p1w, p2w = Training.selfPlayTraining(trainee, validation01, eps_per_round, True)
-        print(f"Round {x}: Validation vs heuristic - p1w: {p1w}, p2w: {p2w}")
+        print(f"Round {x}: Validation vs HeuristicHighCard - p1w: {p1w}, p2w: {p2w}")
     except Exception as e:
         print(f"Error during heuristic validation in round {x}: {e}")
+        continue
+    
+    try:
+        p1w, p2w = Training.selfPlayTraining(trainee, validation02, eps_per_round, True)
+        print(f"Round {x}: Validation vs ScoreGapMaximizer - p1w: {p1w}, p2w: {p2w}")
+    except Exception as e:
+        print(f"Error during gap maximizer validation in round {x}: {e}")
         continue
