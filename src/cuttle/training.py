@@ -9,7 +9,6 @@ for actions and training metrics.
 import json
 import logging
 import math
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -25,6 +24,12 @@ MAX_COUNTER_DEPTH = 4  # Maximum depth for counter exchanges (stack indices 0-4)
 STACK_TOP_SEVEN = 7  # Stack value indicating Seven card resolution needed
 STACK_TOP_FOUR = 4  # Stack value indicating Four card resolution needed
 LOG_DIRECTORY = Path("./action_logs")
+
+# Reward constants
+REWARD_WIN = 1.0  # Reward for winning an episode
+REWARD_LOSS = -1.0  # Reward for losing an episode
+REWARD_DRAW = -0.1  # Reward for drawing an episode
+REWARD_INTERMEDIATE = 0.0  # Reward for intermediate steps (non-terminal states)
 
 
 def setup_logger(
@@ -55,35 +60,43 @@ def setup_logger(
     return logger
 
 
-def setup_action_logger(log_dir: Path) -> Optional[logging.Logger]:
+def setup_action_logger(log_dir: Path, model_id: Optional[str] = None) -> Optional[logging.Logger]:
     """
     Set up action logging for strategy analysis.
     
     Args:
         log_dir: Directory for log files
+        model_id: Optional model identifier (e.g., "round_3", "checkpoint_5")
         
     Returns:
         Configured logger or None if logging disabled
     """
     log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / f"actions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+    if model_id:
+        log_file = log_dir / f"actions_{model_id}.jsonl"
+    else:
+        log_file = log_dir / f"actions.jsonl"
     logger = setup_logger("action_logger", log_file)
     print(f"Action logging enabled: {log_file}")
     return logger
 
 
-def setup_metrics_logger(log_dir: Path) -> Optional[logging.Logger]:
+def setup_metrics_logger(log_dir: Path, model_id: Optional[str] = None) -> Optional[logging.Logger]:
     """
     Set up metrics logging for training statistics.
     
     Args:
         log_dir: Directory for log files
+        model_id: Optional model identifier (e.g., "round_3", "checkpoint_5")
         
     Returns:
         Configured logger or None if logging disabled
     """
     log_dir.mkdir(exist_ok=True)
-    metrics_file = log_dir / f"metrics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+    if model_id:
+        metrics_file = log_dir / f"metrics_{model_id}.jsonl"
+    else:
+        metrics_file = log_dir / f"metrics.jsonl"
     logger = setup_logger("metrics_logger", metrics_file)
     print(f"Metrics logging enabled: {metrics_file}")
     return logger
@@ -153,7 +166,6 @@ def log_action(
     action_args = action_obj.args if action_obj else None
     
     log_entry = {
-        "timestamp": datetime.now().isoformat(),
         "episode": episode,
         "turn": turn,
         "player": player_name,
@@ -380,7 +392,6 @@ def log_episode_outcome(
         return
     
     outcome_entry = {
-        "timestamp": datetime.now().isoformat(),
         "episode": episode,
         "outcome": outcome,
         "final_turn": turn,
@@ -431,7 +442,6 @@ def log_episode_metrics(
     
     total_episodes = episode + 1
     episode_stats = {
-        "timestamp": datetime.now().isoformat(),
         "episode": episode,
         "p1_name": p1.name,
         "p2_name": p2.name,
@@ -570,6 +580,7 @@ def selfPlayTraining(
     validating: bool = False,
     log_actions: bool = True,
     log_metrics: bool = True,
+    model_id: Optional[str] = None,
 ) -> Tuple[int, int]:
     """
     Execute self-play training between two players.
@@ -584,6 +595,7 @@ def selfPlayTraining(
         validating: If True, use greedy policy (no exploration)
         log_actions: If True, log all actions to file for strategy analysis
         log_metrics: If True, log training metrics (win rates, loss, etc.)
+        model_id: Optional model identifier for log files (e.g., "round_3", "checkpoint_5")
         
     Returns:
         Tuple of (p1_wins, p2_wins) counts
@@ -595,9 +607,9 @@ def selfPlayTraining(
     p2_wins = 0
     draws = 0
     
-    # Setup loggers
-    action_logger = setup_action_logger(LOG_DIRECTORY) if log_actions else None
-    metrics_logger = setup_metrics_logger(LOG_DIRECTORY) if log_metrics else None
+    # Setup loggers with model identifier
+    action_logger = setup_action_logger(LOG_DIRECTORY, model_id) if log_actions else None
+    metrics_logger = setup_metrics_logger(LOG_DIRECTORY, model_id) if log_metrics else None
     
     for episode in range(episodes):
         env.reset()
@@ -628,8 +640,8 @@ def selfPlayTraining(
                 # P1 wins
                 p1_wins += 1
                 if not validating:
-                    update_replay_memory(p1, p1_states, p1_actions, 1.0)
-                    update_replay_memory(p2, p2_states, p2_actions, -1.0)
+                    update_replay_memory(p1, p1_states, p1_actions, REWARD_WIN)
+                    update_replay_memory(p2, p2_states, p2_actions, REWARD_LOSS)
                 break
             
             if truncated or turns >= MAX_TURNS_PER_EPISODE:
@@ -640,8 +652,8 @@ def selfPlayTraining(
                     action_logger
                 )
                 if not validating:
-                    update_replay_memory(p1, p1_states, p1_actions, 0.0)
-                    update_replay_memory(p2, p2_states, p2_actions, 0.0)
+                    update_replay_memory(p1, p1_states, p1_actions, REWARD_DRAW)
+                    update_replay_memory(p2, p2_states, p2_actions, REWARD_DRAW)
                 break
             
             # End turn and prepare for P2
@@ -650,7 +662,7 @@ def selfPlayTraining(
             env.end_turn()
             p2_next_state = env.get_obs()
             if not validating:
-                update_replay_memory(p2, p2_states, p2_actions, 0.0, p2_next_state)
+                update_replay_memory(p2, p2_states, p2_actions, REWARD_INTERMEDIATE, p2_next_state)
             p2_states = []
             p2_actions = []
             
@@ -665,8 +677,8 @@ def selfPlayTraining(
                 # P2 wins
                 p2_wins += 1
                 if not validating:
-                    update_replay_memory(p1, p1_states, p1_actions, -1.0)
-                    update_replay_memory(p2, p2_states, p2_actions, 1.0)
+                    update_replay_memory(p1, p1_states, p1_actions, REWARD_LOSS)
+                    update_replay_memory(p2, p2_states, p2_actions, REWARD_WIN)
                 break
             
             if truncated or turns >= MAX_TURNS_PER_EPISODE:
@@ -677,8 +689,8 @@ def selfPlayTraining(
                     action_logger
                 )
                 if not validating:
-                    update_replay_memory(p1, p1_states, p1_actions, 0.0)
-                    update_replay_memory(p2, p2_states, p2_actions, 0.0)
+                    update_replay_memory(p1, p1_states, p1_actions, REWARD_DRAW)
+                    update_replay_memory(p2, p2_states, p2_actions, REWARD_DRAW)
                 break
             
             # End turn and prepare for next iteration
@@ -687,7 +699,7 @@ def selfPlayTraining(
             env.passControl()
             p1_next_state = env.get_obs()
             if not validating:
-                update_replay_memory(p1, p1_states, p1_actions, 0.0, p1_next_state)
+                update_replay_memory(p1, p1_states, p1_actions, REWARD_INTERMEDIATE, p1_next_state)
             p1_states = []
             p1_actions = []
         
