@@ -15,8 +15,8 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import torch
 
-import Players
-from GameEnvironment import CuttleEnvironment
+from cuttle import players as Players
+from cuttle.environment import CuttleEnvironment
 
 
 # Constants

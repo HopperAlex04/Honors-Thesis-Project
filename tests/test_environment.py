@@ -10,7 +10,7 @@ from typing import Dict, Any
 
 import numpy as np
 
-from GameEnvironment import CuttleEnvironment
+from cuttle.environment import CuttleEnvironment
 
 
 class TestCuttleEnvironmentInitialization(unittest.TestCase):

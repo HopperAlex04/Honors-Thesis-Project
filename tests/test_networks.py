@@ -12,8 +12,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from GameEnvironment import CuttleEnvironment
-from Networks import NeuralNetwork
+from cuttle.environment import CuttleEnvironment
+from cuttle.networks import NeuralNetwork
 
 
 class TestNeuralNetworkInitialization(unittest.TestCase):

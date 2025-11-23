@@ -11,9 +11,9 @@ from typing import Dict, Any, List
 import numpy as np
 import torch
 
-import Players
-from GameEnvironment import CuttleEnvironment
-from Networks import NeuralNetwork
+from cuttle import players as Players
+from cuttle.environment import CuttleEnvironment
+from cuttle.networks import NeuralNetwork
 
 
 class TestPlayerBaseClass(unittest.TestCase):

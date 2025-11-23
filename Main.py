@@ -1,10 +1,18 @@
-import torch
+import sys
 from pathlib import Path
 
-import Players
-from GameEnvironment import CuttleEnvironment
-from Networks import NeuralNetwork
-import Training
+# Add src directory to Python path for package imports
+# This allows imports to work without installing the package
+src_path = Path(__file__).parent / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+import torch
+
+from cuttle import players as Players
+from cuttle.environment import CuttleEnvironment
+from cuttle.networks import NeuralNetwork
+from cuttle import training as Training
 
 user_ended = False
 

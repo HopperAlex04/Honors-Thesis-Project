@@ -31,19 +31,20 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        pip install torch  # Required for NetworkTesting
+        pip install torch  # Required for tests
+        pip install -e .  # Install package in editable mode
     
     - name: Run environment tests
       run: |
-        python -m unittest EnvTests -v
+        python -m unittest tests.test_environment -v
     
     - name: Run neural network tests
       run: |
-        python -m unittest NetworkTesting -v
+        python -m unittest tests.test_networks -v
     
     - name: Run player tests
       run: |
-        python -m unittest PlayerTests -v
+        python -m unittest tests.test_players -v
     
     - name: Test summary
       if: always()
