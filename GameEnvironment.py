@@ -4,6 +4,7 @@ from typing import Optional
 
 import gymnasium as gym
 import numpy as np
+from Actions import ActionRegistry
 
 
 class CuttleEnvironment:
@@ -93,10 +94,23 @@ class CuttleEnvironment:
 
         self.countered = False
         self.passed = False
-        # Generates the actions, as well as determining how many actions are in the environment.
-        # Actions from the action_to_move dict are of the form (moveType, [args]),
-        # where moveType is one of the functions below.
-        self.action_to_move, self.actions = self.generateActions()
+        
+        # Create action registry (generates static card structure internally)
+        # CuttleEnvironment doesn't need card_dict/royal_indicies/point_indicies anymore
+        # - scoreState() doesn't use them (iterates by index)
+        # - updateRevealed() can check rank directly instead of using point_indicies[7]
+        # - All action logic moves to action classes
+        self.action_registry = ActionRegistry()
+        
+        # Keep card_dict and indices for backward compatibility during migration
+        # These are now accessed via action_registry but kept here for existing code
+        self.card_dict = self.action_registry.card_dict
+        self.royal_indicies = self.action_registry.royal_indicies
+        self.point_indicies = self.action_registry.point_indicies
+        
+        # Legacy action_to_move for backward compatibility (will be removed)
+        self.action_to_move, self.actions_legacy = self.generateActions()
+        self.actions = self.action_registry.total_actions
 
         self.one_offs = {self.aceAction: 1, self.twoAction: 2, self.threeAction: 3, self.fourAction: 4, self.fiveAction: 5, self.sixAction: 6, self.sevenAction01: 7, self.nineAction: 8, self.twoCounter:2}
         # Gym helps us out so we make gym spaces
@@ -148,35 +162,39 @@ class CuttleEnvironment:
         self.current_zones = self.player_zones
         self.off_zones = self.dealer_zones
 
-        # Draw opening hands
-        draw = self.action_to_move.get(0)
-        args = draw[1]  # type: ignore
-        draw = draw[0]  # type: ignore
-        self.passControl()
-        for _ in range(6):
-            draw(args)
+        # Draw opening hands using new action system
+        draw_action = self.action_registry.get_action(0)  # Draw action is always index 0
+        if draw_action:
+            self.passControl()
+            for _ in range(6):
+                draw_action.execute(self)
+            
+            self.passControl()
+            for _ in range(5):
+                draw_action.execute(self)
 
-        self.passControl()
-        for _ in range(5):
-            draw(args)
-
-    # Converts an action into a move by grabbing the calling the function with args from the move dict
+    # Converts an action into a move using the new action class system
     def step(self, action: int):
-        act = self.action_to_move.get(action)
-
-        # This is to prevent a crash in the event of exhausting all possible actions, for games this ends the game
-        if act is None:
-            return None, 0, False, True
-        func = act[0]  # type: ignore
-        args = act[1]  # type: ignore
-        func(args)
+        # Use new action system
+        action_obj = self.action_registry.get_action(action)
+        
+        if action_obj is None:
+            # Fallback to legacy system for compatibility
+            act = self.action_to_move.get(action)
+            if act is None:
+                return None, 0, False, True
+            func = act[0]  # type: ignore
+            args = act[1]  # type: ignore
+            func(args)
+        else:
+            # Execute using new action class
+            action_obj.execute(self)
+        
         ob = self.get_obs()
         score, threshold = self.scoreState()
         terminated = score >= threshold
         truncated = not np.any(self.deck)
 
-        # ob is of the form [dict, dict] and should be broken up when reading a state
-        # print(act)
         return ob, score, terminated, truncated
 
     def render(self):
@@ -574,129 +592,8 @@ class CuttleEnvironment:
         return act_dict, actions
 
     def generateActionMask(self, countering = False):
-        inhand = np.where(self.current_zones["Hand"])
-        self_field = np.where(self.current_zones["Field"])
-        onfield = np.where(self.off_zones["Field"])
-        scrap = np.where(self.scrap)[0]
-        # Need this later for four
-        # trunk-ignore(ruff/F841)
-
-        valid_actions = []
-
-        for act_index, move in self.action_to_move.items():
-            moveType = move[0]
-            args = move[1]
-            if moveType == self.drawAction and self.stack[0] == 0 and len(inhand[0]) < 9:
-                #print(inhand[0])
-                valid_actions.append(act_index)
-            elif moveType == self.scoreAction and self.stack[0] == 0:
-                card = args
-                if card in inhand[0] and card not in self.current_bounced:
-                    valid_actions.append(act_index)
-            elif moveType == self.scuttleAction and self.stack[0] == 0:
-                card = args[0]
-                if card in inhand[0]:
-                    target = args[1]
-
-                    cRank = self.card_dict[card]["rank"]
-                    cSuit = self.card_dict[card]["suit"]
-
-                    tRank = self.card_dict[target]["rank"]
-                    tSuit = self.card_dict[card]["suit"]
-
-                    if (
-                        onfield[0].size > 0
-                        and target in onfield[0]
-                        and (cRank > tRank or (cRank == tRank and cSuit > tSuit))
-                    ):
-                        valid_actions.append(act_index)
-            elif moveType == self.aceAction and self.stack[0] == 0:
-                card = args[0]
-                if card in inhand[0]:
-                    valid_actions.append(act_index)
-            elif moveType == self.fiveAction and self.stack[0] == 0:
-                card = args[0]
-                if card in inhand[0]:
-                    valid_actions.append(act_index)
-            elif moveType == self.nineAction and self.stack[0] == 0: # Queen adjust
-                card = move[1][0]
-                if card in inhand[0]:
-                    target = move[1][1]
-                    selfhit = move[1][2]
-
-                    if selfhit and self_field[0].size > 0 and target in self_field[0]:
-                        if self.cur_queens == 1 and target in self.royal_indicies[1]:
-                            valid_actions.append(act_index)
-                        elif self.cur_queens == 0:
-                            valid_actions.append(act_index)
-                    elif not selfhit and onfield[0].size > 0 and target in onfield[0]:
-                        if self.off_queens == 1 and target in self.royal_indicies[1]:
-                            valid_actions.append(act_index)
-                        elif self.off_queens == 0:
-                            valid_actions.append(act_index)
-            elif moveType == self.twoAction and self.stack[0] == 0: # Queen adjust
-                card = args[0]
-                if card in inhand[0]:
-                    target = args[1]
-                    if target in onfield[0]:
-                        if self.off_queens == 1 and target in self.royal_indicies[1]:
-                            valid_actions.append(act_index)
-                        elif self.off_queens == 0:
-                            valid_actions.append(act_index)
-            elif moveType == self.threeAction and self.stack[0] == 0:
-                card = args[0]
-                if card in inhand[0]:
-                    target = args[1]
-                    if target in scrap:
-                        valid_actions.append(act_index)
-            elif moveType == self.sixAction and self.stack[0] == 0:
-                card = args[0]
-                if card in inhand[0]:
-                    valid_actions.append(act_index)
-            elif moveType == self.sevenAction01 and self.stack[0] == 0:
-                card = args[0]
-                if card in inhand[0]:
-                    valid_actions.append(act_index)
-            elif moveType == self.sevenAction02 and self.stack[0] == 7 and not countering:
-                target = args[0]
-                if target != 0 and target in self.effect_shown:
-                    valid_actions.append(act_index)
-            elif moveType == self.fourAction and self.stack[0] == 0:
-                card = args[0]
-                if card in inhand[0]:
-                    valid_actions.append(act_index)
-            elif moveType == self.resolveFour and self.stack[0] == 4 and not countering:
-                if len(args) == 0:
-                    if len(inhand[0]) == 0:
-                        valid_actions.append(act_index)
-                elif len(args) == 1:
-                    if len(inhand[0]) == 1:
-                        t1 = args[0]
-                        if t1 in inhand[0]:
-                            valid_actions.append(act_index)
-                elif len(args) >= 2:
-                    if len(inhand[0]) >= 2:
-                        t1 = args[0]
-                        t2 = args[1]
-                        if t1 in inhand[0] and t2 in inhand[0]:
-                            valid_actions.append(act_index)
-            elif moveType == self.twoCounter and countering and self.off_queens == 0: # Queen adjust
-                card = args[0]
-                if card in inhand[0]:
-                    valid_actions.append(act_index)
-            elif moveType == self.passPriority and countering:
-                valid_actions.append(act_index)
-            elif moveType == self.eightRoyal and self.stack[0] == 0:
-                card = args[0]
-                if card in inhand[0]:
-                    valid_actions.append(act_index)
-            elif moveType == self.jackPlay and self.stack[0] == 0:
-                card = args[0]
-                if card in inhand[0]:
-                    target = args[1]
-                    if target in onfield[0] and not any(target in r_list for r_list in self.royal_indicies):
-                        valid_actions.append(act_index)
-        return valid_actions
+        """Get valid action indices for current game state using new action system."""
+        return self.action_registry.get_valid_actions(self, countering)
 
     # Cards are generated as follows:
     # Generate all cards, in order (Ace = 0, King = 12), in a suit, then increase the suit
@@ -718,6 +615,7 @@ class CuttleEnvironment:
         score = 0
         king_count = 0
         self.cur_queens = 0
+        self.jackmovement()
         for _ in range(4):
             for rank in range(13):
                 if field_scored[index]:
@@ -725,7 +623,7 @@ class CuttleEnvironment:
                         king_count += 1
                     elif rank == 11:
                         self.cur_queens += 1
-                    else:
+                    elif rank != 10:
                         score += rank + 1
                 index += 1
 
@@ -788,12 +686,43 @@ class CuttleEnvironment:
         self.current_bounced = []
 
     def updateStack(self, action, depth = 0):
-        moveType = self.action_to_move[action][0]
-
-        if moveType in self.one_offs.keys():
-            self.stack[depth] = self.one_offs[moveType]
+        # Use new action system
+        action_obj = self.action_registry.get_action(action)
+        
+        if action_obj is None:
+            # Fallback to legacy system
+            moveType = self.action_to_move.get(action)
+            if moveType:
+                moveType = moveType[0]
+                if moveType in self.one_offs.keys():
+                    self.stack[depth] = self.one_offs[moveType]
+                else:
+                    self.stack[depth] = 53
+            else:
+                self.stack[depth] = 53
         else:
-            self.stack[depth] = 53
+            # Map action class to stack value
+            from Actions import (AceAction, TwoAction, ThreeAction, FourAction, 
+                               FiveAction, SixAction, SevenAction01, NineAction, TwoCounter)
+            
+            if isinstance(action_obj, AceAction):
+                self.stack[depth] = 1
+            elif isinstance(action_obj, TwoAction) or isinstance(action_obj, TwoCounter):
+                self.stack[depth] = 2
+            elif isinstance(action_obj, ThreeAction):
+                self.stack[depth] = 3
+            elif isinstance(action_obj, FourAction):
+                self.stack[depth] = 4
+            elif isinstance(action_obj, FiveAction):
+                self.stack[depth] = 5
+            elif isinstance(action_obj, SixAction):
+                self.stack[depth] = 6
+            elif isinstance(action_obj, SevenAction01):
+                self.stack[depth] = 7
+            elif isinstance(action_obj, NineAction):
+                self.stack[depth] = 8
+            else:
+                self.stack[depth] = 53  # Not a one-off action
 
     def checkResponses(self):
         if self.passed:
