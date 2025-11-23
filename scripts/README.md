@@ -25,3 +25,53 @@ python scripts/clear_logs.py -f
 - Deletes all log files
 - Removes the directory if it becomes empty
 
+## clear_models.py
+
+Clears all model checkpoints from the `models/` directory.
+
+### Usage
+
+```bash
+# Interactive mode (asks for confirmation)
+python scripts/clear_models.py
+
+# Force mode (no confirmation)
+python scripts/clear_models.py --force
+python scripts/clear_models.py -f
+```
+
+### What it does
+
+- Finds all model files (`.pt`, `.pth`) and checkpoint files in `models/`
+- Shows file count, individual sizes, and total size
+- Asks for confirmation (unless `--force` is used)
+- Deletes all model files
+- Removes the directory if it becomes empty
+
+### Warning
+
+⚠️ **This will delete all saved model checkpoints!** Make sure you have backups if needed.
+
+## clear_models.py
+
+Clears all model checkpoints from the `models/` directory.
+
+### Usage
+
+```bash
+# Interactive mode (asks for confirmation)
+python scripts/clear_models.py
+
+# Force mode (no confirmation)
+python scripts/clear_models.py --force
+python scripts/clear_models.py -f
+```
+
+### What it does
+
+- Finds all model files (`*.pt`, `*.pth`, `*.pkl`, `*.ckpt`) in `models/`
+- Shows file count, names, and sizes (with total size)
+- Asks for confirmation (unless `--force` is used)
+- Deletes all model files
+- Removes the directory if it becomes empty
+
