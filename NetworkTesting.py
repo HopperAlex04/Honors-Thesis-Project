@@ -3,7 +3,7 @@ import torch
 from GameEnvironment import CuttleEnvironment
 from Networks import NeuralNetwork
 
-from Players import Agent, HueristicHighCard, Randomized, Transition
+from Players import Agent, HeuristicHighCard, Randomized, Transition
 import Players
 import Training
 
@@ -28,7 +28,7 @@ def getActionTest():
 
     ob = env.get_obs()
     mask = env.generateActionMask()
-    y_pred = ag.getAction(ob, mask, actions, 10000)
+    y_pred = ag.getAction(ob, mask, actions, 10000, force_greedy=False)
 
 
 
@@ -46,7 +46,7 @@ def trainingTest():
     LR = 3e-4
     p1 = Agent("Agent01", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
     #p2 = Agent("dealer", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
-    p3 = HueristicHighCard("dealer")
+    p3 = HeuristicHighCard("dealer")
 
     t = Training.WinRewardTraining(p1, p3)
     t.trainLoop(1500)
@@ -78,12 +78,12 @@ def getStateTest():
     print(state.dim())
 
 def heur1Test():
-    p1 = Players.HueristicHighCard("H1")
+    p1 = Players.HeuristicHighCard("H1")
     env = CuttleEnvironment()
 
     env.reset()
 
-    return p1.getAction(env.get_obs(), env.generateActionMask())
+    return p1.getAction(env.get_obs(), env.generateActionMask(), env.actions, 0, force_greedy=False)
 
 def optPrepTest():
     env = CuttleEnvironment()
@@ -129,7 +129,7 @@ def multiAgentTest():
     p3 = Agent("Agent03", torch.load("./models/base.pt", weights_only=False), BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
     p4 = Agent("Agent04", torch.load("./models/base.pt", weights_only=False), BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR )
     agents = [p1, p2,p3,p4]
-    testP = HueristicHighCard("theOpp")
+    testP = HeuristicHighCard("theOpp")
     t = Training.WinRewardTraining(agents[0], agents[0])
     for epochs in range(30):
         win_rates = []
