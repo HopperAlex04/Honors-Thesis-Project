@@ -145,7 +145,7 @@ class ScoreGapMaximizer(Player):
         """
         super().__init__(name)
         # Create action registry once (it's static and doesn't depend on game state)
-        from GameEnvironment import CuttleEnvironment
+        from cuttle.environment import CuttleEnvironment
         temp_env = CuttleEnvironment()
         self.action_registry = temp_env.action_registry
     
@@ -196,7 +196,7 @@ class ScoreGapMaximizer(Player):
         Returns:
             Estimated change in score gap (positive = good for us)
         """
-        from Actions import ScoreAction, ScuttleAction, AceAction
+        from cuttle.actions import ScoreAction, ScuttleAction, AceAction
         
         card_dict = action_registry.card_dict
         current_field = observation["Current Zones"]["Field"]
@@ -244,7 +244,7 @@ class ScoreGapMaximizer(Player):
         
         else:
             # Other actions (Draw, Two, Three, Five, Six, etc.) - use heuristics
-            from Actions import (
+            from cuttle.actions import (
                 DrawAction, TwoAction, ThreeAction, FiveAction, 
                 SixAction, SevenAction01, NineAction
             )

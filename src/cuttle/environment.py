@@ -4,7 +4,7 @@ from typing import Optional
 
 import gymnasium as gym
 import numpy as np
-from Actions import ActionRegistry
+from cuttle.actions import ActionRegistry
 
 
 class CuttleEnvironment:
@@ -702,7 +702,7 @@ class CuttleEnvironment:
                 self.stack[depth] = 53
         else:
             # Map action class to stack value
-            from Actions import (AceAction, TwoAction, ThreeAction, FourAction, 
+            from cuttle.actions import (AceAction, TwoAction, ThreeAction, FourAction, 
                                FiveAction, SixAction, SevenAction01, NineAction, TwoCounter)
             
             if isinstance(action_obj, AceAction):
