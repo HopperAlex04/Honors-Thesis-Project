@@ -41,6 +41,10 @@ jobs:
       run: |
         python -m unittest NetworkTesting -v
     
+    - name: Run player tests
+      run: |
+        python -m unittest PlayerTests -v
+    
     - name: Test summary
       if: always()
       run: |
