@@ -592,7 +592,8 @@ def selfPlayTraining(
         p1: First player (typically the training agent)
         p2: Second player (can be same as p1 for self-play)
         episodes: Number of episodes to train
-        validating: If True, use greedy policy (no exploration)
+        validating: If True, use greedy policy (no exploration) and disable all features
+                    to test generalization (model must work without feature hints)
         log_actions: If True, log all actions to file for strategy analysis
         log_metrics: If True, log training metrics (win rates, loss, etc.)
         model_id: Optional model identifier for log files (e.g., "round_3", "checkpoint_5")
@@ -600,7 +601,16 @@ def selfPlayTraining(
     Returns:
         Tuple of (p1_wins, p2_wins) counts
     """
-    env = CuttleEnvironment()
+    # During validation, disable all features to test generalization
+    # Model trained with features must work without them
+    if validating:
+        env = CuttleEnvironment(
+            include_highest_point_value=False,
+            include_highest_point_value_opponent_field=False
+        )
+    else:
+        # During training, use default (both features enabled)
+        env = CuttleEnvironment()
     actions = env.actions
     steps = 0
     p1_wins = 0
