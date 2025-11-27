@@ -132,10 +132,42 @@ class CuttleEnvironment:
             "Scrap": self.scrap,
             "Stack": self.stack,
             "Effect-Shown": self.effect_shown,
+            "Highest Point Value in Hand": self._calculate_highest_point_in_hand(),
         }
 
     def _get_info(self):
         pass
+
+    def _calculate_highest_point_in_hand(self) -> int:
+        """
+        Calculate the highest point value among scorable cards in hand.
+        
+        Returns:
+            Highest point value (1-10) if scorable cards exist, 0 otherwise
+        """
+        hand = self.current_zones["Hand"]
+        inhand = np.where(hand)[0]
+        
+        if len(inhand) == 0:
+            return 0
+        
+        point_indicies = self.point_indicies
+        card_dict = self.card_dict
+        max_value = 0
+        
+        for card_idx in inhand:
+            # Skip bounced cards
+            if card_idx in self.current_bounced:
+                continue
+            
+            # Check if it's a point card (rank 0-9)
+            is_point_card = any(card_idx in rank_list for rank_list in point_indicies)
+            if is_point_card:
+                rank = card_dict[card_idx]["rank"]
+                point_value = rank + 1
+                max_value = max(max_value, point_value)
+        
+        return max_value
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         random.seed(seed)

@@ -97,8 +97,11 @@ class NeuralNetwork(nn.Module):
         """
         input_length = 0
         
-        for item in observation_space.values():
-            if isinstance(item, dict):
+        for key, item in observation_space.items():
+            if key == "Highest Point Value in Hand":
+                # Scalar value: add 1
+                input_length += 1
+            elif isinstance(item, dict):
                 # Nested dictionary (e.g., "Current Zones")
                 for nested_item in item.values():
                     if isinstance(nested_item, np.ndarray):
@@ -128,6 +131,23 @@ class NeuralNetwork(nn.Module):
         state = self._preprocess_observation(observation)
         q_values = self.linear_relu_stack(state)
         return q_values
+    
+    def get_state(
+        self,
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
+    ) -> torch.Tensor:
+        """
+        Get preprocessed state from observation(s).
+        
+        This is an alias for _preprocess_observation for backward compatibility.
+        
+        Args:
+            observation: Single observation dict, list of observations, or tuple of observations
+            
+        Returns:
+            Preprocessed tensor ready for network input
+        """
+        return self._preprocess_observation(observation)
     
     def _preprocess_observation(
         self,
@@ -185,8 +205,15 @@ class NeuralNetwork(nn.Module):
         embed_stack = self.embedding(stack_tensor).flatten()
         embed_effect = self.embedding(effect_tensor).flatten()
         
+        # Add highest point value as a scalar feature
+        highest_point = torch.tensor(
+            [obs["Highest Point Value in Hand"]], 
+            dtype=torch.float32, 
+            device=device
+        )
+        
         # Concatenate all features
-        final = torch.cat([state_tensor.to(device), embed_stack, embed_effect])
+        final = torch.cat([state_tensor.to(device), embed_stack, embed_effect, highest_point])
         
         return final
     
@@ -240,7 +267,8 @@ class NeuralNetwork(nn.Module):
             "Deck",
             "Scrap",
             "Stack",
-            "Effect-Shown"
+            "Effect-Shown",
+            "Highest Point Value in Hand"
         ]
         
         for key in required_keys:
@@ -264,4 +292,15 @@ class NeuralNetwork(nn.Module):
             raise ValueError(
                 f"Effect-Shown must have length {EFFECT_SHOWN_SIZE}, "
                 f"got {len(obs['Effect-Shown'])}"
+            )
+        
+        # Validate highest point value
+        highest_point = obs["Highest Point Value in Hand"]
+        if not isinstance(highest_point, (int, np.integer)):
+            raise ValueError(
+                f"Highest Point Value in Hand must be int, got {type(highest_point)}"
+            )
+        if not (0 <= highest_point <= 10):
+            raise ValueError(
+                f"Highest Point Value in Hand must be 0-10, got {highest_point}"
             )
