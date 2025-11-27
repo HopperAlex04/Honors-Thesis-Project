@@ -110,9 +110,11 @@ class TestNeuralNetworkGetState(unittest.TestCase):
         scrap_size = len(observation["Scrap"])
         stack_size = len(observation["Stack"]) * self.model.embedding.embedding_dim
         effect_size = len(observation["Effect-Shown"]) * self.model.embedding.embedding_dim
+        highest_point_size = 1  # Scalar value for Highest Point Value in Hand
         
         expected_size = (hand_size + field_size + revealed_size + off_field_size + 
-                        off_revealed_size + deck_size + scrap_size + stack_size + effect_size)
+                        off_revealed_size + deck_size + scrap_size + stack_size + 
+                        effect_size + highest_point_size)
         
         self.assertEqual(state.shape[0], expected_size)
     

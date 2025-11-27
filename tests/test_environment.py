@@ -492,7 +492,8 @@ class TestCuttleEnvironmentObservation(unittest.TestCase):
             "Deck",
             "Scrap",
             "Stack",
-            "Effect-Shown"
+            "Effect-Shown",
+            "Highest Point Value in Hand"
         ]
         for key in expected_keys:
             self.assertIn(key, observation, f"Observation missing key: {key}")
@@ -504,6 +505,102 @@ class TestCuttleEnvironmentObservation(unittest.TestCase):
         self.assertIsInstance(zones, dict)
         for zone_name, zone_data in zones.items():
             self.assertIsInstance(zone_data, np.ndarray)
+    
+    def test_highest_point_value_field_exists(self):
+        """Test that Highest Point Value in Hand field exists in observation."""
+        observation = self.env.get_obs()
+        self.assertIn("Highest Point Value in Hand", observation)
+        self.assertIsInstance(observation["Highest Point Value in Hand"], (int, np.integer))
+        self.assertGreaterEqual(observation["Highest Point Value in Hand"], 0)
+        self.assertLessEqual(observation["Highest Point Value in Hand"], 10)
+    
+    def test_highest_point_value_empty_hand(self):
+        """Test that empty hand returns 0."""
+        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
+        value = self.env._calculate_highest_point_in_hand()
+        self.assertEqual(value, 0)
+    
+    def test_highest_point_value_single_card(self):
+        """Test that single scorable card returns correct value."""
+        # Clear hand first
+        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
+        # Add a Nine (rank 9, value 10) to hand - first suit
+        nine_idx = 9  # Rank 9, suit 0
+        self.env.current_zones["Hand"][nine_idx] = True
+        value = self.env._calculate_highest_point_in_hand()
+        self.assertEqual(value, 10)
+    
+    def test_highest_point_value_multiple_cards(self):
+        """Test that multiple scorable cards returns maximum value."""
+        # Clear hand first
+        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
+        # Add cards with different point values
+        ace_idx = 0  # Rank 0, value 1, suit 0
+        five_idx = 4  # Rank 4, value 5, suit 0
+        nine_idx = 9  # Rank 9, value 10, suit 0
+        self.env.current_zones["Hand"][ace_idx] = True
+        self.env.current_zones["Hand"][five_idx] = True
+        self.env.current_zones["Hand"][nine_idx] = True
+        value = self.env._calculate_highest_point_in_hand()
+        self.assertEqual(value, 10)
+    
+    def test_highest_point_value_excludes_bounced(self):
+        """Test that bounced cards are excluded."""
+        # Clear hand first
+        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
+        # Add a Nine to hand and mark as bounced
+        nine_idx = 9
+        self.env.current_zones["Hand"][nine_idx] = True
+        self.env.current_bounced = [nine_idx]
+        value = self.env._calculate_highest_point_in_hand()
+        self.assertEqual(value, 0)
+    
+    def test_highest_point_value_excludes_non_scorable(self):
+        """Test that non-scorable cards (Jacks, Queens, Kings) are excluded."""
+        # Clear hand first
+        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
+        # Add a Jack (rank 10, suit 0) - cannot be scored
+        jack_idx = 10  # Rank 10, suit 0
+        # Add a Queen (rank 11, suit 0) - cannot be scored
+        queen_idx = 11  # Rank 11, suit 0
+        # Add a King (rank 12, suit 0) - cannot be scored
+        king_idx = 12  # Rank 12, suit 0
+        self.env.current_zones["Hand"][jack_idx] = True
+        self.env.current_zones["Hand"][queen_idx] = True
+        self.env.current_zones["Hand"][king_idx] = True
+        value = self.env._calculate_highest_point_in_hand()
+        self.assertEqual(value, 0)
+    
+    def test_highest_point_value_mixed_cards(self):
+        """Test that mixed scorable and non-scorable cards returns max of scorable."""
+        # Clear hand first
+        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
+        # Add non-scorable cards
+        jack_idx = 10
+        queen_idx = 11
+        # Add scorable cards
+        ace_idx = 0  # Value 1
+        five_idx = 4  # Value 5
+        self.env.current_zones["Hand"][jack_idx] = True
+        self.env.current_zones["Hand"][queen_idx] = True
+        self.env.current_zones["Hand"][ace_idx] = True
+        self.env.current_zones["Hand"][five_idx] = True
+        value = self.env._calculate_highest_point_in_hand()
+        self.assertEqual(value, 5)
+    
+    def test_highest_point_value_same_rank_different_suits(self):
+        """Test that multiple cards with same rank returns correct value."""
+        # Clear hand first
+        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
+        # Add multiple Nines (rank 9, value 10) from different suits
+        nine_suit0 = 9   # Rank 9, suit 0
+        nine_suit1 = 22  # Rank 9, suit 1 (13*1 + 9)
+        nine_suit2 = 35  # Rank 9, suit 2 (13*2 + 9)
+        self.env.current_zones["Hand"][nine_suit0] = True
+        self.env.current_zones["Hand"][nine_suit1] = True
+        self.env.current_zones["Hand"][nine_suit2] = True
+        value = self.env._calculate_highest_point_in_hand()
+        self.assertEqual(value, 10)
 
 
 class TestCuttleEnvironmentSpecialCards(unittest.TestCase):
