@@ -110,13 +110,312 @@ class TestNeuralNetworkGetState(unittest.TestCase):
         scrap_size = len(observation["Scrap"])
         stack_size = len(observation["Stack"]) * self.model.embedding.embedding_dim
         effect_size = len(observation["Effect-Shown"]) * self.model.embedding.embedding_dim
-        highest_point_size = 1  # Scalar value for Highest Point Value in Hand
+        highest_point_size = 1  # Scalar value for Highest Point Value in Hand (always included)
+        opponent_field_size = 1  # Scalar value for Highest Point Value in Opponent Field (always included)
         
         expected_size = (hand_size + field_size + revealed_size + off_field_size + 
                         off_revealed_size + deck_size + scrap_size + stack_size + 
-                        effect_size + highest_point_size)
+                        effect_size + highest_point_size + opponent_field_size)
         
         self.assertEqual(state.shape[0], expected_size)
+    
+    def test_network_handles_missing_field(self):
+        """Test that network handles missing Highest Point Value in Hand field."""
+        # Create environment with feature disabled
+        env_disabled = CuttleEnvironment(include_highest_point_value=False)
+        env_disabled.reset()
+        obs_disabled = env_disabled.get_obs()
+        
+        # Network should handle missing field by padding with 0 and gating
+        self.assertNotIn("Highest Point Value in Hand", obs_disabled)
+        
+        # Should not raise error
+        state = self.model._preprocess_single(obs_disabled)
+        self.assertIsInstance(state, torch.Tensor)
+        self.assertEqual(state.dim(), 1)
+    
+    def test_network_handles_present_field(self):
+        """Test that network handles present Highest Point Value in Hand field."""
+        # Create environment with feature enabled
+        env_enabled = CuttleEnvironment(include_highest_point_value=True)
+        env_enabled.reset()
+        obs_enabled = env_enabled.get_obs()
+        
+        # Network should handle present field
+        self.assertIn("Highest Point Value in Hand", obs_enabled)
+        
+        # Should not raise error
+        state = self.model._preprocess_single(obs_enabled)
+        self.assertIsInstance(state, torch.Tensor)
+        self.assertEqual(state.dim(), 1)
+    
+    def test_network_gate_parameter_exists(self):
+        """Test that network has highest_point_gate parameter."""
+        self.assertTrue(hasattr(self.model, 'highest_point_gate'))
+        self.assertIsInstance(self.model.highest_point_gate, nn.Parameter)
+        self.assertEqual(self.model.highest_point_gate.shape, (1,))
+    
+    def test_network_gate_initialized_to_one(self):
+        """Test that gate is initialized to 1.0 by default."""
+        # Gate should be initialized to 1.0 (feature enabled by default)
+        gate_value = self.model.highest_point_gate.data.item()
+        self.assertAlmostEqual(gate_value, 1.0, places=5)
+    
+    def test_network_gate_can_be_set(self):
+        """Test that gate can be manually set to a specific value."""
+        # Create network with gate set to 0.5
+        model = NeuralNetwork(self.observation_space, 2, self.actions, None, feature_gate_value=0.5)
+        gate_value = model.highest_point_gate.data.item()
+        self.assertAlmostEqual(gate_value, 0.5, places=5)
+        
+        # Create network with gate set to 0.0 (disabled)
+        model_disabled = NeuralNetwork(self.observation_space, 2, self.actions, None, feature_gate_value=0.0)
+        gate_value_disabled = model_disabled.highest_point_gate.data.item()
+        self.assertAlmostEqual(gate_value_disabled, 0.0, places=5)
+    
+    def test_network_zero_impact_when_feature_disabled(self):
+        """Test that feature has zero impact when disabled in observation."""
+        # Create environment with feature disabled
+        env_disabled = CuttleEnvironment(include_highest_point_value=False)
+        env_disabled.reset()
+        obs_disabled = env_disabled.get_obs()
+        
+        # Process observation
+        state_disabled = self.model._preprocess_single(obs_disabled)
+        
+        # Create environment with feature enabled but value is 0
+        env_enabled = CuttleEnvironment(include_highest_point_value=True)
+        env_enabled.reset()
+        # Ensure hand is empty so value is 0
+        env_enabled.current_zones["Hand"] = np.zeros(52, dtype=bool)
+        obs_enabled = env_enabled.get_obs()
+        
+        # Process observation
+        state_enabled = self.model._preprocess_single(obs_enabled)
+        
+        # Both should produce same result (feature has zero impact when disabled)
+        # The gated value should be 0 in both cases
+        # Extract the last element (gated feature value)
+        gated_value_disabled = state_disabled[-1].item()
+        gated_value_enabled = state_enabled[-1].item()
+        
+        # When disabled: value=0, presence=0, gate=1 → gated = 0*1*0 = 0
+        # When enabled but value=0: value=0, presence=1, gate=1 → gated = 0*1*1 = 0
+        self.assertAlmostEqual(gated_value_disabled, 0.0, places=5)
+        self.assertAlmostEqual(gated_value_enabled, 0.0, places=5)
+    
+    def test_network_gate_affects_enabled_feature(self):
+        """Test that gate affects feature value when feature is enabled."""
+        # Create environment with feature enabled
+        env = CuttleEnvironment(include_highest_point_value=True)
+        env.reset()
+        # Add a Nine (value 10) to hand
+        env.current_zones["Hand"][9] = True
+        obs = env.get_obs()
+        
+        # Process with default gate (1.0)
+        state_default = self.model._preprocess_single(obs)
+        gated_value_default = state_default[-1].item()
+        
+        # Create model with gate set to 0.5
+        model_half = NeuralNetwork(self.observation_space, 2, self.actions, None, feature_gate_value=0.5)
+        state_half = model_half._preprocess_single(obs)
+        gated_value_half = state_half[-1].item()
+        
+        # Create model with gate set to 0.0
+        model_zero = NeuralNetwork(self.observation_space, 2, self.actions, None, feature_gate_value=0.0)
+        state_zero = model_zero._preprocess_single(obs)
+        gated_value_zero = state_zero[-1].item()
+        
+        # When enabled: value=10, presence=1, gate varies
+        # gate=1.0: gated = 10*1.0*1 = 10.0
+        # gate=0.5: gated = 10*0.5*1 = 5.0
+        # gate=0.0: gated = 10*0.0*1 = 0.0
+        self.assertAlmostEqual(gated_value_default, 10.0, places=5)
+        self.assertAlmostEqual(gated_value_half, 5.0, places=5)
+        self.assertAlmostEqual(gated_value_zero, 0.0, places=5)
+    
+    def test_validation_allows_missing_field(self):
+        """Test that validation allows missing Highest Point Value in Hand field."""
+        # Create observation without the field
+        obs = self.env.get_obs()
+        del obs["Highest Point Value in Hand"]
+        
+        # Should not raise validation error
+        try:
+            self.model._validate_observation(obs)
+        except ValueError as e:
+            self.fail(f"Validation should allow missing field, but raised: {e}")
+    
+    def test_validation_still_validates_present_field(self):
+        """Test that validation still validates field when present."""
+        obs = self.env.get_obs()
+        
+        # Valid value should pass
+        obs["Highest Point Value in Hand"] = 5
+        try:
+            self.model._validate_observation(obs)
+        except ValueError:
+            self.fail("Validation should accept valid value")
+        
+        # Invalid type should fail
+        obs["Highest Point Value in Hand"] = "invalid"
+        with self.assertRaises(ValueError):
+            self.model._validate_observation(obs)
+        
+        # Invalid range should fail
+        obs["Highest Point Value in Hand"] = 15
+        with self.assertRaises(ValueError):
+            self.model._validate_observation(obs)
+    
+    def test_network_handles_missing_opponent_field(self):
+        """Test that network handles missing Highest Point Value in Opponent Field."""
+        # Create environment with opponent field feature disabled
+        env_disabled = CuttleEnvironment(include_highest_point_value_opponent_field=False)
+        env_disabled.reset()
+        obs_disabled = env_disabled.get_obs()
+        
+        # Network should handle missing field by padding with 0 and gating
+        self.assertNotIn("Highest Point Value in Opponent Field", obs_disabled)
+        
+        # Should not raise error
+        state = self.model._preprocess_single(obs_disabled)
+        self.assertIsInstance(state, torch.Tensor)
+        self.assertEqual(state.dim(), 1)
+    
+    def test_network_handles_present_opponent_field(self):
+        """Test that network handles present Highest Point Value in Opponent Field."""
+        # Create environment with opponent field feature enabled
+        env_enabled = CuttleEnvironment(include_highest_point_value_opponent_field=True)
+        env_enabled.reset()
+        obs_enabled = env_enabled.get_obs()
+        
+        # Network should handle present field
+        self.assertIn("Highest Point Value in Opponent Field", obs_enabled)
+        
+        # Should not raise error
+        state = self.model._preprocess_single(obs_enabled)
+        self.assertIsInstance(state, torch.Tensor)
+        self.assertEqual(state.dim(), 1)
+    
+    def test_network_opponent_field_gate_parameter_exists(self):
+        """Test that network has opponent_field_gate parameter."""
+        self.assertTrue(hasattr(self.model, 'opponent_field_gate'))
+        self.assertIsInstance(self.model.opponent_field_gate, nn.Parameter)
+        self.assertEqual(self.model.opponent_field_gate.shape, (1,))
+    
+    def test_network_opponent_field_gate_initialized_to_one(self):
+        """Test that opponent field gate is initialized to 1.0 by default."""
+        # Gate should be initialized to 1.0 (feature enabled by default)
+        gate_value = self.model.opponent_field_gate.data.item()
+        self.assertAlmostEqual(gate_value, 1.0, places=5)
+    
+    def test_network_opponent_field_gate_can_be_set(self):
+        """Test that opponent field gate can be manually set to a specific value."""
+        # Create network with gate set to 0.5
+        model = NeuralNetwork(self.observation_space, 2, self.actions, None, opponent_field_gate_value=0.5)
+        gate_value = model.opponent_field_gate.data.item()
+        self.assertAlmostEqual(gate_value, 0.5, places=5)
+        
+        # Create network with gate set to 0.0 (disabled)
+        model_disabled = NeuralNetwork(self.observation_space, 2, self.actions, None, opponent_field_gate_value=0.0)
+        gate_value_disabled = model_disabled.opponent_field_gate.data.item()
+        self.assertAlmostEqual(gate_value_disabled, 0.0, places=5)
+    
+    def test_network_zero_impact_when_opponent_field_disabled(self):
+        """Test that opponent field feature has zero impact when disabled in observation."""
+        # Create environment with opponent field feature disabled
+        env_disabled = CuttleEnvironment(include_highest_point_value_opponent_field=False)
+        env_disabled.reset()
+        obs_disabled = env_disabled.get_obs()
+        
+        # Process observation
+        state_disabled = self.model._preprocess_single(obs_disabled)
+        
+        # Create environment with opponent field feature enabled but value is 0
+        env_enabled = CuttleEnvironment(include_highest_point_value_opponent_field=True)
+        env_enabled.reset()
+        # Ensure opponent field is empty so value is 0
+        env_enabled.off_zones["Field"] = np.zeros(52, dtype=bool)
+        obs_enabled = env_enabled.get_obs()
+        
+        # Process observation
+        state_enabled = self.model._preprocess_single(obs_enabled)
+        
+        # Both should produce same result (feature has zero impact when disabled)
+        # Extract the last element (gated opponent field feature value)
+        gated_value_disabled = state_disabled[-1].item()
+        gated_value_enabled = state_enabled[-1].item()
+        
+        # When disabled: value=0, presence=0, gate=1 → gated = 0*1*0 = 0
+        # When enabled but value=0: value=0, presence=1, gate=1 → gated = 0*1*1 = 0
+        self.assertAlmostEqual(gated_value_disabled, 0.0, places=5)
+        self.assertAlmostEqual(gated_value_enabled, 0.0, places=5)
+    
+    def test_network_opponent_field_gate_affects_enabled_feature(self):
+        """Test that opponent field gate affects feature value when feature is enabled."""
+        # Create environment with opponent field feature enabled
+        env = CuttleEnvironment(include_highest_point_value_opponent_field=True)
+        env.reset()
+        # Add a Nine (value 10) to opponent field
+        env.off_zones["Field"][9] = True
+        obs = env.get_obs()
+        
+        # Process with default gate (1.0)
+        state_default = self.model._preprocess_single(obs)
+        gated_value_default = state_default[-1].item()  # Last element is opponent field
+        
+        # Create model with gate set to 0.5
+        model_half = NeuralNetwork(self.observation_space, 2, self.actions, None, opponent_field_gate_value=0.5)
+        state_half = model_half._preprocess_single(obs)
+        gated_value_half = state_half[-1].item()
+        
+        # Create model with gate set to 0.0
+        model_zero = NeuralNetwork(self.observation_space, 2, self.actions, None, opponent_field_gate_value=0.0)
+        state_zero = model_zero._preprocess_single(obs)
+        gated_value_zero = state_zero[-1].item()
+        
+        # When enabled: value=10, presence=1, gate varies
+        # gate=1.0: gated = 10*1.0*1 = 10.0
+        # gate=0.5: gated = 10*0.5*1 = 5.0
+        # gate=0.0: gated = 10*0.0*1 = 0.0
+        self.assertAlmostEqual(gated_value_default, 10.0, places=5)
+        self.assertAlmostEqual(gated_value_half, 5.0, places=5)
+        self.assertAlmostEqual(gated_value_zero, 0.0, places=5)
+    
+    def test_validation_allows_missing_opponent_field(self):
+        """Test that validation allows missing Highest Point Value in Opponent Field."""
+        # Create observation without the field
+        obs = self.env.get_obs()
+        if "Highest Point Value in Opponent Field" in obs:
+            del obs["Highest Point Value in Opponent Field"]
+        
+        # Should not raise validation error
+        try:
+            self.model._validate_observation(obs)
+        except ValueError as e:
+            self.fail(f"Validation should allow missing opponent field, but raised: {e}")
+    
+    def test_validation_still_validates_present_opponent_field(self):
+        """Test that validation still validates opponent field when present."""
+        obs = self.env.get_obs()
+        
+        # Valid value should pass
+        obs["Highest Point Value in Opponent Field"] = 5
+        try:
+            self.model._validate_observation(obs)
+        except ValueError:
+            self.fail("Validation should accept valid opponent field value")
+        
+        # Invalid type should fail
+        obs["Highest Point Value in Opponent Field"] = "invalid"
+        with self.assertRaises(ValueError):
+            self.model._validate_observation(obs)
+        
+        # Invalid range should fail
+        obs["Highest Point Value in Opponent Field"] = 15
+        with self.assertRaises(ValueError):
+            self.model._validate_observation(obs)
     
     def test_get_state_with_list_returns_batch_tensor(self):
         """Test that get_state returns batched tensor for list input."""

@@ -41,7 +41,9 @@ class NeuralNetwork(nn.Module):
         observation_space: Dict[str, Any],
         embedding_size: int,
         num_actions: int,
-        custom_network: Optional[nn.Sequential] = None
+        custom_network: Optional[nn.Sequential] = None,
+        feature_gate_value: Optional[float] = None,
+        opponent_field_gate_value: Optional[float] = None
     ) -> None:
         """
         Initialize the neural network.
@@ -51,11 +53,31 @@ class NeuralNetwork(nn.Module):
             embedding_size: Dimension of embedding vectors
             num_actions: Total number of possible actions
             custom_network: Optional custom network architecture
+            feature_gate_value: Optional value to initialize the highest point value in hand gate.
+                              If None, gate is learnable and initialized to 1.0.
+                              If provided, gate is set to this value (can be 0.0 to disable feature).
+            opponent_field_gate_value: Optional value to initialize the highest point value in opponent field gate.
+                                     If None, gate is learnable and initialized to 1.0.
+                                     If provided, gate is set to this value (can be 0.0 to disable feature).
         """
         super().__init__()
         
         self.embedding_size = embedding_size
         self.num_actions = num_actions
+        
+        # Learnable gate for highest point value in hand feature (Approach 3B)
+        # Allows network to learn optimal feature usage or can be manually set
+        if feature_gate_value is not None:
+            self.highest_point_gate = nn.Parameter(torch.tensor([feature_gate_value]))
+        else:
+            self.highest_point_gate = nn.Parameter(torch.ones(1))  # Learnable, initialized to 1.0
+        
+        # Learnable gate for highest point value in opponent field feature (Approach 3B)
+        # Allows network to learn optimal feature usage or can be manually set
+        if opponent_field_gate_value is not None:
+            self.opponent_field_gate = nn.Parameter(torch.tensor([opponent_field_gate_value]))
+        else:
+            self.opponent_field_gate = nn.Parameter(torch.ones(1))  # Learnable, initialized to 1.0
         
         if custom_network is not None:
             self.linear_relu_stack = custom_network
@@ -63,6 +85,7 @@ class NeuralNetwork(nn.Module):
             self.embedding = nn.Embedding(EMBEDDING_VOCAB_SIZE, embedding_size)
         else:
             # Calculate input dimension from observation space
+            # Always include highest point value dimension (will be padded/gated if missing)
             input_length = self._calculate_input_dimension(observation_space, embedding_size)
             
             # Embedding layer for discrete values (stack, effect_shown)
@@ -96,11 +119,18 @@ class NeuralNetwork(nn.Module):
             Total input dimension for the network
         """
         input_length = 0
+        highest_point_included = False
+        opponent_field_included = False
         
         for key, item in observation_space.items():
             if key == "Highest Point Value in Hand":
                 # Scalar value: add 1
                 input_length += 1
+                highest_point_included = True
+            elif key == "Highest Point Value in Opponent Field":
+                # Scalar value: add 1
+                input_length += 1
+                opponent_field_included = True
             elif isinstance(item, dict):
                 # Nested dictionary (e.g., "Current Zones")
                 for nested_item in item.values():
@@ -112,6 +142,16 @@ class NeuralNetwork(nn.Module):
             elif isinstance(item, list):
                 # List items are embedded (stack, effect_shown)
                 input_length += len(item) * embedding_size
+        
+        # Always add 1 for highest point value in hand feature (will be padded/gated if missing)
+        # This ensures consistent input dimension regardless of toggle state
+        if not highest_point_included:
+            input_length += 1
+        
+        # Always add 1 for highest point value in opponent field feature (will be padded/gated if missing)
+        # This ensures consistent input dimension regardless of toggle state
+        if not opponent_field_included:
+            input_length += 1
         
         return input_length
     
@@ -205,15 +245,50 @@ class NeuralNetwork(nn.Module):
         embed_stack = self.embedding(stack_tensor).flatten()
         embed_effect = self.embedding(effect_tensor).flatten()
         
-        # Add highest point value as a scalar feature
-        highest_point = torch.tensor(
-            [obs["Highest Point Value in Hand"]], 
+        # Handle highest point value in hand with gating (Approach 3B)
+        # Get feature value and presence flag
+        if "Highest Point Value in Hand" in obs:
+            highest_point_value = obs["Highest Point Value in Hand"]
+            feature_present = 1.0  # Feature is present and enabled
+        else:
+            highest_point_value = 0  # Default when disabled
+            feature_present = 0.0  # Gate closed when feature disabled
+        
+        # Create feature tensor
+        highest_point_raw = torch.tensor(
+            [highest_point_value], 
             dtype=torch.float32, 
             device=device
         )
         
+        # Apply gate: value is multiplied by (gate * presence_flag)
+        # When disabled: presence_flag = 0, so output is always 0 regardless of gate
+        # When enabled: presence_flag = 1, so gate controls impact
+        gated_value = highest_point_raw * self.highest_point_gate * feature_present
+        
+        # Handle highest point value in opponent field with gating (Approach 3B)
+        # Get feature value and presence flag
+        if "Highest Point Value in Opponent Field" in obs:
+            opponent_field_value = obs["Highest Point Value in Opponent Field"]
+            opponent_field_present = 1.0  # Feature is present and enabled
+        else:
+            opponent_field_value = 0  # Default when disabled
+            opponent_field_present = 0.0  # Gate closed when feature disabled
+        
+        # Create feature tensor
+        opponent_field_raw = torch.tensor(
+            [opponent_field_value], 
+            dtype=torch.float32, 
+            device=device
+        )
+        
+        # Apply gate: value is multiplied by (gate * presence_flag)
+        # When disabled: presence_flag = 0, so output is always 0 regardless of gate
+        # When enabled: presence_flag = 1, so gate controls impact
+        gated_opponent_field = opponent_field_raw * self.opponent_field_gate * opponent_field_present
+        
         # Concatenate all features
-        final = torch.cat([state_tensor.to(device), embed_stack, embed_effect, highest_point])
+        final = torch.cat([state_tensor.to(device), embed_stack, embed_effect, gated_value, gated_opponent_field])
         
         return final
     
@@ -268,7 +343,7 @@ class NeuralNetwork(nn.Module):
             "Scrap",
             "Stack",
             "Effect-Shown",
-            "Highest Point Value in Hand"
+            # "Highest Point Value in Hand" is now optional
         ]
         
         for key in required_keys:
@@ -294,13 +369,26 @@ class NeuralNetwork(nn.Module):
                 f"got {len(obs['Effect-Shown'])}"
             )
         
-        # Validate highest point value
-        highest_point = obs["Highest Point Value in Hand"]
-        if not isinstance(highest_point, (int, np.integer)):
-            raise ValueError(
-                f"Highest Point Value in Hand must be int, got {type(highest_point)}"
-            )
-        if not (0 <= highest_point <= 10):
-            raise ValueError(
-                f"Highest Point Value in Hand must be 0-10, got {highest_point}"
-            )
+        # Validate highest point value in hand if present (optional field)
+        if "Highest Point Value in Hand" in obs:
+            highest_point = obs["Highest Point Value in Hand"]
+            if not isinstance(highest_point, (int, np.integer)):
+                raise ValueError(
+                    f"Highest Point Value in Hand must be int, got {type(highest_point)}"
+                )
+            if not (0 <= highest_point <= 10):
+                raise ValueError(
+                    f"Highest Point Value in Hand must be 0-10, got {highest_point}"
+                )
+        
+        # Validate highest point value in opponent field if present (optional field)
+        if "Highest Point Value in Opponent Field" in obs:
+            opponent_field = obs["Highest Point Value in Opponent Field"]
+            if not isinstance(opponent_field, (int, np.integer)):
+                raise ValueError(
+                    f"Highest Point Value in Opponent Field must be int, got {type(opponent_field)}"
+                )
+            if not (0 <= opponent_field <= 10):
+                raise ValueError(
+                    f"Highest Point Value in Opponent Field must be 0-10, got {opponent_field}"
+                )
