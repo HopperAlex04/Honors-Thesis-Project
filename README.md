@@ -22,7 +22,10 @@ A reinforcement learning project for training DQN agents to play the Cuttle card
 ├── scripts/                 # Scripts directory (optional)
 ├── models/                  # Saved model checkpoints
 ├── action_logs/             # Training logs
-├── Main.py                  # Main training script
+├── train_no_features.py     # Baseline training (no features)
+├── train_hand_feature_only.py      # Hand feature only
+├── train_opponent_field_only.py    # Opponent field feature only
+├── train_both_features.py   # Both features enabled
 ├── setup.py                 # Package setup
 ├── requirements.txt         # Python dependencies
 └── Dockerfile               # Docker configuration
@@ -43,9 +46,12 @@ pip install -e .
 
 ## Usage
 
-Run the main training script:
+Run training scripts for different feature configurations:
 ```bash
-python Main.py
+python train_no_features.py        # Baseline (no features)
+python train_hand_feature_only.py  # Hand feature only
+python train_opponent_field_only.py # Opponent field feature only
+python train_both_features.py      # Both features
 ```
 
 Run tests:

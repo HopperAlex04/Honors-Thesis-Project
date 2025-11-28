@@ -1,3 +1,11 @@
+"""
+Training script for baseline model with no optional features.
+
+This script trains a model without any of the optional features enabled
+("Highest Point Value in Hand" and "Highest Point Value in Opponent Field").
+This serves as the baseline for comparing feature contributions to model performance.
+"""
+
 import sys
 import json
 import signal
@@ -24,7 +32,7 @@ training_interrupted = False
 def signal_handler(signum, frame):
     """Handle interrupt signal (Ctrl+C) gracefully."""
     global training_interrupted
-    print("\n\n Training interruption requested. Will finish current round and save state...")
+    print("\n\nTraining interruption requested. Will finish current round and save state...")
     training_interrupted = True
 
 
@@ -32,7 +40,11 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-env = CuttleEnvironment()
+# Create environment with no optional features (baseline)
+env = CuttleEnvironment(
+    include_highest_point_value=False,
+    include_highest_point_value_opponent_field=False
+)
 actions = env.actions
 
 # Conservative hyperparameters (recommended starting point)
@@ -57,8 +69,11 @@ models_dir = Path("./models")
 models_dir.mkdir(parents=True, exist_ok=True)
 print(f"Models directory ready: {models_dir}")
 
-# Training state file for resuming
-STATE_FILE = models_dir / "training_state.json"
+# Training state file for resuming (separate from other training scripts)
+STATE_FILE = models_dir / "training_state_no_features.json"
+
+# Checkpoint prefix to avoid conflicts with other training scripts
+CHECKPOINT_PREFIX = "no_features_checkpoint"
 
 
 def save_training_state(current_round: int, total_rounds: int) -> None:
@@ -71,9 +86,9 @@ def save_training_state(current_round: int, total_rounds: int) -> None:
     try:
         with open(STATE_FILE, 'w') as f:
             json.dump(state, f, indent=2)
-        print(f"💾 Training state saved: Round {current_round}/{total_rounds}")
+        print(f"Training state saved: Round {current_round}/{total_rounds}")
     except Exception as e:
-        print(f"⚠️  Warning: Could not save training state: {e}")
+        print(f"Warning: Could not save training state: {e}")
 
 
 def load_training_state() -> Optional[dict]:
@@ -115,7 +130,7 @@ if saved_state:
 # Save initial checkpoint only if starting fresh
 if start_round == 0:
     try:
-        checkpoint_path = models_dir / f"checkpoint{0}.pt"
+        checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{0}.pt"
         if not checkpoint_path.exists():
             torch.save(model, checkpoint_path)
             print(f"Saved initial checkpoint: {checkpoint_path}")
@@ -133,6 +148,8 @@ rounds = 10
 eps_per_round = 10
 
 print(f"\n{'='*60}")
+print(f"TRAINING: No Features (Baseline)")
+print(f"Features: Hand=OFF, Opponent Field=OFF")
 print(f"Starting training: Rounds {start_round} to {rounds-1}")
 print(f"{'='*60}\n")
 
@@ -147,7 +164,7 @@ for x in range(start_round, rounds):
     print(f"\n{'='*60}")
     print(f"Round {x+1}/{rounds}")
     print(f"{'='*60}")
-    checkpoint_path = models_dir / f"checkpoint{x}.pt"
+    checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{x}.pt"
     
     # Check if checkpoint exists before loading
     if not checkpoint_path.exists():
@@ -169,7 +186,7 @@ for x in range(start_round, rounds):
         continue
     
     try:
-        Training.selfPlayTraining(trainee, trainee, eps_per_round, model_id=f"round_{x}_selfplay")
+        Training.selfPlayTraining(trainee, trainee, eps_per_round, model_id=f"no_features_round_{x}_selfplay")
     except Exception as e:
         print(f"Error during self-play training in round {x}: {e}")
         continue
@@ -181,13 +198,13 @@ for x in range(start_round, rounds):
     valid_agent = Players.Agent("ValidAgent", validation_model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR)
 
     try:
-        p1w, p2w = Training.selfPlayTraining(trainee, valid_agent, eps_per_round, True, model_id=f"round_{x}_vs_previous")
+        p1w, p2w = Training.selfPlayTraining(trainee, valid_agent, eps_per_round, True, model_id=f"no_features_round_{x}_vs_previous")
     except Exception as e:
         print(f"Error during validation training in round {x}: {e}")
         continue
 
     # Save checkpoint for next round (always save, regardless of win/loss)
-    new_checkpoint_path = models_dir / f"checkpoint{x + 1}.pt"
+    new_checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{x + 1}.pt"
     try:
         if p2w < p1w:
             # New model won - save it
@@ -204,21 +221,21 @@ for x in range(start_round, rounds):
         print(f"Error saving checkpoint {new_checkpoint_path}: {e}")
 
     try:
-        p1w, p2w = Training.selfPlayTraining(trainee, validation00, eps_per_round, True, model_id=f"round_{x}_vs_randomized")
+        p1w, p2w = Training.selfPlayTraining(trainee, validation00, eps_per_round, True, model_id=f"no_features_round_{x}_vs_randomized")
         print(f"Round {x}: Validation vs Randomized - p1w: {p1w}, p2w: {p2w}")
     except Exception as e:
         print(f"Error during randomized validation in round {x}: {e}")
         continue
     
     try:
-        p1w, p2w = Training.selfPlayTraining(trainee, validation01, eps_per_round, True, model_id=f"round_{x}_vs_heuristic")
+        p1w, p2w = Training.selfPlayTraining(trainee, validation01, eps_per_round, True, model_id=f"no_features_round_{x}_vs_heuristic")
         print(f"Round {x}: Validation vs HeuristicHighCard - p1w: {p1w}, p2w: {p2w}")
     except Exception as e:
         print(f"Error during heuristic validation in round {x}: {e}")
         continue
     
     try:
-        p1w, p2w = Training.selfPlayTraining(trainee, validation02, eps_per_round, True, model_id=f"round_{x}_vs_gapmaximizer")
+        p1w, p2w = Training.selfPlayTraining(trainee, validation02, eps_per_round, True, model_id=f"no_features_round_{x}_vs_gapmaximizer")
         print(f"Round {x}: Validation vs ScoreGapMaximizer - p1w: {p1w}, p2w: {p2w}")
     except Exception as e:
         print(f"Error during gap maximizer validation in round {x}: {e}")
