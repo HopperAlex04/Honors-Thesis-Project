@@ -5,12 +5,19 @@ This module provides comprehensive tests for the neural network architecture,
 including initialization, forward passes, state processing, and edge cases.
 """
 
+import sys
 import unittest
+from pathlib import Path
 from typing import Dict, Any
 
 import numpy as np
 import torch
 import torch.nn as nn
+
+# Add src directory to path for imports
+src_path = Path(__file__).parent.parent / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 
 from cuttle.environment import CuttleEnvironment
 from cuttle.networks import NeuralNetwork
@@ -64,8 +71,8 @@ class TestNeuralNetworkInitialization(unittest.TestCase):
         """Test that linear layer outputs correct number of actions."""
         model = NeuralNetwork(self.observation_space, 2, self.actions, None)
         
-        # Get the linear layer from the sequential
-        linear_layer = model.linear_relu_stack[0]
+        # Get the output linear layer from the sequential (index -2, before final Tanh)
+        linear_layer = model.linear_relu_stack[-2]
         self.assertEqual(linear_layer.out_features, self.actions)
 
 
@@ -215,17 +222,18 @@ class TestNeuralNetworkGetState(unittest.TestCase):
         
         # Process with default gate (1.0)
         state_default = self.model._preprocess_single(obs)
-        gated_value_default = state_default[-1].item()
+        # Hand feature is at index -2 (opponent field feature is at -1)
+        gated_value_default = state_default[-2].item()
         
         # Create model with gate set to 0.5
         model_half = NeuralNetwork(self.observation_space, 2, self.actions, None, feature_gate_value=0.5)
         state_half = model_half._preprocess_single(obs)
-        gated_value_half = state_half[-1].item()
+        gated_value_half = state_half[-2].item()
         
         # Create model with gate set to 0.0
         model_zero = NeuralNetwork(self.observation_space, 2, self.actions, None, feature_gate_value=0.0)
         state_zero = model_zero._preprocess_single(obs)
-        gated_value_zero = state_zero[-1].item()
+        gated_value_zero = state_zero[-2].item()
         
         # When enabled: value=10, presence=1, gate varies
         # gate=1.0: gated = 10*1.0*1 = 10.0
@@ -428,13 +436,10 @@ class TestNeuralNetworkGetState(unittest.TestCase):
     
     def test_get_state_handles_empty_list(self):
         """Test that get_state handles empty list input."""
-        state = self.model.get_state([])
-        
-        self.assertIsInstance(state, torch.Tensor)
-        self.assertEqual(state.dim(), 2)
-        # The implementation returns a fixed-size tensor even for empty lists
-        # This is a known behavior - just verify it's a tensor
-        self.assertIsInstance(state, torch.Tensor)
+        # Empty list input should raise an error since we can't determine
+        # feature dimensions without a valid observation
+        with self.assertRaises((ValueError, IndexError)):
+            self.model.get_state([])
     
     def test_get_state_embeds_stack(self):
         """Test that stack values are embedded correctly."""

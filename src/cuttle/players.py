@@ -398,6 +398,14 @@ class Agent(Player):
         # Using Huber Loss (Smooth L1 Loss)
         self.criterion = torch.nn.SmoothL1Loss()
 
+    def get_optimizer_state(self) -> dict:
+        """Get optimizer state dict for checkpointing."""
+        return self.optimizer.state_dict()
+
+    def set_optimizer_state(self, state_dict: dict) -> None:
+        """Restore optimizer state from checkpoint."""
+        self.optimizer.load_state_dict(state_dict)
+
     def getAction(
         self, 
         observation: dict, 

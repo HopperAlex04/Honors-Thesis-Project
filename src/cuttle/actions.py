@@ -41,6 +41,8 @@ class Action(ABC):
 class DrawAction(Action):
     """Action to draw a card from the deck."""
     
+    MAX_HAND_SIZE = 8  # Maximum hand size (can draw if hand <= this value)
+    
     def execute(self, game_state):
         hand = game_state.current_zones.get("Hand")
         possible_draws = np.where(game_state.deck)[0]
@@ -61,7 +63,7 @@ class DrawAction(Action):
         if game_state.stack[0] != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
-        return len(inhand) < 9
+        return len(inhand) <= self.MAX_HAND_SIZE  # Can draw if hand size <= 8
 
 
 class ScoreAction(Action):
@@ -318,6 +320,8 @@ class ResolveFour(Action):
 class FiveAction(Action):
     """Action: Five - Draw 2 cards."""
     
+    MAX_HAND_LIMIT = 9  # Absolute maximum hand size (cannot exceed this)
+    
     def __init__(self, action_id: int, card: int):
         super().__init__(action_id, card)
         self.card = card
@@ -328,17 +332,26 @@ class FiveAction(Action):
         hand[self.card] = False
         scrap[self.card] = True
         if not game_state.countered:
-            # Draw twice
+            # Draw twice, respecting hand limit (max 9 cards)
             draw_action = DrawAction(0)
-            draw_action.execute(game_state)
-            draw_action.execute(game_state)
+            current_hand_size = np.where(hand)[0].size
+            if current_hand_size < self.MAX_HAND_LIMIT:
+                draw_action.execute(game_state)
+                current_hand_size = np.where(hand)[0].size
+            if current_hand_size < self.MAX_HAND_LIMIT:
+                draw_action.execute(game_state)
         return f"Five drew 2 cards with {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
         if countering or game_state.stack[0] != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
-        return self.card in inhand
+        if self.card not in inhand:
+            return False
+        # After playing Five: hand - 1 cards, then draw up to 2
+        # Final hand size: hand - 1 + 2 = hand + 1
+        # Require: hand + 1 <= MAX_HAND_LIMIT, i.e., hand <= MAX_HAND_LIMIT - 1
+        return len(inhand) <= self.MAX_HAND_LIMIT - 1
 
 
 class SixAction(Action):
@@ -430,7 +443,8 @@ class SevenAction02(Action):
             return False
         # effect_shown stores card_index + 1, so we need to check target + 1
         target_plus_one = self.target + 1
-        return (self.target != 0 and target_plus_one in game_state.effect_shown)
+        # Check if this target is one of the revealed cards (effect_shown stores index+1)
+        return target_plus_one in game_state.effect_shown
 
 
 class EightRoyal(Action):
@@ -461,6 +475,8 @@ class EightRoyal(Action):
 
 class NineAction(Action):
     """Action: Nine - Bounce a card (return to hand)."""
+    
+    MAX_HAND_LIMIT = 9  # Absolute maximum hand size (cannot exceed this)
     
     def __init__(self, action_id: int, card: int, target: int, self_hit: bool):
         super().__init__(action_id, (card, target, self_hit))
@@ -504,6 +520,10 @@ class NineAction(Action):
         
         if self.self_hit:
             if self_field.size > 0 and self.target in self_field:
+                # Self-bounce: play Nine (-1), bounce card to own hand (+1) = net 0
+                # Final hand size = current hand size, must not exceed limit
+                if len(inhand) > self.MAX_HAND_LIMIT:
+                    return False
                 # Queen protection
                 if game_state.cur_queens == 1:
                     royal_queens = game_state.action_registry.royal_indicies[1]
@@ -512,6 +532,11 @@ class NineAction(Action):
                 return True
         else:
             if onfield.size > 0 and self.target in onfield:
+                # Opponent bounce: their hand increases by 1
+                # Check opponent's hand limit before bouncing to their hand
+                off_hand_size = np.where(game_state.off_zones["Hand"])[0].size
+                if off_hand_size + 1 > self.MAX_HAND_LIMIT:
+                    return False
                 # Queen protection
                 if game_state.off_queens == 1:
                     royal_queens = game_state.action_registry.royal_indicies[1]

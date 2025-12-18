@@ -5,10 +5,17 @@ This module provides comprehensive tests for the Cuttle card game environment,
 including initialization, actions, state management, and game mechanics.
 """
 
+import sys
 import unittest
+from pathlib import Path
 from typing import Dict, Any
 
 import numpy as np
+
+# Add src directory to path for imports
+src_path = Path(__file__).parent.parent / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 
 from cuttle.environment import CuttleEnvironment
 
