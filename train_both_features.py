@@ -59,7 +59,7 @@ BATCH_SIZE = 64       # Balanced for CPU training
 GAMMA = 0.92          # Medium-term focus (~25 steps significant)
 EPS_START = 0.90      # Start with 90% exploration
 EPS_END = 0.05        # Maintain 5% exploration when trained
-EPS_DECAY = 12000     # Reach exploitation after ~2-3 rounds
+EPS_DECAY = 80000     # Spread exploration across all 10 rounds (~7% at end)
 TAU = 0.01            # Soft update rate (for future target network)
 LR = 3e-4             # Moderate learning rate for faster initial learning
 
