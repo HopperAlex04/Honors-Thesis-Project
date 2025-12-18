@@ -392,6 +392,7 @@ class Agent(Player):
         self.tau = tau
         self.lr = lr
         self.update_target_counter = 0  # Track steps for target network updates
+        self.target_update_frequency = 0  # Hard update target network every N steps (0 = use soft updates with tau)
 
         # Replay Memory
         self.memory = ReplayMemory(100000)  # Increased capacity for better learning
@@ -415,6 +416,15 @@ class Agent(Player):
     def set_optimizer_state(self, state_dict: dict) -> None:
         """Restore optimizer state from checkpoint."""
         self.optimizer.load_state_dict(state_dict)
+    
+    def set_target_update_frequency(self, frequency: int) -> None:
+        """
+        Set target network update frequency.
+        
+        Args:
+            frequency: Number of steps between hard updates (0 = use soft updates with tau)
+        """
+        self.target_update_frequency = frequency
 
     def getAction(
         self, 
@@ -545,10 +555,16 @@ class Agent(Player):
         
         self.optimizer.step()
         
-        # Soft update target network every step (using tau)
+        # Update target network
         self.update_target_counter += 1
-        if self.tau > 0:
-            # Soft update: target = tau * policy + (1 - tau) * target
+        
+        if self.target_update_frequency > 0:
+            # Hard update: copy policy network to target network every N steps
+            if self.update_target_counter % self.target_update_frequency == 0:
+                self.target.load_state_dict(self.policy.state_dict())
+        elif self.tau > 0:
+            # Soft update: target = tau * policy + (1 - tau) * target (every step)
+            # This keeps target network stable while gradually tracking policy updates
             for target_param, policy_param in zip(self.target.parameters(), self.policy.parameters()):
                 target_param.data.copy_(
                     self.tau * policy_param.data + (1.0 - self.tau) * target_param.data
