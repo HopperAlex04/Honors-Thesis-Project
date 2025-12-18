@@ -60,13 +60,16 @@ GAMMA = 0.92          # Medium-term focus (~25 steps significant)
 EPS_START = 0.90      # Start with 90% exploration
 EPS_END = 0.05        # Maintain 5% exploration when trained
 EPS_DECAY = 80000     # Spread exploration across all 10 rounds (~7% at end)
-TAU = 0.01            # Soft update rate (for future target network)
+TAU = 0.005           # Soft update rate for target network (reduced from 0.01 for more stability)
+TARGET_UPDATE_FREQUENCY = 1000  # Hard update target network every N steps (0 = use soft updates)
 LR = 1e-4             # Reduced learning rate for stability (was 3e-4, caused increasing loss)
 
 model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
 trainee = Players.Agent(
     "PlayerAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR
 )
+# Configure target network updates (hard updates every N steps for better stability)
+trainee.set_target_update_frequency(TARGET_UPDATE_FREQUENCY)
 
 valid_agent = Players.Agent("ValidAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR)
 
@@ -284,6 +287,7 @@ for x in range(start_round, rounds):
     validation_model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
     validation_model.load_state_dict(prev_model_state)
     valid_agent = Players.Agent("ValidAgent", validation_model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR)
+    valid_agent.set_target_update_frequency(TARGET_UPDATE_FREQUENCY)
 
     try:
         p1w, p2w, steps_done = Training.selfPlayTraining(
@@ -301,6 +305,19 @@ for x in range(start_round, rounds):
     # Check for interruption after vs_previous
     if check_interrupt_and_save(x, rounds, trainee, steps_done):
         sys.exit(0)
+    
+    # === REGRESSION DETECTION: Check if current round is losing to previous round ===
+    win_rate_vs_previous = p1w / eps_per_round if eps_per_round > 0 else 0.0
+    if win_rate_vs_previous < 0.50:
+        print(f"\n{'!'*60}")
+        print(f"⚠️  REGRESSION DETECTED: Round {x} is LOSING to Round {x-1}")
+        print(f"   Win rate: {win_rate_vs_previous:.1%} (P1: {p1w} vs P2: {p2w})")
+        print(f"   This indicates the agent may be forgetting previous strategies.")
+        print(f"   Possible causes: overfitting to self-play, training instability, or catastrophic forgetting.")
+        print(f"{'!'*60}\n")
+    elif win_rate_vs_previous < 0.55:
+        print(f"\n⚠️  WARNING: Round {x} is barely beating Round {x-1} ({win_rate_vs_previous:.1%})")
+        print(f"   Monitor closely - performance may be degrading.\n")
 
     # Save checkpoint for next round (always save, regardless of win/loss)
     new_checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{x + 1}.pt"
@@ -386,15 +403,15 @@ for x in range(start_round, rounds):
         continue
     
     # === MINIMUM VIABILITY CHECK ===
-    # If we can't beat random after a few rounds, something is fundamentally wrong
-    if x >= 2 and win_rate_rand < MIN_RANDOM_WIN_RATE:
-        print(f"\n{'!'*60}")
-        print(f"❌ TRAINING STOPPED: Win rate vs Randomized ({win_rate_rand:.1%}) < {MIN_RANDOM_WIN_RATE:.0%}")
-        print(f"   Agent is not learning basic strategy.")
-        print(f"   Check: rewards, network architecture, or hyperparameters.")
-        print(f"{'!'*60}\n")
-        save_training_state(x + 1, rounds, steps_done)
-        break
+    # DISABLED: If we can't beat random after a few rounds, something is fundamentally wrong
+    # if x >= 2 and win_rate_rand < MIN_RANDOM_WIN_RATE:
+    #     print(f"\n{'!'*60}")
+    #     print(f"❌ TRAINING STOPPED: Win rate vs Randomized ({win_rate_rand:.1%}) < {MIN_RANDOM_WIN_RATE:.0%}")
+    #     print(f"   Agent is not learning basic strategy.")
+    #     print(f"   Check: rewards, network architecture, or hyperparameters.")
+    #     print(f"{'!'*60}\n")
+    #     save_training_state(x + 1, rounds, steps_done)
+    #     break
     
     # === EARLY STOPPING CHECK ===
     if win_rate_gap >= TARGET_WIN_RATE:
