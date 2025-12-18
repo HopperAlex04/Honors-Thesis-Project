@@ -197,6 +197,9 @@ TARGET_WIN_RATE = 0.51  # Stop training when hitting this win rate vs ScoreGapMa
 REGRESSION_THRESHOLD = 0.15  # Flag regression if win rate drops by more than this
 REGRESSION_WINDOW = 3  # Number of rounds to consider for regression detection
 
+# Minimum viable performance (training stops if below this vs Randomized)
+MIN_RANDOM_WIN_RATE = 0.60  # Should easily beat random player
+
 # Track win rates for regression detection
 win_rate_history = {
     "randomized": [],
@@ -375,6 +378,17 @@ for x in range(start_round, rounds):
     except Exception as e:
         print(f"Error during gap maximizer validation in round {x}: {e}")
         continue
+    
+    # === MINIMUM VIABILITY CHECK ===
+    # If we can't beat random after a few rounds, something is fundamentally wrong
+    if x >= 2 and win_rate_rand < MIN_RANDOM_WIN_RATE:
+        print(f"\n{'!'*60}")
+        print(f"❌ TRAINING STOPPED: Win rate vs Randomized ({win_rate_rand:.1%}) < {MIN_RANDOM_WIN_RATE:.0%}")
+        print(f"   Agent is not learning basic strategy.")
+        print(f"   Check: rewards, network architecture, or hyperparameters.")
+        print(f"{'!'*60}\n")
+        save_training_state(x + 1, rounds, steps_done)
+        break
     
     # === EARLY STOPPING CHECK ===
     if win_rate_gap >= TARGET_WIN_RATE:
