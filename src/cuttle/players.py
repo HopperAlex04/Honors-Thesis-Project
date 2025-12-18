@@ -373,6 +373,15 @@ class Agent(Player):
         # Set up policy model
         self.model = model
         self.policy = model
+        
+        # Create target network for stable Q-learning (copy of policy network)
+        # Import here to avoid circular dependency
+        from cuttle.networks import NeuralNetwork
+        import copy
+        # Create a new network with same architecture
+        self.target = copy.deepcopy(model)
+        self.target.load_state_dict(self.policy.state_dict())
+        self.target.eval()  # Target network is always in eval mode
 
         # Training parameters
         self.batch_size = batch_size
@@ -382,6 +391,7 @@ class Agent(Player):
         self.eps_decay = eps_decay
         self.tau = tau
         self.lr = lr
+        self.update_target_counter = 0  # Track steps for target network updates
 
         # Replay Memory
         self.memory = ReplayMemory(100000)  # Increased capacity for better learning
@@ -507,13 +517,14 @@ class Agent(Player):
         )  # Shape: [batch_size, 1]
         
         # Compute Q(s', a') for next states (for non-final states only)
+        # Use target network for stability
         next_state_values = torch.zeros(self.batch_size)
         
         with torch.no_grad():
             if len(non_final_next_states) > 0:
-                # Get max Q-value for next states
+                # Get max Q-value for next states using target network
                 next_state_values[non_final_mask] = (
-                    self.policy(non_final_next_states).max(1).values
+                    self.target(non_final_next_states).max(1).values
                 )
         
         # Compute expected Q-values using Bellman equation: Q(s,a) = r + γ * max Q(s',a')
@@ -529,10 +540,20 @@ class Agent(Player):
         self.optimizer.zero_grad()
         loss.backward()
         
-        # Gradient clipping to prevent exploding gradients
-        torch.nn.utils.clip_grad_value_(self.policy.parameters(), 100)
+        # Gradient clipping to prevent exploding gradients (reduced from 100 to 10)
+        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 10.0)
         
         self.optimizer.step()
+        
+        # Soft update target network every step (using tau)
+        self.update_target_counter += 1
+        if self.tau > 0:
+            # Soft update: target = tau * policy + (1 - tau) * target
+            for target_param, policy_param in zip(self.target.parameters(), self.policy.parameters()):
+                target_param.data.copy_(
+                    self.tau * policy_param.data + (1.0 - self.tau) * target_param.data
+                )
+        
         return loss.item()
 
 
