@@ -201,7 +201,7 @@ def handle_counter_exchange(
     player_actions: List[int],
     other_states: List[Dict[str, Any]],
     other_actions: List[int],
-) -> Players.Player:
+) -> bool:
     """
     Handle counter exchange between players.
     
@@ -218,26 +218,28 @@ def handle_counter_exchange(
         other_actions: Actions list for other player
         
     Returns:
-        The player whose turn it is after counter exchange
+        True if zones are currently swapped (need to swap back), False otherwise
     """
     depth = 1
-    curr_player = current_player
+    # Track whether we're on original player's side (True) or opponent's side (False)
+    on_original_side = True
     
     while env.checkResponses() and depth <= MAX_COUNTER_DEPTH:
-        # Switch players
-        curr_player = other_player if curr_player == current_player else current_player
+        # Switch sides
+        on_original_side = not on_original_side
         env.passControl()
         
-        # Get counter action
+        # Get counter action from appropriate player
+        active_player = current_player if on_original_side else other_player
         valid_actions = env.generateActionMask(countering=True)
         observation = env.get_obs()
-        response = curr_player.getAction(
+        response = active_player.getAction(
             observation, valid_actions, actions, steps, force_greedy=validating
         )
         env.step(response)
         
-        # Record action
-        if curr_player == current_player:
+        # Record action to appropriate list
+        if on_original_side:
             player_states.append(observation)
             player_actions.append(response)
         else:
@@ -247,7 +249,8 @@ def handle_counter_exchange(
         env.updateStack(response, depth)
         depth += 1
     
-    return curr_player
+    # Return True if zones are swapped (not on original side)
+    return not on_original_side
 
 
 def handle_stack_resolution(
@@ -545,7 +548,7 @@ def execute_player_turn(
     env.updateStack(action)
     
     # Handle counter exchange
-    curr_player = handle_counter_exchange(
+    zones_swapped = handle_counter_exchange(
         env, player, other_player, actions, steps, validating,
         player_states, player_actions, other_states, other_actions
     )
@@ -553,9 +556,8 @@ def execute_player_turn(
     # Resolve stack
     env.resolveStack()
     
-    # Switch back to original player if needed
-    if curr_player == other_player:
-        curr_player = player
+    # Switch back to original player if zones are swapped
+    if zones_swapped:
         env.passControl()
     
     # Execute main action if stack is not empty
