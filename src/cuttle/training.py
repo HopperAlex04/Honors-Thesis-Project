@@ -671,7 +671,10 @@ def selfPlayTraining(
         # Main game loop
         while not terminated and not truncated and turns < MAX_TURNS_PER_EPISODE:
             turns += 1
-            steps += 1
+            # Only increment steps during training (not validation)
+            # This ensures epsilon decay is based on actual training steps
+            if not validating:
+                steps += 1
             
             # Player 1's turn
             observation, p1_score, terminated, truncated = execute_player_turn(
