@@ -9,6 +9,7 @@ for actions and training metrics.
 import json
 import logging
 import math
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -19,7 +20,8 @@ from cuttle.environment import CuttleEnvironment
 
 
 # Constants
-MAX_TURNS_PER_EPISODE = 1000  # Safety limit to prevent infinite loops
+MAX_TURNS_PER_EPISODE = 200  # Safety limit to prevent infinite loops
+SLOW_TURN_THRESHOLD = 0.1  # Log turns taking longer than this (in seconds)
 MAX_COUNTER_DEPTH = 4  # Maximum depth for counter exchanges (stack indices 0-4)
 STACK_TOP_SEVEN = 7  # Stack value indicating Seven card resolution needed
 STACK_TOP_FOUR = 4  # Stack value indicating Four card resolution needed
@@ -511,6 +513,8 @@ def execute_player_turn(
     Returns:
         Tuple of (observation, score, terminated, truncated)
     """
+    turn_start_time = time.time()
+    
     # Get initial observation
     observation = env.get_obs()
     player_states.append(observation)
@@ -570,6 +574,15 @@ def execute_player_turn(
         if obs is not None:
             observation, score, terminated, truncated = obs, sc, term, trunc
     
+    # Timing diagnostic for slow turns
+    turn_time = time.time() - turn_start_time
+    if turn_time > SLOW_TURN_THRESHOLD:
+        action_obj = env.action_registry.get_action(action)
+        action_type = action_obj.__class__.__name__ if action_obj else "Unknown"
+        action_args = action_obj.args if action_obj else None
+        print(f"[SLOW TURN] Episode {episode}, Turn {turn}: {turn_time:.3f}s | "
+              f"Player: {player.name} | Action: {action_type}(id={action}, args={action_args})")
+    
     return observation, score, terminated, truncated
 
 
@@ -581,7 +594,10 @@ def selfPlayTraining(
     log_actions: bool = True,
     log_metrics: bool = True,
     model_id: Optional[str] = None,
-) -> Tuple[int, int]:
+    include_highest_point_value: bool = False,
+    include_highest_point_value_opponent_field: bool = False,
+    initial_steps: int = 0,
+) -> Tuple[int, int, int]:
     """
     Execute self-play training between two players.
     
@@ -592,27 +608,23 @@ def selfPlayTraining(
         p1: First player (typically the training agent)
         p2: Second player (can be same as p1 for self-play)
         episodes: Number of episodes to train
-        validating: If True, use greedy policy (no exploration) and disable all features
-                    to test generalization (model must work without feature hints)
+        validating: If True, use greedy policy (no exploration)
         log_actions: If True, log all actions to file for strategy analysis
         log_metrics: If True, log training metrics (win rates, loss, etc.)
         model_id: Optional model identifier for log files (e.g., "round_3", "checkpoint_5")
+        include_highest_point_value: If True, include "Highest Point Value in Hand" feature
+        include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field" feature
+        initial_steps: Starting step count for epsilon decay (for resuming training)
         
     Returns:
-        Tuple of (p1_wins, p2_wins) counts
+        Tuple of (p1_wins, p2_wins, final_steps) counts
     """
-    # During validation, disable all features to test generalization
-    # Model trained with features must work without them
-    if validating:
-        env = CuttleEnvironment(
-            include_highest_point_value=False,
-            include_highest_point_value_opponent_field=False
-        )
-    else:
-        # During training, use default (both features enabled)
-        env = CuttleEnvironment()
+    env = CuttleEnvironment(
+        include_highest_point_value=include_highest_point_value,
+        include_highest_point_value_opponent_field=include_highest_point_value_opponent_field
+    )
     actions = env.actions
-    steps = 0
+    steps = initial_steps
     p1_wins = 0
     p2_wins = 0
     draws = 0
@@ -622,6 +634,7 @@ def selfPlayTraining(
     metrics_logger = setup_metrics_logger(LOG_DIRECTORY, model_id) if log_metrics else None
     
     for episode in range(episodes):
+        episode_start_time = time.time()
         env.reset()
         p1_states: List[Dict[str, Any]] = []
         p1_actions: List[int] = []
@@ -729,9 +742,14 @@ def selfPlayTraining(
         )
         
         # Print episode summary
+        episode_elapsed_time = time.time() - episode_start_time
         print(f"Episode {episode}: {p1.name}: {p1_score} {p2.name}: {p2_score}")
         print(f"{p1.name}: {p1_win_rate:.3f} {p2.name}: {p2_win_rate:.3f} Draws: {draw_rate:.3f}")
         if not validating and loss is not None:
             print(f"Loss: {loss:.6f}")
+        print(f"Time: {episode_elapsed_time:.2f}s")
+        
+        # Brief pause between episodes to reduce sustained AVX load and CPU thermal stress
+        time.sleep(0.01)
     
-    return p1_wins, p2_wins
+    return p1_wins, p2_wins, steps

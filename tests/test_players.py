@@ -5,11 +5,18 @@ This module provides comprehensive tests for all player implementations,
 including Randomized, HeuristicHighCard, and Agent (DQN) players.
 """
 
+import sys
 import unittest
+from pathlib import Path
 from typing import Dict, Any, List
 
 import numpy as np
 import torch
+
+# Add src directory to path for imports
+src_path = Path(__file__).parent.parent / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 
 from cuttle import players as Players
 from cuttle.environment import CuttleEnvironment
@@ -361,12 +368,12 @@ class TestAgentReplayMemory(unittest.TestCase):
         next_obs = self.env.get_obs()
         reward = torch.tensor([1.0])
         
-        # Push more than capacity
-        for _ in range(50010):
+        # Push more than capacity (capacity is 100000)
+        for _ in range(100010):
             self.agent.memory.push(observation, action, next_obs, reward)
         
         # Should not exceed capacity
-        self.assertLessEqual(len(self.agent.memory), 50000)
+        self.assertLessEqual(len(self.agent.memory), 100000)
     
     def test_memory_sample(self):
         """Test that memory can sample batches."""
