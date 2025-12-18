@@ -129,9 +129,10 @@ def log_action(
     turn: int,
     player_name: str,
     action_id: int,
-    state_before: Dict[str, Any],
-    state_after: Dict[str, Any],
-    score: int,
+    state_features_before: Dict[str, int],
+    state_features_after: Dict[str, int],
+    score_before: int,
+    score_after: int,
     valid_actions: List[int],
     action_logger: Optional[logging.Logger],
     env: CuttleEnvironment,
@@ -148,9 +149,10 @@ def log_action(
         turn: Current turn number
         player_name: Name of the player taking the action
         action_id: ID of the action taken
-        state_before: Game state before the action
-        state_after: Game state after the action
-        score: Current player's score
+        state_features_before: Pre-extracted state features BEFORE action
+        state_features_after: State features AFTER action execution
+        score_before: Player's score before the action
+        score_after: Player's score after the action
         valid_actions: List of valid action IDs
         action_logger: Logger instance (None to skip logging)
         env: Game environment instance
@@ -176,8 +178,10 @@ def log_action(
         "action_args": action_args,
         "valid_actions_count": len(valid_actions),
         "countering": countering,
-        "state_features": extract_state_features(state_before),
-        "score": score,
+        "state_before": state_features_before,
+        "state_after": state_features_after,
+        "score_before": score_before,
+        "score_after": score_after,
         "reward": reward,
         "terminated": terminated,
         "truncated": truncated,
@@ -293,10 +297,14 @@ def handle_stack_resolution(
         valid_actions = env.generateActionMask()
         observation = env.get_obs()
         current_states.append(observation)
-        state_before = observation.copy() if isinstance(observation, dict) else observation
+        # Capture state features BEFORE action (avoids aliasing)
+        state_features_before = extract_state_features(observation)
+        score_before, _ = env.scoreState()
         action = current_player.getAction(observation, valid_actions, actions, steps, force_greedy=False)
         current_actions.append(action)
         observation, score, terminated, truncated = env.step(action)
+        # Capture state features AFTER action
+        state_features_after = extract_state_features(observation)
         
         if action_logger:
             log_action(
@@ -304,9 +312,10 @@ def handle_stack_resolution(
                 turn=turn,
                 player_name=current_player.name,
                 action_id=action,
-                state_before=state_before,
-                state_after=observation,
-                score=score,
+                state_features_before=state_features_before,
+                state_features_after=state_features_after,
+                score_before=score_before,
+                score_after=score,
                 valid_actions=valid_actions,
                 action_logger=action_logger,
                 env=env,
@@ -320,10 +329,14 @@ def handle_stack_resolution(
         observation = env.get_obs()
         other_states.append(observation)
         valid_actions = env.generateActionMask()
-        state_before = observation.copy() if isinstance(observation, dict) else observation
+        # Capture state features BEFORE action (avoids aliasing)
+        state_features_before = extract_state_features(observation)
+        score_before, _ = env.scoreState()
         action = other_player.getAction(observation, valid_actions, actions, steps, force_greedy=validating)
         other_actions.append(action)
         observation, score, terminated, truncated = env.step(action)
+        # Capture state features AFTER action (before passControl back)
+        state_features_after = extract_state_features(observation)
         env.passControl()
         
         if action_logger:
@@ -332,9 +345,10 @@ def handle_stack_resolution(
                 turn=turn,
                 player_name=other_player.name,
                 action_id=action,
-                state_before=state_before,
-                state_after=observation,
-                score=score,
+                state_features_before=state_features_before,
+                state_features_after=state_features_after,
+                score_before=score_before,
+                score_after=score,
                 valid_actions=valid_actions,
                 action_logger=action_logger,
                 env=env,
@@ -519,9 +533,13 @@ def execute_player_turn(
     observation = env.get_obs()
     player_states.append(observation)
     
+    # Capture state features IMMEDIATELY (before any actions modify the state)
+    # This avoids aliasing issues where shallow copies point to modified arrays
+    state_features_before = extract_state_features(observation)
+    score_before, _ = env.scoreState()
+    
     # Get and execute action
     valid_actions = env.generateActionMask()
-    state_before = observation.copy() if isinstance(observation, dict) else observation
     action = player.getAction(observation, valid_actions, actions, steps, force_greedy=validating)
     player_actions.append(action)
     env.updateStack(action)
@@ -547,6 +565,8 @@ def execute_player_turn(
     if env.stackTop() != 0:
         env.emptyStack()
         observation, score, terminated, truncated = env.step(action)
+        # Capture state features AFTER action
+        state_features_after = extract_state_features(observation)
         
         if action_logger:
             log_action(
@@ -554,9 +574,10 @@ def execute_player_turn(
                 turn=turn,
                 player_name=player.name,
                 action_id=action,
-                state_before=state_before,
-                state_after=observation,
-                score=score,
+                state_features_before=state_features_before,
+                state_features_after=state_features_after,
+                score_before=score_before,
+                score_after=score,
                 valid_actions=valid_actions,
                 action_logger=action_logger,
                 env=env,
