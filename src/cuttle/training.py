@@ -30,7 +30,7 @@ LOG_DIRECTORY = Path("./action_logs")
 # Reward constants
 REWARD_WIN = 1.0  # Reward for winning an episode
 REWARD_LOSS = -1.0  # Reward for losing an episode
-REWARD_DRAW = -0.1  # Reward for drawing an episode
+REWARD_DRAW = -0.5  # Reward for drawing an episode (penalize heavily to discourage passive play)
 REWARD_INTERMEDIATE = 0.0  # Reward for intermediate steps (non-terminal states)
 
 

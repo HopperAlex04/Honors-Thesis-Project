@@ -230,6 +230,36 @@ class CuttleEnvironment:
         self.player_hand = np.zeros(52, dtype=bool)
         self.deck = np.ones(52, dtype=bool)
         self.scrap = np.zeros(52, dtype=bool)
+        
+        # Reset revealed zones
+        self.dealer_revealed = np.zeros(52, dtype=bool)
+        self.player_revealed = np.zeros(52, dtype=bool)
+        
+        # Reset game state flags
+        self.countered = False
+        self.passed = False
+        self.stack = [0, 0, 0, 0, 0]
+        self.effect_shown = [0, 0]
+        self.top_deck = []
+        
+        # Reset bounced cards
+        self.current_bounced = []
+        self.off_bounced = []
+        
+        # Reset eight royal tracking
+        self.cur_eight_royals = [False, False, False, False]
+        self.off_eight_royals = [False, False, False, False]
+        
+        # Reset seen cards tracking
+        self.cur_seen = []
+        self.off_seen = []
+        
+        # Reset queen counts
+        self.cur_queens = 0
+        self.off_queens = 0
+        
+        # Reset jack registry
+        self.jackreg = {}
 
         # Makes sure all the zones are in the right places
         self.player_zones = {
@@ -845,11 +875,10 @@ class CuttleEnvironment:
                 self.cur_eight_royals[i] = False
 
         if any(self.cur_eight_royals):
-            for x in range(len(self.off_zones["Hand"])):
-                self.off_zones["Revealed"] = self.off_zones["Hand"]
+            # Copy the hand to revealed (not assign reference!)
+            np.copyto(self.off_zones["Revealed"], self.off_zones["Hand"])
         else:
-            for x in range(len(self.off_zones["Revealed"])):
-                self.off_zones["Revealed"][x] = False
+            self.off_zones["Revealed"][:] = False
 
         for x in self.off_seen:
             if self.off_zones["Hand"][x]:
