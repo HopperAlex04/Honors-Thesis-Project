@@ -61,7 +61,7 @@ EPS_START = 0.90      # Start with 90% exploration
 EPS_END = 0.05        # Maintain 5% exploration when trained
 EPS_DECAY = 80000     # Spread exploration across all 10 rounds (~7% at end)
 TAU = 0.005           # Soft update rate for target network (reduced from 0.01 for more stability)
-TARGET_UPDATE_FREQUENCY = 1000  # Hard update target network every N steps (0 = use soft updates)
+TARGET_UPDATE_FREQUENCY = 2000  # Hard update target network every N steps (increased from 1000 for more stability)
 LR = 1e-4             # Reduced learning rate for stability (was 3e-4, caused increasing loss)
 
 model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)

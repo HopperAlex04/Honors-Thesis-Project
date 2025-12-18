@@ -395,15 +395,15 @@ class Agent(Player):
         self.target_update_frequency = 0  # Hard update target network every N steps (0 = use soft updates with tau)
 
         # Replay Memory
-        self.memory = ReplayMemory(100000)  # Increased capacity for better learning
+        self.memory = ReplayMemory(200000)  # Increased capacity to prevent forgetting (was 100000)
 
-        # Using Adam optimization
+        # Using Adam optimization with weight decay to prevent catastrophic forgetting
         self.optimizer = torch.optim.Adam(
             model.parameters(), 
             lr=self.lr, 
             betas=(0.9, 0.999), 
             eps=1e-8, 
-            weight_decay=0
+            weight_decay=1e-5  # L2 regularization to prevent large weight changes
         )
 
         # Using Huber Loss (Smooth L1 Loss)
@@ -601,17 +601,52 @@ class ReplayMemory:
         """
         self.memory.append(Transition(state, action, next_state, reward))
 
-    def sample(self, batch_size: int) -> List[Transition]:
+    def sample(self, batch_size: int, mix_old_new: bool = True) -> List[Transition]:
         """
         Sample a batch of transitions from replay memory.
         
         Args:
             batch_size: Number of transitions to sample
-        
+            mix_old_new: If True, sample 50% from recent experiences and 50% from older experiences
+                        This helps prevent catastrophic forgetting by ensuring the agent sees both
+                        old and new strategies.
+            
         Returns:
             List of Transition tuples
         """
-        return random.sample(self.memory, batch_size)
+        if not mix_old_new or len(self.memory) < batch_size:
+            return random.sample(self.memory, batch_size)
+        
+        # Mix old and new experiences to prevent forgetting
+        # Recent experiences: last 20% of buffer
+        # Older experiences: first 80% of buffer
+        recent_start = int(len(self.memory) * 0.8)
+        recent_experiences = list(self.memory)[recent_start:]
+        older_experiences = list(self.memory)[:recent_start]
+        
+        # Sample 50% from recent, 50% from older
+        recent_batch_size = batch_size // 2
+        older_batch_size = batch_size - recent_batch_size
+        
+        sampled = []
+        if len(recent_experiences) >= recent_batch_size:
+            sampled.extend(random.sample(recent_experiences, recent_batch_size))
+        else:
+            sampled.extend(recent_experiences)
+        
+        if len(older_experiences) >= older_batch_size:
+            sampled.extend(random.sample(older_experiences, older_batch_size))
+        else:
+            sampled.extend(random.sample(older_experiences, min(older_batch_size, len(older_experiences))))
+        
+        # If we don't have enough samples, fill with random samples from entire buffer
+        if len(sampled) < batch_size:
+            remaining = batch_size - len(sampled)
+            sampled.extend(random.sample(self.memory, remaining))
+        
+        # Shuffle to mix old and new experiences
+        random.shuffle(sampled)
+        return sampled
 
     def __len__(self) -> int:
         """Return the current number of stored transitions."""

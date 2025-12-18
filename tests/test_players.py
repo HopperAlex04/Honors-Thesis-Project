@@ -368,12 +368,12 @@ class TestAgentReplayMemory(unittest.TestCase):
         next_obs = self.env.get_obs()
         reward = torch.tensor([1.0])
         
-        # Push more than capacity (capacity is 100000)
-        for _ in range(100010):
+        # Push more than capacity (capacity is 200000)
+        for _ in range(200010):
             self.agent.memory.push(observation, action, next_obs, reward)
         
         # Should not exceed capacity
-        self.assertLessEqual(len(self.agent.memory), 100000)
+        self.assertLessEqual(len(self.agent.memory), 200000)
     
     def test_memory_sample(self):
         """Test that memory can sample batches."""
