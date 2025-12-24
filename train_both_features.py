@@ -197,7 +197,7 @@ validation01 = Players.HeuristicHighCard("HighCard")
 validation02 = Players.ScoreGapMaximizer("GapMaximizer")
 
 # Early stopping and regression detection settings
-TARGET_WIN_RATE = 0.51  # Stop training when hitting this win rate vs ScoreGapMaximizer
+TARGET_WIN_RATE = 0.99  # Stop training when hitting this win rate vs ScoreGapMaximizer
 REGRESSION_THRESHOLD = 0.15  # Flag regression if win rate drops by more than this
 REGRESSION_WINDOW = 3  # Number of rounds to consider for regression detection
 
@@ -272,7 +272,8 @@ for x in range(start_round, rounds):
             model_id=f"both_features_round_{x}_selfplay",
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
-            initial_steps=steps_done
+            initial_steps=steps_done,
+            round_number=x
         )
     except Exception as e:
         print(f"Error during self-play training in round {x}: {e}")
@@ -289,14 +290,15 @@ for x in range(start_round, rounds):
     valid_agent.set_target_update_frequency(TARGET_UPDATE_FREQUENCY)
 
     try:
-        p1w, p2w, steps_done = Training.selfPlayTraining(
-            trainee, valid_agent, eps_per_round,
-            validating=True,
-            model_id=f"both_features_round_{x}_vs_previous",
+        # Validate from both positions for fair evaluation
+        p1w, p2w = Training.validate_both_positions(
+            trainee, valid_agent, eps_per_round // 2,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
-            initial_steps=steps_done
+            model_id_prefix=f"both_features_round_{x}_vs_previous",
+            round_number=x
         )
+        # steps_done doesn't change during validation, so we keep the previous value
     except Exception as e:
         print(f"Error during validation training in round {x}: {e}")
         continue
@@ -309,13 +311,13 @@ for x in range(start_round, rounds):
     win_rate_vs_previous = p1w / eps_per_round if eps_per_round > 0 else 0.0
     if win_rate_vs_previous < 0.50:
         print(f"\n{'!'*60}")
-        print(f"⚠️  REGRESSION DETECTED: Round {x} is LOSING to Round {x-1}")
+        print(f"REGRESSION DETECTED: Round {x} is LOSING to Round {x-1}")
         print(f"   Win rate: {win_rate_vs_previous:.1%} (P1: {p1w} vs P2: {p2w})")
         print(f"   This indicates the agent may be forgetting previous strategies.")
         print(f"   Possible causes: overfitting to self-play, training instability, or catastrophic forgetting.")
         print(f"{'!'*60}\n")
     elif win_rate_vs_previous < 0.55:
-        print(f"\n⚠️  WARNING: Round {x} is barely beating Round {x-1} ({win_rate_vs_previous:.1%})")
+        print(f"\nWARNING: Round {x} is barely beating Round {x-1} ({win_rate_vs_previous:.1%})")
         print(f"   Monitor closely - performance may be degrading.\n")
 
     # Save checkpoint for next round (always save, regardless of win/loss)
@@ -343,17 +345,17 @@ for x in range(start_round, rounds):
         print(f"Error saving checkpoint {new_checkpoint_path}: {e}")
 
     try:
-        p1w_rand, p2w_rand, steps_done = Training.selfPlayTraining(
-            trainee, validation00, eps_per_round,
-            validating=True,
-            model_id=f"both_features_round_{x}_vs_randomized",
+        # Validate from both positions for fair evaluation (dealer gets 6 cards vs 5 for first player)
+        trainee_wins_rand, opponent_wins_rand = Training.validate_both_positions(
+            trainee, validation00, eps_per_round // 2,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
-            initial_steps=steps_done
+            model_id_prefix=f"both_features_round_{x}_vs_randomized",
+            round_number=x
         )
-        win_rate_rand = p1w_rand / eps_per_round
+        win_rate_rand = trainee_wins_rand / eps_per_round
         win_rate_history["randomized"].append(win_rate_rand)
-        print(f"Round {x}: Validation vs Randomized - p1w: {p1w_rand}, p2w: {p2w_rand} (win rate: {win_rate_rand:.1%})")
+        print(f"Round {x}: Validation vs Randomized (both positions) - trainee: {trainee_wins_rand}, opponent: {opponent_wins_rand} (win rate: {win_rate_rand:.1%})")
     except Exception as e:
         print(f"Error during randomized validation in round {x}: {e}")
         continue
@@ -363,17 +365,17 @@ for x in range(start_round, rounds):
         sys.exit(0)
     
     try:
-        p1w_hc, p2w_hc, steps_done = Training.selfPlayTraining(
-            trainee, validation01, eps_per_round,
-            validating=True,
-            model_id=f"both_features_round_{x}_vs_heuristic",
+        # Validate from both positions for fair evaluation
+        trainee_wins_hc, opponent_wins_hc = Training.validate_both_positions(
+            trainee, validation01, eps_per_round // 2,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
-            initial_steps=steps_done
+            model_id_prefix=f"both_features_round_{x}_vs_heuristic",
+            round_number=x
         )
-        win_rate_hc = p1w_hc / eps_per_round
+        win_rate_hc = trainee_wins_hc / eps_per_round
         win_rate_history["highcard"].append(win_rate_hc)
-        print(f"Round {x}: Validation vs HeuristicHighCard - p1w: {p1w_hc}, p2w: {p2w_hc} (win rate: {win_rate_hc:.1%})")
+        print(f"Round {x}: Validation vs HeuristicHighCard (both positions) - trainee: {trainee_wins_hc}, opponent: {opponent_wins_hc} (win rate: {win_rate_hc:.1%})")
     except Exception as e:
         print(f"Error during heuristic validation in round {x}: {e}")
         continue
@@ -383,17 +385,17 @@ for x in range(start_round, rounds):
         sys.exit(0)
     
     try:
-        p1w_gap, p2w_gap, steps_done = Training.selfPlayTraining(
-            trainee, validation02, eps_per_round,
-            validating=True,
-            model_id=f"both_features_round_{x}_vs_gapmaximizer",
+        # Validate from both positions for fair evaluation
+        trainee_wins_gap, opponent_wins_gap = Training.validate_both_positions(
+            trainee, validation02, eps_per_round // 2,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
-            initial_steps=steps_done
+            model_id_prefix=f"both_features_round_{x}_vs_gapmaximizer",
+            round_number=x
         )
-        win_rate_gap = p1w_gap / eps_per_round
+        win_rate_gap = trainee_wins_gap / eps_per_round
         win_rate_history["gapmaximizer"].append(win_rate_gap)
-        print(f"Round {x}: Validation vs ScoreGapMaximizer - p1w: {p1w_gap}, p2w: {p2w_gap} (win rate: {win_rate_gap:.1%})")
+        print(f"Round {x}: Validation vs ScoreGapMaximizer (both positions) - trainee: {trainee_wins_gap}, opponent: {opponent_wins_gap} (win rate: {win_rate_gap:.1%})")
     except Exception as e:
         print(f"Error during gap maximizer validation in round {x}: {e}")
         continue
@@ -402,7 +404,7 @@ for x in range(start_round, rounds):
     # DISABLED: If we can't beat random after a few rounds, something is fundamentally wrong
     # if x >= 2 and win_rate_rand < MIN_RANDOM_WIN_RATE:
     #     print(f"\n{'!'*60}")
-    #     print(f"❌ TRAINING STOPPED: Win rate vs Randomized ({win_rate_rand:.1%}) < {MIN_RANDOM_WIN_RATE:.0%}")
+    #     print(f"TRAINING STOPPED: Win rate vs Randomized ({win_rate_rand:.1%}) < {MIN_RANDOM_WIN_RATE:.0%}")
     #     print(f"   Agent is not learning basic strategy.")
     #     print(f"   Check: rewards, network architecture, or hyperparameters.")
     #     print(f"{'!'*60}\n")
@@ -412,7 +414,7 @@ for x in range(start_round, rounds):
     # === EARLY STOPPING CHECK ===
     if win_rate_gap >= TARGET_WIN_RATE:
         print(f"\n{'='*60}")
-        print(f"🎯 TARGET ACHIEVED! Win rate vs ScoreGapMaximizer: {win_rate_gap:.1%} >= {TARGET_WIN_RATE:.0%}")
+        print(f"TARGET ACHIEVED! Win rate vs ScoreGapMaximizer: {win_rate_gap:.1%} >= {TARGET_WIN_RATE:.0%}")
         print(f"Early stopping at round {x+1}")
         print(f"{'='*60}\n")
         save_training_state(x + 1, rounds, steps_done)
@@ -426,7 +428,7 @@ for x in range(start_round, rounds):
         
         if peak_rate - current_rate > REGRESSION_THRESHOLD:
             print(f"\n{'!'*60}")
-            print(f"⚠️  REGRESSION DETECTED vs ScoreGapMaximizer!")
+            print(f"REGRESSION DETECTED vs ScoreGapMaximizer!")
             print(f"    Peak win rate: {peak_rate:.1%}")
             print(f"    Current win rate: {current_rate:.1%}")
             print(f"    Drop: {(peak_rate - current_rate):.1%} (threshold: {REGRESSION_THRESHOLD:.0%})")
@@ -440,7 +442,7 @@ for x in range(start_round, rounds):
             peak_rate = max(history[:-1]) if len(history) > 1 else 0
             current_rate = history[-1]
             if peak_rate - current_rate > REGRESSION_THRESHOLD:
-                print(f"⚠️  REGRESSION WARNING vs {heuristic_name}: {peak_rate:.1%} → {current_rate:.1%}")
+                print(f"REGRESSION WARNING vs {heuristic_name}: {peak_rate:.1%} -> {current_rate:.1%}")
     
     # Save state after completing round (before next iteration)
     save_training_state(x + 1, rounds, steps_done)

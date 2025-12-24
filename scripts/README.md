@@ -96,5 +96,5 @@ python scripts/clear_models.py -f
 
 ### Warning
 
-⚠️ **This will delete all saved model checkpoints!** Make sure you have backups if needed.
+**WARNING: This will delete all saved model checkpoints!** Make sure you have backups if needed.
 
