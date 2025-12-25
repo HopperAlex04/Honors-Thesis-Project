@@ -1,7 +1,7 @@
 #Logging files:
 p1log.txt
 p2log.txt
-
+*.json
 #generated test models
 *.pt
 *.pth
