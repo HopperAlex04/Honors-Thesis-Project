@@ -621,6 +621,7 @@ def selfPlayTraining(
     include_highest_point_value_opponent_field: bool = False,
     initial_steps: int = 0,
     round_number: Optional[int] = None,
+    initial_total_time: float = 0.0,
 ) -> Tuple[int, int, int]:
     """
     Execute self-play training between two players.
@@ -640,6 +641,7 @@ def selfPlayTraining(
         include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field" feature
         initial_steps: Starting step count for epsilon decay (for resuming training)
         round_number: Optional round number to display in episode output
+        initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
         
     Returns:
         Tuple of (p1_wins, p2_wins, final_steps) counts
@@ -657,6 +659,9 @@ def selfPlayTraining(
     # Setup loggers with model identifier
     action_logger = setup_action_logger(LOG_DIRECTORY, model_id) if log_actions else None
     metrics_logger = setup_metrics_logger(LOG_DIRECTORY, model_id) if log_metrics else None
+    
+    # Track total time from start of training (including previous sessions if resuming)
+    session_start_time = time.time()
     
     for episode in range(episodes):
         episode_start_time = time.time()
@@ -771,12 +776,14 @@ def selfPlayTraining(
         
         # Print episode summary
         episode_elapsed_time = time.time() - episode_start_time
+        session_elapsed_time = time.time() - session_start_time
+        total_elapsed_time = initial_total_time + session_elapsed_time
         round_str = f"Round {round_number} " if round_number is not None else ""
         print(f"{round_str}Episode {episode}: {p1.name}: {p1_score} {p2.name}: {p2_score}")
         print(f"{p1.name}: {p1_win_rate:.3f} {p2.name}: {p2_win_rate:.3f} Draws: {draw_rate:.3f}")
         if not validating and loss is not None:
             print(f"Loss: {loss:.6f}")
-        print(f"Time: {episode_elapsed_time:.2f}s")
+        print(f"Time: {episode_elapsed_time:.2f}s | Total: {total_elapsed_time:.2f}s")
         
         # Brief pause between episodes to reduce sustained AVX load and CPU thermal stress
         time.sleep(0.01)
@@ -792,6 +799,7 @@ def validate_both_positions(
     include_highest_point_value_opponent_field: bool = False,
     model_id_prefix: Optional[str] = None,
     round_number: Optional[int] = None,
+    initial_total_time: float = 0.0,
 ) -> Tuple[int, int]:
     """
     Run validation with trainee in both positions (first and second player) for fair evaluation.
@@ -807,10 +815,14 @@ def validate_both_positions(
         include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field" feature
         model_id_prefix: Prefix for log file names (e.g., "no_features_round_0_vs_randomized")
         round_number: Optional round number to display in episode output
+        initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
         
     Returns:
         Tuple of (trainee_wins, opponent_wins) across both positions
     """
+    # Track time for first validation run
+    validation_start_time = time.time()
+    
     # Run with trainee as P1 (first player, 5 cards)
     p1w_as_p1, p2w_as_p1, _ = selfPlayTraining(
         trainee, opponent, episodes_per_position,
@@ -819,8 +831,13 @@ def validate_both_positions(
         include_highest_point_value=include_highest_point_value,
         include_highest_point_value_opponent_field=include_highest_point_value_opponent_field,
         initial_steps=0,
-        round_number=round_number
+        round_number=round_number,
+        initial_total_time=initial_total_time
     )
+    
+    # Update total time after first validation
+    first_validation_time = time.time() - validation_start_time
+    updated_total_time = initial_total_time + first_validation_time
     
     # Run with trainee as P2 (second player/dealer, 6 cards)
     p2w_as_p2, p1w_as_p2, _ = selfPlayTraining(
@@ -830,7 +847,8 @@ def validate_both_positions(
         include_highest_point_value=include_highest_point_value,
         include_highest_point_value_opponent_field=include_highest_point_value_opponent_field,
         initial_steps=0,
-        round_number=round_number
+        round_number=round_number,
+        initial_total_time=updated_total_time
     )
     
     # Combine results: trainee wins = wins when trainee was P1 + wins when trainee was P2

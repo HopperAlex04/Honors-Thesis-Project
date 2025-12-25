@@ -10,6 +10,7 @@ import os
 import sys
 import json
 import signal
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -86,18 +87,19 @@ STATE_FILE = models_dir / "training_state_hand_only.json"
 CHECKPOINT_PREFIX = "hand_only_checkpoint"
 
 
-def save_training_state(current_round: int, total_rounds: int, steps_done: int = 0) -> None:
+def save_training_state(current_round: int, total_rounds: int, steps_done: int = 0, total_time: float = 0.0) -> None:
     """Save current training state to resume later."""
     state = {
         "current_round": current_round,
         "total_rounds": total_rounds,
         "last_checkpoint": current_round,
         "steps_done": steps_done,
+        "total_time": total_time,
     }
     try:
         with open(STATE_FILE, 'w') as f:
             json.dump(state, f, indent=2)
-        print(f"Training state saved: Round {current_round}/{total_rounds}, Steps: {steps_done}")
+        print(f"Training state saved: Round {current_round}/{total_rounds}, Steps: {steps_done}, Time: {total_time:.2f}s")
     except Exception as e:
         print(f"Warning: Could not save training state: {e}")
 
@@ -126,7 +128,7 @@ def clear_training_state() -> None:
             print(f"Warning: Could not clear training state: {e}")
 
 
-def check_interrupt_and_save(current_round: int, total_rounds: int, agent=None, steps_done: int = 0) -> bool:
+def check_interrupt_and_save(current_round: int, total_rounds: int, agent=None, steps_done: int = 0, total_time: float = 0.0) -> bool:
     """Check for interruption and save state immediately if interrupted.
     
     Args:
@@ -134,13 +136,14 @@ def check_interrupt_and_save(current_round: int, total_rounds: int, agent=None, 
         total_rounds: Total number of rounds
         agent: Optional agent to save checkpoint for (includes model + optimizer)
         steps_done: Current training step count
+        total_time: Total elapsed training time
         
     Returns:
         True if training was interrupted and should exit, False otherwise
     """
     if training_interrupted:
         print(f"\nTraining interrupted during round {current_round}")
-        save_training_state(current_round, total_rounds, steps_done)
+        save_training_state(current_round, total_rounds, steps_done, total_time)
         if agent is not None:
             # Save full checkpoint with model, optimizer, and steps
             interrupt_checkpoint = models_dir / f"{CHECKPOINT_PREFIX}{current_round}_interrupted.pt"
@@ -163,12 +166,14 @@ def check_interrupt_and_save(current_round: int, total_rounds: int, agent=None, 
 saved_state = load_training_state()
 start_round = 0
 steps_done = 0  # Global step counter for epsilon decay
+total_time = 0.0  # Total elapsed training time (for checkpoint resumption)
 if saved_state:
     response = input(f"Resume training from round {saved_state['current_round']}? (yes/no): ").strip().lower()
     if response in ['yes', 'y']:
         start_round = saved_state['current_round']
         steps_done = saved_state.get('steps_done', 0)
-        print(f"Resuming training from round {start_round}, steps {steps_done}")
+        total_time = saved_state.get('total_time', 0.0)
+        print(f"Resuming training from round {start_round}, steps {steps_done}, total time: {total_time:.2f}s")
     else:
         print("Starting fresh training")
         clear_training_state()
@@ -223,8 +228,10 @@ print(f"{'='*60}\n")
 
 for x in range(start_round, rounds):
     # Check for interruption before starting round
-    if check_interrupt_and_save(x, rounds, trainee, steps_done):
+    if check_interrupt_and_save(x, rounds, trainee, steps_done, total_time):
         sys.exit(0)
+    
+    round_start_time = time.time()
     
     print(f"\n{'='*60}")
     print(f"Round {x+1}/{rounds} (steps: {steps_done})")
@@ -273,15 +280,19 @@ for x in range(start_round, rounds):
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             initial_steps=steps_done,
-            round_number=x
+            round_number=x,
+            initial_total_time=total_time
         )
     except Exception as e:
         print(f"Error during self-play training in round {x}: {e}")
         continue
     
     # Check for interruption after self-play
-    if check_interrupt_and_save(x, rounds, trainee, steps_done):
+    if check_interrupt_and_save(x, rounds, trainee, steps_done, total_time):
         sys.exit(0)
+
+    # Calculate current total time (including self-play that just completed)
+    current_total_time = total_time + (time.time() - round_start_time)
 
     # Create validation agent with previous checkpoint for comparison
     validation_model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
@@ -295,7 +306,8 @@ for x in range(start_round, rounds):
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             model_id_prefix=f"hand_only_round_{x}_vs_previous",
-            round_number=x
+            round_number=x,
+            initial_total_time=current_total_time
         )
         # steps_done doesn't change during validation, so we keep the previous value
     except Exception as e:
@@ -303,7 +315,7 @@ for x in range(start_round, rounds):
         continue
     
     # Check for interruption after vs_previous
-    if check_interrupt_and_save(x, rounds, trainee, steps_done):
+    if check_interrupt_and_save(x, rounds, trainee, steps_done, total_time):
         sys.exit(0)
     
     # === REGRESSION DETECTION: Check if current round is losing to previous round ===
@@ -344,13 +356,16 @@ for x in range(start_round, rounds):
         print(f"Error saving checkpoint {new_checkpoint_path}: {e}")
 
     try:
+        # Calculate current total time for validation display
+        current_total_time = total_time + (time.time() - round_start_time)
         # Validate from both positions for fair evaluation (dealer gets 6 cards vs 5 for first player)
         trainee_wins_rand, opponent_wins_rand = Training.validate_both_positions(
             trainee, validation00, eps_per_round // 2,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             model_id_prefix=f"hand_only_round_{x}_vs_randomized",
-            round_number=x
+            round_number=x,
+            initial_total_time=current_total_time
         )
         win_rate_rand = trainee_wins_rand / eps_per_round
         win_rate_history["randomized"].append(win_rate_rand)
@@ -360,17 +375,20 @@ for x in range(start_round, rounds):
         continue
     
     # Check for interruption after vs_randomized
-    if check_interrupt_and_save(x, rounds, trainee, steps_done):
+    if check_interrupt_and_save(x, rounds, trainee, steps_done, total_time):
         sys.exit(0)
     
     try:
+        # Calculate current total time for validation display
+        current_total_time = total_time + (time.time() - round_start_time)
         # Validate from both positions for fair evaluation
         trainee_wins_hc, opponent_wins_hc = Training.validate_both_positions(
             trainee, validation01, eps_per_round // 2,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             model_id_prefix=f"hand_only_round_{x}_vs_heuristic",
-            round_number=x
+            round_number=x,
+            initial_total_time=current_total_time
         )
         win_rate_hc = trainee_wins_hc / eps_per_round
         win_rate_history["highcard"].append(win_rate_hc)
@@ -380,17 +398,20 @@ for x in range(start_round, rounds):
         continue
     
     # Check for interruption after vs_heuristic
-    if check_interrupt_and_save(x, rounds, trainee, steps_done):
+    if check_interrupt_and_save(x, rounds, trainee, steps_done, total_time):
         sys.exit(0)
     
     try:
+        # Calculate current total time for validation display
+        current_total_time = total_time + (time.time() - round_start_time)
         # Validate from both positions for fair evaluation
         trainee_wins_gap, opponent_wins_gap = Training.validate_both_positions(
             trainee, validation02, eps_per_round // 2,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             model_id_prefix=f"hand_only_round_{x}_vs_gapmaximizer",
-            round_number=x
+            round_number=x,
+            initial_total_time=current_total_time
         )
         win_rate_gap = trainee_wins_gap / eps_per_round
         win_rate_history["gapmaximizer"].append(win_rate_gap)
@@ -410,13 +431,17 @@ for x in range(start_round, rounds):
     #     save_training_state(x + 1, rounds, steps_done)
     #     break
     
+    # Update total time after round completes
+    round_elapsed_time = time.time() - round_start_time
+    total_time += round_elapsed_time
+    
     # === EARLY STOPPING CHECK ===
     if win_rate_gap >= TARGET_WIN_RATE:
         print(f"\n{'='*60}")
         print(f"TARGET ACHIEVED! Win rate vs ScoreGapMaximizer: {win_rate_gap:.1%} >= {TARGET_WIN_RATE:.0%}")
         print(f"Early stopping at round {x+1}")
         print(f"{'='*60}\n")
-        save_training_state(x + 1, rounds, steps_done)
+        save_training_state(x + 1, rounds, steps_done, total_time)
         break
     
     # === REGRESSION DETECTION ===
@@ -444,10 +469,10 @@ for x in range(start_round, rounds):
                 print(f"REGRESSION WARNING vs {heuristic_name}: {peak_rate:.1%} -> {current_rate:.1%}")
     
     # Save state after completing round (before next iteration)
-    save_training_state(x + 1, rounds, steps_done)
+    save_training_state(x + 1, rounds, steps_done, total_time)
     
     # Check for interruption after round
-    if check_interrupt_and_save(x + 1, rounds, trainee, steps_done):
+    if check_interrupt_and_save(x + 1, rounds, trainee, steps_done, total_time):
         sys.exit(0)
 
 # Training completed successfully
