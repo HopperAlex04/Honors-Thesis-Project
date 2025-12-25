@@ -17,7 +17,13 @@ from typing import List
 
 def get_log_files(log_dir: Path) -> List[Path]:
     """
-    Get all log files from the log directory.
+    Get all log files from the log directory and its subdirectories.
+    
+    Logs are now organized into subdirectories by training type:
+    - action_logs/hand_only/
+    - action_logs/opponent_field_only/
+    - action_logs/no_features/
+    - action_logs/both_features/
     
     Args:
         log_dir: Path to the log directory
@@ -29,9 +35,9 @@ def get_log_files(log_dir: Path) -> List[Path]:
         return []
     
     log_files = []
-    # Find all action and metrics log files
-    log_files.extend(log_dir.glob("actions_*.jsonl"))
-    log_files.extend(log_dir.glob("metrics_*.jsonl"))
+    # Find all action and metrics log files recursively (including subdirectories)
+    log_files.extend(log_dir.rglob("actions_*.jsonl"))
+    log_files.extend(log_dir.rglob("metrics_*.jsonl"))
     
     return sorted(log_files)
 
@@ -56,7 +62,9 @@ def clear_logs(log_dir: Path, confirm: bool = True) -> int:
     print(f"Found {len(log_files)} log file(s):")
     for log_file in log_files:
         file_size = log_file.stat().st_size / (1024 * 1024)  # Size in MB
-        print(f"  - {log_file.name} ({file_size:.2f} MB)")
+        # Show relative path from log_dir for better visibility
+        rel_path = log_file.relative_to(log_dir)
+        print(f"  - {rel_path} ({file_size:.2f} MB)")
     
     if confirm:
         response = input(f"\nDelete all {len(log_files)} log file(s)? (yes/no): ").strip().lower()
@@ -68,11 +76,13 @@ def clear_logs(log_dir: Path, confirm: bool = True) -> int:
     deleted_count = 0
     for log_file in log_files:
         try:
+            rel_path = log_file.relative_to(log_dir)
             log_file.unlink()
             deleted_count += 1
-            print(f"Deleted: {log_file.name}")
+            print(f"Deleted: {rel_path}")
         except Exception as e:
-            print(f"Error deleting {log_file.name}: {e}")
+            rel_path = log_file.relative_to(log_dir)
+            print(f"Error deleting {rel_path}: {e}")
     
     print(f"\n✓ Deleted {deleted_count} log file(s)")
     return deleted_count
@@ -96,8 +106,15 @@ def main():
     deleted = clear_logs(log_dir, confirm=not force)
     
     if deleted > 0:
-        # Optionally remove the directory if it's empty
+        # Optionally remove empty subdirectories and the main directory if it's empty
         try:
+            # Remove empty subdirectories
+            for subdir in sorted(log_dir.iterdir(), reverse=True):
+                if subdir.is_dir() and not any(subdir.iterdir()):
+                    subdir.rmdir()
+                    print(f"Removed empty subdirectory: {subdir.name}")
+            
+            # Remove main directory if it's empty
             if log_dir.exists() and not any(log_dir.iterdir()):
                 log_dir.rmdir()
                 print(f"Removed empty directory: {log_dir}")

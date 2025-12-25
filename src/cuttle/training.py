@@ -62,22 +62,65 @@ def setup_logger(
     return logger
 
 
+def extract_training_type(model_id: Optional[str]) -> Optional[str]:
+    """
+    Extract training type from model_id to organize logs into subdirectories.
+    
+    Args:
+        model_id: Model identifier (e.g., "hand_only_round_0_selfplay", "opponent_field_only_round_1_vs_randomized")
+        
+    Returns:
+        Training type string (e.g., "hand_only", "opponent_field_only") or None if not recognized
+    """
+    if not model_id:
+        return None
+    
+    # Known training types
+    training_types = [
+        "hand_only",
+        "opponent_field_only",
+        "no_features",
+        "both_features"
+    ]
+    
+    # Check if model_id starts with any known training type
+    for training_type in training_types:
+        if model_id.startswith(training_type):
+            return training_type
+    
+    return None
+
+
 def setup_action_logger(log_dir: Path, model_id: Optional[str] = None) -> Optional[logging.Logger]:
     """
     Set up action logging for strategy analysis.
     
+    Logs are organized into subdirectories by training type for easy access:
+    - action_logs/hand_only/
+    - action_logs/opponent_field_only/
+    - action_logs/no_features/
+    - action_logs/both_features/
+    
     Args:
-        log_dir: Directory for log files
-        model_id: Optional model identifier (e.g., "round_3", "checkpoint_5")
+        log_dir: Base directory for log files
+        model_id: Optional model identifier (e.g., "hand_only_round_0_selfplay")
         
     Returns:
         Configured logger or None if logging disabled
     """
-    log_dir.mkdir(exist_ok=True)
-    if model_id:
-        log_file = log_dir / f"actions_{model_id}.jsonl"
+    # Extract training type and create subdirectory
+    training_type = extract_training_type(model_id)
+    if training_type:
+        subdir = log_dir / training_type
     else:
-        log_file = log_dir / f"actions.jsonl"
+        subdir = log_dir
+    
+    subdir.mkdir(parents=True, exist_ok=True)
+    
+    if model_id:
+        log_file = subdir / f"actions_{model_id}.jsonl"
+    else:
+        log_file = subdir / f"actions.jsonl"
     logger = setup_logger("action_logger", log_file)
     print(f"Action logging enabled: {log_file}")
     return logger
@@ -87,18 +130,32 @@ def setup_metrics_logger(log_dir: Path, model_id: Optional[str] = None) -> Optio
     """
     Set up metrics logging for training statistics.
     
+    Logs are organized into subdirectories by training type for easy access:
+    - action_logs/hand_only/
+    - action_logs/opponent_field_only/
+    - action_logs/no_features/
+    - action_logs/both_features/
+    
     Args:
-        log_dir: Directory for log files
-        model_id: Optional model identifier (e.g., "round_3", "checkpoint_5")
+        log_dir: Base directory for log files
+        model_id: Optional model identifier (e.g., "hand_only_round_0_selfplay")
         
     Returns:
         Configured logger or None if logging disabled
     """
-    log_dir.mkdir(exist_ok=True)
-    if model_id:
-        metrics_file = log_dir / f"metrics_{model_id}.jsonl"
+    # Extract training type and create subdirectory
+    training_type = extract_training_type(model_id)
+    if training_type:
+        subdir = log_dir / training_type
     else:
-        metrics_file = log_dir / f"metrics.jsonl"
+        subdir = log_dir
+    
+    subdir.mkdir(parents=True, exist_ok=True)
+    
+    if model_id:
+        metrics_file = subdir / f"metrics_{model_id}.jsonl"
+    else:
+        metrics_file = subdir / f"metrics.jsonl"
     logger = setup_logger("metrics_logger", metrics_file)
     print(f"Metrics logging enabled: {metrics_file}")
     return logger
