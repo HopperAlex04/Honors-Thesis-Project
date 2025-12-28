@@ -7,9 +7,10 @@ for cleaning up generated files.
 
 Usage:
     python scripts/cleanup.py                    # Interactive mode, clean all
-    python scripts/cleanup.py --all              # Clean all (logs + models)
+    python scripts/cleanup.py --all              # Clean all (logs + models + training states)
     python scripts/cleanup.py --logs             # Clean logs only
     python scripts/cleanup.py --models           # Clean models only
+    python scripts/cleanup.py --type hand_only   # Clean all for specific training type
     python scripts/cleanup.py --force            # No confirmation for all
     python scripts/cleanup.py --all --force      # Clean all without confirmation
 """
@@ -17,6 +18,7 @@ Usage:
 import sys
 import argparse
 from pathlib import Path
+from typing import Optional
 
 # Import cleanup functions from other scripts
 # Add scripts directory to path to allow imports
@@ -28,13 +30,22 @@ from clear_logs import clear_logs
 from clear_models import clear_models
 from clear_training_state import clear_training_state
 
+# Valid training types (shared across all scripts)
+VALID_TRAINING_TYPES = [
+    "hand_only",
+    "opponent_field_only",
+    "no_features",
+    "both_features"
+]
 
-def cleanup_all(force: bool = False) -> tuple[int, int, int]:
+
+def cleanup_all(force: bool = False, training_type: Optional[str] = None) -> tuple[int, int, int]:
     """
     Run all cleanup scripts.
     
     Args:
         force: If True, skip confirmation prompts
+        training_type: Optional training type to filter by (e.g., "hand_only")
         
     Returns:
         Tuple of (logs_deleted, models_deleted, training_states_deleted)
@@ -45,6 +56,10 @@ def cleanup_all(force: bool = False) -> tuple[int, int, int]:
     
     print("=" * 60)
     print("CUTTLE PROJECT CLEANUP")
+    if training_type:
+        print(f"Training Type: {training_type}")
+    else:
+        print("Training Type: ALL")
     print("=" * 60)
     print()
     
@@ -56,7 +71,7 @@ def cleanup_all(force: bool = False) -> tuple[int, int, int]:
         script_dir = Path(__file__).parent
         project_root = script_dir.parent
         log_dir = project_root / "action_logs"
-        logs_deleted = clear_logs(log_dir, confirm=not force)
+        logs_deleted = clear_logs(log_dir, confirm=not force, training_type=training_type)
     except Exception as e:
         print(f"Error cleaning logs: {e}")
     
@@ -70,7 +85,7 @@ def cleanup_all(force: bool = False) -> tuple[int, int, int]:
         script_dir = Path(__file__).parent
         project_root = script_dir.parent
         models_dir = project_root / "models"
-        models_deleted = clear_models(models_dir, confirm=not force)
+        models_deleted = clear_models(models_dir, confirm=not force, training_type=training_type)
     except Exception as e:
         print(f"Error cleaning models: {e}")
     
@@ -84,7 +99,7 @@ def cleanup_all(force: bool = False) -> tuple[int, int, int]:
         script_dir = Path(__file__).parent
         project_root = script_dir.parent
         models_dir = project_root / "models"
-        training_states_deleted = clear_training_state(models_dir, confirm=not force)
+        training_states_deleted = clear_training_state(models_dir, confirm=not force, training_type=training_type)
     except Exception as e:
         print(f"Error cleaning training states: {e}")
     
@@ -101,18 +116,21 @@ def cleanup_all(force: bool = False) -> tuple[int, int, int]:
     return logs_deleted, models_deleted, training_states_deleted
 
 
-def cleanup_logs_only(force: bool = False) -> int:
+def cleanup_logs_only(force: bool = False, training_type: Optional[str] = None) -> int:
     """
     Clean logs only.
     
     Args:
         force: If True, skip confirmation prompts
+        training_type: Optional training type to filter by (e.g., "hand_only")
         
     Returns:
         Number of log files deleted
     """
     print("=" * 60)
     print("CLEANING LOGS")
+    if training_type:
+        print(f"Training Type: {training_type}")
     print("=" * 60)
     print()
     
@@ -120,7 +138,7 @@ def cleanup_logs_only(force: bool = False) -> int:
         script_dir = Path(__file__).parent
         project_root = script_dir.parent
         log_dir = project_root / "action_logs"
-        deleted = clear_logs(log_dir, confirm=not force)
+        deleted = clear_logs(log_dir, confirm=not force, training_type=training_type)
         print()
         print(f"✓ Deleted {deleted} log file(s)")
         return deleted
@@ -129,18 +147,21 @@ def cleanup_logs_only(force: bool = False) -> int:
         return 0
 
 
-def cleanup_models_only(force: bool = False) -> int:
+def cleanup_models_only(force: bool = False, training_type: Optional[str] = None) -> int:
     """
     Clean models only.
     
     Args:
         force: If True, skip confirmation prompts
+        training_type: Optional training type to filter by (e.g., "hand_only")
         
     Returns:
         Number of model files deleted
     """
     print("=" * 60)
     print("CLEANING MODELS")
+    if training_type:
+        print(f"Training Type: {training_type}")
     print("=" * 60)
     print()
     
@@ -148,7 +169,7 @@ def cleanup_models_only(force: bool = False) -> int:
         script_dir = Path(__file__).parent
         project_root = script_dir.parent
         models_dir = project_root / "models"
-        deleted = clear_models(models_dir, confirm=not force)
+        deleted = clear_models(models_dir, confirm=not force, training_type=training_type)
         print()
         print(f"✓ Deleted {deleted} model file(s)")
         return deleted
@@ -157,18 +178,21 @@ def cleanup_models_only(force: bool = False) -> int:
         return 0
 
 
-def cleanup_training_states_only(force: bool = False) -> int:
+def cleanup_training_states_only(force: bool = False, training_type: Optional[str] = None) -> int:
     """
     Clean training states only.
     
     Args:
         force: If True, skip confirmation prompts
+        training_type: Optional training type to filter by (e.g., "hand_only")
         
     Returns:
         Number of training state files deleted
     """
     print("=" * 60)
     print("CLEANING TRAINING STATES")
+    if training_type:
+        print(f"Training Type: {training_type}")
     print("=" * 60)
     print()
     
@@ -176,7 +200,7 @@ def cleanup_training_states_only(force: bool = False) -> int:
         script_dir = Path(__file__).parent
         project_root = script_dir.parent
         models_dir = project_root / "models"
-        deleted = clear_training_state(models_dir, confirm=not force)
+        deleted = clear_training_state(models_dir, confirm=not force, training_type=training_type)
         print()
         print(f"✓ Deleted {deleted} training state file(s)")
         return deleted
@@ -190,15 +214,19 @@ def main():
     parser = argparse.ArgumentParser(
         description="Master cleanup script for Cuttle project",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 Examples:
   python scripts/cleanup.py                    # Interactive cleanup of all
   python scripts/cleanup.py --all              # Clean all (logs + models + training states)
   python scripts/cleanup.py --logs             # Clean logs only
   python scripts/cleanup.py --models           # Clean models only
   python scripts/cleanup.py --training-states  # Clean training states only
+  python scripts/cleanup.py --type hand_only  # Clean all for specific training type
+  python scripts/cleanup.py --type opponent_field_only --force
+  python scripts/cleanup.py --logs --type hand_only  # Clean logs for specific type
   python scripts/cleanup.py --force            # Clean all without confirmation
-  python scripts/cleanup.py --logs --force     # Clean logs without confirmation
+
+Valid training types: {', '.join(VALID_TRAINING_TYPES)}
         """
     )
     
@@ -221,6 +249,11 @@ Examples:
         "--training-states",
         action="store_true",
         help="Clean training states only"
+    )
+    parser.add_argument(
+        "--type", "-t",
+        choices=VALID_TRAINING_TYPES,
+        help="Training type to filter by (e.g., hand_only, opponent_field_only)"
     )
     parser.add_argument(
         "--force", "-f",
@@ -248,16 +281,16 @@ Examples:
     
     # Run cleanup
     if clean_logs and clean_models and clean_training_states:
-        cleanup_all(force=args.force)
+        cleanup_all(force=args.force, training_type=args.type)
     elif clean_logs and not clean_models and not clean_training_states:
-        cleanup_logs_only(force=args.force)
+        cleanup_logs_only(force=args.force, training_type=args.type)
     elif clean_models and not clean_logs and not clean_training_states:
-        cleanup_models_only(force=args.force)
+        cleanup_models_only(force=args.force, training_type=args.type)
     elif clean_training_states and not clean_logs and not clean_models:
-        cleanup_training_states_only(force=args.force)
+        cleanup_training_states_only(force=args.force, training_type=args.type)
     else:
         # Default: clean all
-        cleanup_all(force=args.force)
+        cleanup_all(force=args.force, training_type=args.type)
     
     return 0
 

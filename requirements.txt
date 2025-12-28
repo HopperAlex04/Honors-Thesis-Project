@@ -1,3 +1,6 @@
 numpy
 gymnasium
 torch
+matplotlib
+seaborn
+pytest
