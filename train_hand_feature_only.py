@@ -60,10 +60,10 @@ BATCH_SIZE = 64       # Balanced for CPU training
 GAMMA = 0.92          # Medium-term focus (~25 steps significant)
 EPS_START = 0.90      # Start with 90% exploration
 EPS_END = 0.05        # Maintain 5% exploration when trained
-EPS_DECAY = 80000     # Spread exploration across all 10 rounds (~7% at end)
+EPS_DECAY = 28510     # Optimized for 5 rounds - reaches 15% exploration by round 5
 TAU = 0.005           # Soft update rate for target network (reduced from 0.01 for more stability)
-TARGET_UPDATE_FREQUENCY = 2000  # Hard update target network every N steps (increased from 1000 for more stability)
-LR = 1e-4             # Reduced learning rate for stability (was 3e-4, caused increasing loss)
+TARGET_UPDATE_FREQUENCY = 1500  # Hard update target network every N steps (optimized for faster learning)
+LR = 1.5e-4           # Increased learning rate (was 1e-4) - safe with Tanh removed, enables faster convergence
 
 model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
 trainee = Players.Agent(
@@ -217,7 +217,7 @@ win_rate_history = {
     "gapmaximizer": []
 }
 
-rounds = 10
+rounds = 5
 eps_per_round = 1000
 
 print(f"\n{'='*60}")

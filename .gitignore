@@ -2,6 +2,7 @@
 p1log.txt
 p2log.txt
 *.jsonl
+*.png
 #generated test models
 *.pt
 *.pth

@@ -395,7 +395,8 @@ class Agent(Player):
         self.target_update_frequency = 0  # Hard update target network every N steps (0 = use soft updates with tau)
 
         # Replay Memory
-        self.memory = ReplayMemory(200000)  # Increased capacity to prevent forgetting (was 100000)
+        # Reduced to 100000 for 5-round training (still 164% of 5-round capacity, 50% memory savings)
+        self.memory = ReplayMemory(100000)
 
         # Using Adam optimization with weight decay to prevent catastrophic forgetting
         self.optimizer = torch.optim.Adam(

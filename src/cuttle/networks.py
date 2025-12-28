@@ -94,13 +94,15 @@ class NeuralNetwork(nn.Module):
             
             # Default network: two hidden layers with ReLU activations
             # Conservative architecture: 256 → 128 → num_actions
+            # NOTE: No activation on output layer - Q-values should be unbounded
             self.linear_relu_stack = nn.Sequential(
                 nn.Linear(input_length, 256),
                 nn.ReLU(),
                 nn.Linear(256, 128),
                 nn.ReLU(),
-                nn.Linear(128, num_actions),
-                nn.Tanh()
+                nn.Linear(128, num_actions)
+                # No activation function - Q-values need to be unbounded to represent
+                # proper expected future rewards (can be > 1.0 with intermediate rewards)
             )
     
     def _calculate_input_dimension(
