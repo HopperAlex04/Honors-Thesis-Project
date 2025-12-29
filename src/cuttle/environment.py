@@ -13,7 +13,8 @@ class CuttleEnvironment:
     def __init__(
         self, 
         include_highest_point_value: bool = True,
-        include_highest_point_value_opponent_field: bool = True
+        include_highest_point_value_opponent_field: bool = True,
+        include_scores: bool = False
     ) -> None:
         """
         Initialize the Cuttle game environment.
@@ -23,10 +24,13 @@ class CuttleEnvironment:
                                         in observations. Default True for backward compatibility.
             include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field"
                                                        in observations. Default True for backward compatibility.
+            include_scores: If True, include "Current Player Score" and "Opponent Score" in observations.
+                           Default False (new feature).
         """
         # Store toggle settings
         self.include_highest_point_value = include_highest_point_value
         self.include_highest_point_value_opponent_field = include_highest_point_value_opponent_field
+        self.include_scores = include_scores
 
         # Generates the zones
         # A zone is a bool np array
@@ -157,6 +161,17 @@ class CuttleEnvironment:
         # Conditionally include highest point value in opponent field based on toggle
         if self.include_highest_point_value_opponent_field:
             obs["Highest Point Value in Opponent Field"] = self._calculate_highest_point_in_opponent_field()
+        
+        # Conditionally include scores based on toggle
+        if self.include_scores:
+            # Get current player's score (from current perspective)
+            current_score, _ = self.scoreState()
+            # Get opponent's score by switching perspective
+            self.passControl()
+            opponent_score, _ = self.scoreState()
+            self.passControl()  # Switch back to original perspective
+            obs["Current Player Score"] = current_score
+            obs["Opponent Score"] = opponent_score
         
         return obs
 

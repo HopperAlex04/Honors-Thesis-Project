@@ -26,7 +26,7 @@ python scripts/analyze_improvement.py --type hand_only --opponent vs_gapmaximize
 
 ### Options
 
-- `--type, -t`: Training type to analyze (`hand_only`, `opponent_field_only`, `no_features`, `both_features`, or `all`)
+- `--type, -t`: Training type to analyze (`hand_only`, `opponent_field_only`, `no_features`, `both_features`, `all_features`, `scores`, or `all`)
 - `--opponent, -o`: Opponent type (`vs_previous`, `vs_randomized`, `vs_heuristic`, `vs_gapmaximizer`, or `all`)
 - `--base-dir, -b`: Base directory containing `action_logs` (default: current directory)
 - `--output-dir, -d`: Directory to save plots (default: `improvement_analysis`)

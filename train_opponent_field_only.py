@@ -57,13 +57,15 @@ actions = env.actions
 # Balanced hyperparameters for Cuttle training
 EMBEDDING_SIZE = 16   # Good for 54 vocab size (cards + special values)
 BATCH_SIZE = 64       # Balanced for CPU training
-GAMMA = 0.92          # Medium-term focus (~25 steps significant)
+GAMMA = 0.90          # Reduced from 0.92 to prevent Q-value accumulation and loss divergence
 EPS_START = 0.90      # Start with 90% exploration
 EPS_END = 0.05        # Maintain 5% exploration when trained
-EPS_DECAY = 28510     # Optimized for 5 rounds - reaches 15% exploration by round 5
+EPS_DECAY = 28510     # Optimized for ~5000 episodes - reaches ~15% exploration by end of training
 TAU = 0.005           # Soft update rate for target network (reduced from 0.01 for more stability)
-TARGET_UPDATE_FREQUENCY = 1500  # Hard update target network every N steps (optimized for faster learning)
-LR = 1.5e-4           # Increased learning rate (was 1e-4) - safe with Tanh removed, enables faster convergence
+TARGET_UPDATE_FREQUENCY = 2000  # Hard update target network every N steps (increased for more stability)
+LR = 8e-5             # Reduced learning rate for more stable training (was 1.2e-4, typical DQN: 1e-4 to 5e-5)
+LR_DECAY_RATE = 0.9   # Decay learning rate by 10% every 2 rounds (proactive scheduling)
+LR_DECAY_INTERVAL = 2 # Decay LR every N rounds
 
 model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
 trainee = Players.Agent(
@@ -217,8 +219,18 @@ win_rate_history = {
     "gapmaximizer": []
 }
 
-rounds = 5
-eps_per_round = 1000
+# Track regression for early stopping
+REGRESSION_GRACE_ZONE = 0.45  # Only count as regression if win rate < this (accounts for variance in small samples)
+# With 500 episodes per round, there's ~2.2% standard error, so 45% threshold gives ~2.3 sigma buffer
+# This prevents false positives from normal variance while still catching real regressions
+consecutive_regressions = 0  # Count consecutive regressions
+MAX_CONSECUTIVE_REGRESSIONS = 2  # Stop training if this many consecutive regressions
+
+# Training configuration: More rounds with fewer episodes per round
+# Benefits: More frequent regression detection, better model selection, finer progress tracking
+# Total episodes: 10 * 500 = 5000 (same as before, but with better checkpointing)
+rounds = 10
+eps_per_round = 500
 
 print(f"\n{'='*60}")
 print(f"TRAINING: Opponent Field Feature Only")
@@ -264,6 +276,14 @@ for x in range(start_round, rounds):
             trainee.policy.load_state_dict(prev_checkpoint.state_dict())
             prev_model_state = prev_checkpoint.state_dict()
         print(f"Updated trainee model with checkpoint {x}")
+        
+        # Proactive learning rate scheduling: decay LR every N rounds
+        if x > 0 and x % LR_DECAY_INTERVAL == 0:
+            current_lr = trainee.optimizer.param_groups[0]['lr']
+            new_lr = current_lr * LR_DECAY_RATE
+            for param_group in trainee.optimizer.param_groups:
+                param_group['lr'] = new_lr
+            print(f"Proactive LR decay: {current_lr:.2e} -> {new_lr:.2e} (round {x} is multiple of {LR_DECAY_INTERVAL})")
     except Exception as e:
         print(f"Error loading checkpoint {checkpoint_path}: {e}")
         print(f"Skipping round {x}.")
@@ -321,16 +341,45 @@ for x in range(start_round, rounds):
     
     # === REGRESSION DETECTION: Check if current round is losing to previous round ===
     win_rate_vs_previous = p1w / eps_per_round if eps_per_round > 0 else 0.0
-    if win_rate_vs_previous < 0.50:
+    # Use grace zone to account for statistical variance in small sample sizes (500 episodes)
+    # Only count as regression if win rate is significantly below 50% (e.g., < 45%)
+    # This prevents false positives from normal variance while still catching real regressions
+    is_regression = win_rate_vs_previous < REGRESSION_GRACE_ZONE
+    
+    if is_regression:
+        consecutive_regressions += 1
         print(f"\n{'!'*60}")
         print(f"REGRESSION DETECTED: Round {x} is LOSING to Round {x-1}")
         print(f"   Win rate: {win_rate_vs_previous:.1%} (P1: {p1w} vs P2: {p2w})")
+        print(f"   Consecutive regressions: {consecutive_regressions}/{MAX_CONSECUTIVE_REGRESSIONS}")
         print(f"   This indicates the agent may be forgetting previous strategies.")
         print(f"   Possible causes: overfitting to self-play, training instability, or catastrophic forgetting.")
         print(f"{'!'*60}\n")
-    elif win_rate_vs_previous < 0.55:
-        print(f"\nWARNING: Round {x} is barely beating Round {x-1} ({win_rate_vs_previous:.1%})")
-        print(f"   Monitor closely - performance may be degrading.\n")
+        
+        # Early stopping if too many consecutive regressions
+        if consecutive_regressions >= MAX_CONSECUTIVE_REGRESSIONS:
+            print(f"\n{'!'*60}")
+            print(f"EARLY STOPPING: {consecutive_regressions} consecutive regressions detected")
+            print(f"   Training stopped to prevent further degradation.")
+            print(f"   Last successful round: {x - consecutive_regressions}")
+            print(f"{'!'*60}\n")
+            save_training_state(x + 1, rounds, steps_done, total_time)
+            break
+    else:
+        consecutive_regressions = 0  # Reset counter on improvement
+        
+        # Reset exploration boost if performance improved (no longer in regression)
+        if hasattr(trainee, 'exploration_boost') and trainee.exploration_boost > 0:
+            trainee.reset_exploration_boost()
+            print(f"   Reset exploration boost - performance improved")
+        
+        # Warn if win rate is in the gray zone (between grace zone and 50%)
+        if win_rate_vs_previous < 0.50 and win_rate_vs_previous >= REGRESSION_GRACE_ZONE:
+            print(f"\nWARNING: Round {x} is slightly below 50% ({win_rate_vs_previous:.1%})")
+            print(f"   Within grace zone ({REGRESSION_GRACE_ZONE:.0%}-50%), monitoring closely.\n")
+        elif win_rate_vs_previous < 0.55:
+            print(f"\nWARNING: Round {x} is barely beating Round {x-1} ({win_rate_vs_previous:.1%})")
+            print(f"   Monitor closely - performance may be degrading.\n")
 
     # Save checkpoint for next round (always save, regardless of win/loss)
     new_checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{x + 1}.pt"
@@ -344,14 +393,82 @@ for x in range(start_round, rounds):
             torch.save(checkpoint, new_checkpoint_path)
             print(f"Saved new checkpoint: {new_checkpoint_path} (new model won: p1w={p1w} vs p2w={p2w})")
         else:
+            # Previous model won - revert to it and reset optimizer to prevent continued degradation
+            # This is critical: keeping optimizer state with momentum from bad training can cause further regression
+            print(f"\n{'!'*60}")
+            print(f"REVERTING TO PREVIOUS MODEL due to regression")
+            print(f"   Resetting optimizer state to prevent continued degradation")
+            print(f"{'!'*60}\n")
+            
+            # Revert model to previous checkpoint
+            trainee.model.load_state_dict(prev_model_state)
+            trainee.policy.load_state_dict(prev_model_state)
+            trainee.target.load_state_dict(prev_model_state)  # Also revert target network
+            
+            # Clear replay memory to remove stale bad experiences
+            from cuttle.players import ReplayMemory
+            memory_size_before = len(trainee.memory)
+            trainee.memory = ReplayMemory(100000)  # Fresh replay memory
+            print(f"   Cleared replay memory ({memory_size_before} -> 0 experiences)")
+            
+            # Reset optimizer state to prevent momentum from bad training direction
+            # Create fresh optimizer with potentially reduced learning rate
+            current_lr = trainee.optimizer.param_groups[0]['lr']
+            if win_rate_vs_previous < REGRESSION_GRACE_ZONE:
+                # Significant regression (below grace zone): reduce learning rate by 50%
+                new_lr = current_lr * 0.5
+                print(f"   Reducing learning rate: {current_lr:.2e} -> {new_lr:.2e} (50% reduction)")
+            else:
+                # Minor regression (in grace zone): reduce learning rate by 25%
+                new_lr = current_lr * 0.75
+                print(f"   Reducing learning rate: {current_lr:.2e} -> {new_lr:.2e} (25% reduction)")
+            
+            # Recreate optimizer with new learning rate and fresh state
+            trainee.optimizer = torch.optim.Adam(
+                trainee.model.parameters(),
+                lr=new_lr,
+                betas=(0.9, 0.999),
+                eps=1e-8,
+                weight_decay=1e-5
+            )
+            
+            # Additional recovery strategies:
+            # 1. Temporarily increase exploration to escape local minima
+            # Boost exploration by resetting epsilon decay (equivalent to ~2000 steps back)
+            exploration_boost_steps = int(EPS_DECAY * 0.07)  # ~7% of decay, roughly 2000 steps
+            trainee.boost_exploration(exploration_boost_steps)
+            print(f"   Boosted exploration: reset epsilon decay by {exploration_boost_steps} steps")
+            print(f"   This increases exploration temporarily to help escape local minima")
+            
+            # 2. Increase target network update frequency for more stability
+            # More frequent updates = more stable targets = better learning
+            original_freq = trainee.target_update_frequency
+            if original_freq > 0:
+                # Reduce update frequency (update more often) for better stability
+                new_freq = max(500, int(original_freq * 0.5))  # Update 2x more frequently, min 500
+                trainee.set_target_update_frequency(new_freq)
+                print(f"   Increased target network update frequency: {original_freq} -> {new_freq} steps")
+            
+            # 3. Add small weight noise to escape local minima (optional, conservative)
+            # This is a gentle perturbation that can help escape bad local minima
+            with torch.no_grad():
+                noise_scale = 0.01  # 1% noise
+                for param in trainee.model.parameters():
+                    if param.requires_grad and param.numel() > 0:
+                        # Use absolute value of parameter as scale to avoid issues with std()
+                        param_scale = param.abs().mean().item()
+                        if param_scale > 0:
+                            noise = torch.randn_like(param) * noise_scale * param_scale
+                            param.add_(noise)
+                print(f"   Added {noise_scale*100:.1f}% weight noise to escape local minima")
+            
+            # Save checkpoint with reverted model and fresh optimizer
             checkpoint = {
                 'model_state_dict': prev_model_state,
                 'optimizer_state_dict': trainee.get_optimizer_state(),
                 'steps_done': steps_done,
             }
             torch.save(checkpoint, new_checkpoint_path)
-            trainee.model.load_state_dict(prev_model_state)
-            trainee.policy.load_state_dict(prev_model_state)
             print(f"Saved previous checkpoint: {new_checkpoint_path} (previous model won: p1w={p1w} vs p2w={p2w})")
     except Exception as e:
         print(f"Error saving checkpoint {new_checkpoint_path}: {e}")

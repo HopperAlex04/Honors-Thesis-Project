@@ -26,7 +26,9 @@ VALID_TRAINING_TYPES = [
     "hand_only",
     "opponent_field_only",
     "no_features",
-    "both_features"
+    "both_features",  # Legacy name, kept for backward compatibility
+    "all_features",
+    "scores"
 ]
 
 # Valid phases

@@ -26,7 +26,9 @@ VALID_TRAINING_TYPES = [
     "hand_only",
     "opponent_field_only",
     "no_features",
-    "both_features"
+    "both_features",  # Legacy name, kept for backward compatibility
+    "all_features",
+    "scores"
 ]
 
 # Valid opponent types
@@ -345,6 +347,103 @@ def plot_improvement_analysis(
     return file_path
 
 
+def analyze_regression_frequency(
+    all_metrics: Dict[str, Dict[int, Dict[str, float]]],
+    opponent_type: str
+) -> None:
+    """
+    Analyze how frequently each generation loses to the previous iteration.
+    
+    This is specifically for vs_previous validation, showing regression patterns.
+    """
+    if opponent_type != "vs_previous":
+        return  # Only analyze regression for vs_previous
+    
+    print(f"\n{'='*80}")
+    print(f"REGRESSION FREQUENCY ANALYSIS: {opponent_type.replace('_', ' ').upper()}")
+    print(f"{'='*80}\n")
+    
+    for training_type, metrics_by_round in sorted(all_metrics.items()):
+        rounds = sorted(metrics_by_round.keys())
+        if len(rounds) < 2:
+            continue  # Need at least 2 rounds to compare
+        
+        type_display = training_type.replace('_', ' ').title()
+        print(f"{type_display}:")
+        print(f"  Total Rounds: {len(rounds)}")
+        print(f"  Rounds Compared: {len(rounds) - 1} (round 0 has no previous to compare)")
+        print()
+        
+        # Track regression statistics
+        regressions = []  # List of (round, win_rate) tuples where regression occurred
+        improvements = []  # List of (round, win_rate) tuples where improvement occurred
+        marginal = []  # List of (round, win_rate) tuples where win rate is 0.50-0.55 (barely winning)
+        
+        # Compare each round to previous (starting from round 1)
+        for i in range(1, len(rounds)):
+            current_round = rounds[i]
+            win_rate = metrics_by_round[current_round]['trainee_win_rate']
+            trainee_wins = metrics_by_round[current_round]['trainee_wins']
+            opponent_wins = metrics_by_round[current_round]['opponent_wins']
+            total_games = metrics_by_round[current_round]['total_games']
+            
+            if win_rate < 0.50:
+                # Regression: losing to previous model
+                regressions.append((current_round, win_rate, trainee_wins, opponent_wins, total_games))
+            elif win_rate < 0.55:
+                # Marginal: barely beating previous model
+                marginal.append((current_round, win_rate, trainee_wins, opponent_wins, total_games))
+            else:
+                # Improvement: clearly beating previous model
+                improvements.append((current_round, win_rate, trainee_wins, opponent_wins, total_games))
+        
+        # Print regression details
+        if regressions:
+            print(f"  ⚠ REGRESSIONS DETECTED: {len(regressions)}/{len(rounds)-1} rounds ({len(regressions)/(len(rounds)-1)*100:.1f}%)")
+            print(f"     Rounds that lost to previous model:")
+            for round_num, win_rate, trainee_wins, opponent_wins, total_games in regressions:
+                print(f"       Round {round_num}: {win_rate:.1%} win rate ({trainee_wins}W / {opponent_wins}L / {total_games} games)")
+            print()
+        else:
+            print(f"  ✓ No regressions detected (all rounds beat previous model)")
+            print()
+        
+        # Print marginal cases
+        if marginal:
+            print(f"  ⚠ MARGINAL WINS: {len(marginal)}/{len(rounds)-1} rounds ({len(marginal)/(len(rounds)-1)*100:.1f}%)")
+            print(f"     Rounds barely beating previous model (50-55% win rate):")
+            for round_num, win_rate, trainee_wins, opponent_wins, total_games in marginal:
+                print(f"       Round {round_num}: {win_rate:.1%} win rate ({trainee_wins}W / {opponent_wins}L / {total_games} games)")
+            print()
+        
+        # Print improvement summary
+        if improvements:
+            improvement_rate = len(improvements) / (len(rounds) - 1) * 100
+            print(f"  ✓ CLEAR IMPROVEMENTS: {len(improvements)}/{len(rounds)-1} rounds ({improvement_rate:.1f}%)")
+            print(f"     Rounds clearly beating previous model (>55% win rate)")
+            if len(improvements) <= 5:
+                # Show details if few improvements
+                for round_num, win_rate, trainee_wins, opponent_wins, total_games in improvements:
+                    print(f"       Round {round_num}: {win_rate:.1%} win rate ({trainee_wins}W / {opponent_wins}L / {total_games} games)")
+            else:
+                # Show summary if many improvements
+                avg_win_rate = sum(wr for _, wr, _, _, _ in improvements) / len(improvements)
+                print(f"       Average win rate: {avg_win_rate:.1%}")
+            print()
+        
+        # Overall statistics
+        total_comparisons = len(rounds) - 1
+        regression_rate = len(regressions) / total_comparisons if total_comparisons > 0 else 0
+        marginal_rate = len(marginal) / total_comparisons if total_comparisons > 0 else 0
+        improvement_rate = len(improvements) / total_comparisons if total_comparisons > 0 else 0
+        
+        print(f"  Summary Statistics:")
+        print(f"    Regression Rate:    {regression_rate:.1%} ({len(regressions)}/{total_comparisons})")
+        print(f"    Marginal Win Rate:  {marginal_rate:.1%} ({len(marginal)}/{total_comparisons})")
+        print(f"    Clear Win Rate:     {improvement_rate:.1%} ({len(improvements)}/{total_comparisons})")
+        print()
+
+
 def print_improvement_summary(
     all_metrics: Dict[str, Dict[int, Dict[str, float]]],
     opponent_type: str
@@ -455,6 +554,10 @@ Valid opponents: {', '.join(VALID_OPPONENTS)}
         if not all_metrics:
             print(f"No data found for {opponent_type}")
             continue
+        
+        # Print regression frequency analysis (only for vs_previous)
+        if opponent_type == "vs_previous":
+            analyze_regression_frequency(all_metrics, opponent_type)
         
         # Print summary
         print_improvement_summary(all_metrics, opponent_type)

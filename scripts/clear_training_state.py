@@ -22,7 +22,9 @@ VALID_TRAINING_TYPES = [
     "hand_only",
     "opponent_field_only",
     "no_features",
-    "both_features"
+    "both_features",  # Legacy name, kept for backward compatibility
+    "all_features",
+    "scores"
 ]
 
 
@@ -34,7 +36,9 @@ def get_training_state_files(models_dir: Path, training_type: Optional[str] = No
     - training_state_hand_only.json
     - training_state_opponent_field_only.json
     - training_state_no_features.json
-    - training_state_both_features.json
+    - training_state_both_features.json (legacy)
+    - training_state_all_features.json
+    - training_state_scores.json
     
     Args:
         models_dir: Path to the models directory

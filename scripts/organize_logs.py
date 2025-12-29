@@ -33,7 +33,9 @@ def extract_training_type(filename: str) -> Optional[str]:
         "hand_only",
         "opponent_field_only",
         "no_features",
-        "both_features"
+        "both_features",  # Legacy name, kept for backward compatibility
+        "all_features",
+        "scores"
     ]
     
     # Check if filename contains any known training type
