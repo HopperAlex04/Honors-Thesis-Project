@@ -108,6 +108,7 @@ def aggregate_phase_metrics(
     Aggregate metrics for a specific phase across all rounds.
     
     For validation phases, combines trainee_first and trainee_second files.
+    Adds metadata to track which player is the trainee for each episode.
     
     Args:
         training_type: Training type (e.g., "hand_only")
@@ -137,6 +138,7 @@ def aggregate_phase_metrics(
                 continue
             
             episodes = parse_metrics_file(file_path)
+            # In selfplay, both players are the same agent, so no trainee tracking needed
             if episodes:
                 metrics_by_round[round_num] = episodes
     else:
@@ -169,11 +171,17 @@ def aggregate_phase_metrics(
             if round_num in first_files:
                 file_path = first_files[round_num]
                 first_episodes = parse_metrics_file(file_path)
+                # Mark that p1 is the trainee in these episodes
+                for ep in first_episodes:
+                    ep["_trainee_is_p1"] = True
                 episodes.extend(first_episodes)
             
             if combine_positions and round_num in second_files:
                 file_path = second_files[round_num]
                 second_episodes = parse_metrics_file(file_path)
+                # Mark that p2 is the trainee in these episodes
+                for ep in second_episodes:
+                    ep["_trainee_is_p1"] = False
                 episodes.extend(second_episodes)
             
             # Only add if we have episodes
@@ -191,6 +199,9 @@ def extract_metric_series(
     """
     Extract a metric series across episodes (not aggregated by round).
     
+    For win rate metrics, recalculates cumulative win rates across all rounds
+    since win rates in the data are cumulative per round only.
+    
     Args:
         metrics_by_round: Dictionary mapping round to episode metrics
         metric_name: Name of metric to extract
@@ -203,22 +214,176 @@ def extract_metric_series(
     episode_numbers = []
     values = []
     
-    # Sort rounds to process in order
-    rounds = sorted(metrics_by_round.keys())
-    cumulative_episode = 0
+    # Special handling for win rate metrics - need to recalculate cumulative across rounds
+    is_win_rate_metric = metric_name in ["p1_win_rate", "p2_win_rate", "draw_rate"]
     
-    for round_num in rounds:
-        episodes = metrics_by_round[round_num]
-        # Sort episodes by episode number if available
-        sorted_episodes = sorted(episodes, key=lambda ep: ep.get("episode", 0))
+    if is_win_rate_metric:
+        # Check if this is a validation phase (has _trainee_is_p1 metadata)
+        # For selfplay, both players are the same agent, so we use raw p1/p2 values
+        is_validation_phase = any(
+            "_trainee_is_p1" in ep
+            for episodes in metrics_by_round.values()
+            for ep in episodes
+        )
         
-        for ep in sorted_episodes:
-            if metric_name in ep and ep[metric_name] is not None:
-                # Use cumulative episode count to ensure unique x-axis values
-                # This handles cases where episodes restart at 0 for each round
-                episode_numbers.append(cumulative_episode)
-                values.append(float(ep[metric_name]))
+        if is_validation_phase:
+            # Track cumulative wins/draws across all rounds
+            # For validation phases, track trainee wins (not p1/p2 wins)
+            cumulative_trainee_wins = 0
+            cumulative_opponent_wins = 0
+            cumulative_draws = 0
+            cumulative_episode = 0
+            
+            # Sort rounds to process in order
+            rounds = sorted(metrics_by_round.keys())
+            
+            for round_num in rounds:
+                episodes = metrics_by_round[round_num]
+                # Sort episodes by episode number if available, then by trainee position
+                # This ensures trainee_first episodes come before trainee_second for same episode number
+                sorted_episodes = sorted(episodes, key=lambda ep: (
+                    ep.get("episode", 0),
+                    ep.get("_trainee_is_p1", True)  # trainee_first (True) before trainee_second (False)
+                ))
+                
+                # Track wins/draws from previous episode in this round to calculate deltas
+                # Need separate tracking for trainee_first and trainee_second since they're separate files
+                # Use a dict keyed by trainee_is_p1 to track per-file state
+                prev_state = {
+                    True: {"p1_wins": 0, "p2_wins": 0, "draws": 0, "last_episode": -1},  # trainee_first
+                    False: {"p1_wins": 0, "p2_wins": 0, "draws": 0, "last_episode": -1}   # trainee_second
+                }
+                
+                for ep in sorted_episodes:
+                    # Get current wins/draws for this round
+                    # These are cumulative within the round (and within each file)
+                    episode_num = ep.get("episode", 0)
+                    p1_wins_in_round = ep.get("p1_wins", 0)
+                    p2_wins_in_round = ep.get("p2_wins", 0)
+                    draws_in_round = ep.get("draws", 0)
+                    
+                    # Determine which player is the trainee (must exist for validation phases)
+                    trainee_is_p1 = ep.get("_trainee_is_p1")
+                    if trainee_is_p1 is None:
+                        # Should not happen in validation phases, but handle gracefully
+                        print(f"Warning: Missing _trainee_is_p1 in validation phase at episode {episode_num}, round {round_num}")
+                        trainee_is_p1 = True  # Default fallback
+                    file_state = prev_state[trainee_is_p1]
+                
+                # Reset counters if we're starting a new file (episode 0 after a higher episode)
+                # OR if this is the first time we're seeing this file type in this round
+                # This handles the case where trainee_first and trainee_second are interleaved
+                if episode_num == 0:
+                    if file_state["last_episode"] > 0:
+                        # Starting a new file (same type, new round), reset counters
+                        file_state["p1_wins"] = 0
+                        file_state["p2_wins"] = 0
+                        file_state["draws"] = 0
+                    elif file_state["last_episode"] == -1:
+                        # First time seeing this file type in this round, initialize to 0
+                        file_state["p1_wins"] = 0
+                        file_state["p2_wins"] = 0
+                        file_state["draws"] = 0
+                
+                # Calculate new wins/draws since last episode in this file
+                new_p1_wins = p1_wins_in_round - file_state["p1_wins"]
+                new_p2_wins = p2_wins_in_round - file_state["p2_wins"]
+                new_draws = draws_in_round - file_state["draws"]
+                
+                # Safety check: deltas should never be negative (wins are cumulative)
+                # If negative, it means we're seeing a reset or there's a bug
+                if new_p1_wins < 0 or new_p2_wins < 0 or new_draws < 0:
+                    # This shouldn't happen, but if it does, it means we need to reset
+                    # This can happen if we're seeing episode 0 after a higher episode (new file)
+                    if episode_num == 0:
+                        # Reset state and recalculate
+                        file_state["p1_wins"] = 0
+                        file_state["p2_wins"] = 0
+                        file_state["draws"] = 0
+                        new_p1_wins = p1_wins_in_round
+                        new_p2_wins = p2_wins_in_round
+                        new_draws = draws_in_round
+                    else:
+                        # This is a real bug - log it but continue
+                        print(f"Warning: Negative delta detected for {metric_name} at episode {episode_num}, "
+                              f"round {round_num}, trainee_is_p1={trainee_is_p1}. "
+                              f"p1_wins: {p1_wins_in_round} - {file_state['p1_wins']} = {new_p1_wins}, "
+                              f"p2_wins: {p2_wins_in_round} - {file_state['p2_wins']} = {new_p2_wins}")
+                        # Clamp to 0 to prevent undercounting
+                        new_p1_wins = max(0, new_p1_wins)
+                        new_p2_wins = max(0, new_p2_wins)
+                        new_draws = max(0, new_draws)
+                
+                # Update file state for next iteration
+                file_state["p1_wins"] = p1_wins_in_round
+                file_state["p2_wins"] = p2_wins_in_round
+                file_state["draws"] = draws_in_round
+                file_state["last_episode"] = episode_num
+                
+                # Update cumulative totals based on who is the trainee
+                if trainee_is_p1:
+                    cumulative_trainee_wins += new_p1_wins
+                    cumulative_opponent_wins += new_p2_wins
+                else:
+                    cumulative_trainee_wins += new_p2_wins
+                    cumulative_opponent_wins += new_p1_wins
+                
+                cumulative_draws += new_draws
                 cumulative_episode += 1
+                
+                # Recalculate win rate based on cumulative totals
+                total_episodes = cumulative_episode
+                if metric_name == "p1_win_rate":
+                    # For validation, p1_win_rate always shows trainee win rate (regardless of position)
+                    # This ensures consistent graphs that don't switch meaning between trainee_first and trainee_second
+                    recalculated_value = cumulative_trainee_wins / total_episodes if total_episodes > 0 else 0.0
+                elif metric_name == "p2_win_rate":
+                    # For validation, p2_win_rate always shows opponent win rate (regardless of position)
+                    # This ensures consistent graphs that don't switch meaning between trainee_first and trainee_second
+                    recalculated_value = cumulative_opponent_wins / total_episodes if total_episodes > 0 else 0.0
+                elif metric_name == "draw_rate":
+                    recalculated_value = cumulative_draws / total_episodes if total_episodes > 0 else 0.0
+                else:
+                    recalculated_value = 0.0
+                
+                episode_numbers.append(cumulative_episode - 1)  # 0-indexed for x-axis
+                values.append(recalculated_value)
+        else:
+            # Selfplay phase: use raw p1/p2 values (both players are the same agent)
+            # Sort rounds to process in order
+            rounds = sorted(metrics_by_round.keys())
+            cumulative_episode = 0
+            
+            for round_num in rounds:
+                episodes = metrics_by_round[round_num]
+                # Sort episodes by episode number if available
+                sorted_episodes = sorted(episodes, key=lambda ep: ep.get("episode", 0))
+                
+                for ep in sorted_episodes:
+                    if metric_name in ep and ep[metric_name] is not None:
+                        # Use cumulative episode count to ensure unique x-axis values
+                        # This handles cases where episodes restart at 0 for each round
+                        episode_numbers.append(cumulative_episode)
+                        values.append(float(ep[metric_name]))
+                        cumulative_episode += 1
+    else:
+        # For non-win-rate metrics, use original values
+        # Sort rounds to process in order
+        rounds = sorted(metrics_by_round.keys())
+        cumulative_episode = 0
+        
+        for round_num in rounds:
+            episodes = metrics_by_round[round_num]
+            # Sort episodes by episode number if available
+            sorted_episodes = sorted(episodes, key=lambda ep: ep.get("episode", 0))
+            
+            for ep in sorted_episodes:
+                if metric_name in ep and ep[metric_name] is not None:
+                    # Use cumulative episode count to ensure unique x-axis values
+                    # This handles cases where episodes restart at 0 for each round
+                    episode_numbers.append(cumulative_episode)
+                    values.append(float(ep[metric_name]))
+                    cumulative_episode += 1
     
     # Return None for std_devs since we're not aggregating
     return episode_numbers, values, None
@@ -462,6 +627,13 @@ def generate_graph(
     metric_display = metric_name.replace('_', ' ').title()
     phase_display = phase.replace('_', ' ').title()
     type_display = training_type.replace('_', ' ').title()
+    
+    # For validation phases, adjust labels to reflect trainee/opponent instead of p1/p2
+    if phase in ["vs_previous", "vs_randomized", "vs_gapmaximizer", "vs_heuristic"]:
+        if metric_name == "p1_win_rate":
+            metric_display = "Trainee Win Rate"
+        elif metric_name == "p2_win_rate":
+            metric_display = "Opponent Win Rate"
     
     ax.set_xlabel("Episode", fontsize=12)
     ax.set_ylabel(metric_display, fontsize=12)

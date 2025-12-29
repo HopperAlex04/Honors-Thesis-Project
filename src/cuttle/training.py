@@ -728,6 +728,56 @@ def execute_player_turn(
     return observation, score, terminated, truncated
 
 
+def check_loss_divergence(
+    loss_history: List[float],
+    window_size: int = 100,
+    divergence_threshold: float = 0.5,
+    min_episodes: int = 200
+) -> bool:
+    """
+    Check if loss is diverging (consistently rising) to enable early stopping.
+    
+    Args:
+        loss_history: List of recent loss values
+        window_size: Number of recent episodes to consider
+        divergence_threshold: Minimum average slope to consider as divergence
+        min_episodes: Minimum episodes before early stopping can trigger
+        
+    Returns:
+        True if loss is diverging and early stopping should trigger
+    """
+    if len(loss_history) < min_episodes:
+        return False
+    
+    # Get recent window of losses
+    recent_losses = loss_history[-window_size:]
+    
+    # Check for NaN or infinite values (definite divergence)
+    if any(not math.isfinite(l) for l in recent_losses):
+        return True
+    
+    # Calculate linear trend (slope)
+    x = list(range(len(recent_losses)))
+    if len(x) < 2:
+        return False
+    
+    # Simple linear regression to get slope
+    n = len(x)
+    sum_x = sum(x)
+    sum_y = sum(recent_losses)
+    sum_xy = sum(x[i] * recent_losses[i] for i in range(n))
+    sum_x2 = sum(xi * xi for xi in x)
+    
+    denominator = n * sum_x2 - sum_x * sum_x
+    if abs(denominator) < 1e-10:
+        return False
+    
+    slope = (n * sum_xy - sum_x * sum_y) / denominator
+    
+    # Check if slope exceeds threshold (positive = rising loss)
+    return slope > divergence_threshold
+
+
 def selfPlayTraining(
     p1: Players.Player,
     p2: Players.Player,
@@ -742,6 +792,7 @@ def selfPlayTraining(
     initial_steps: int = 0,
     round_number: Optional[int] = None,
     initial_total_time: float = 0.0,
+    early_stopping_config: Optional[Dict[str, Any]] = None,
 ) -> Tuple[int, int, int]:
     """
     Execute self-play training between two players.
@@ -763,6 +814,7 @@ def selfPlayTraining(
         initial_steps: Starting step count for epsilon decay (for resuming training)
         round_number: Optional round number to display in episode output
         initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
+        early_stopping_config: Configuration dict for early stopping
         
     Returns:
         Tuple of (p1_wins, p2_wins, final_steps) counts
@@ -781,6 +833,23 @@ def selfPlayTraining(
     # Setup loggers with model identifier
     action_logger = setup_action_logger(LOG_DIRECTORY, model_id) if log_actions else None
     metrics_logger = setup_metrics_logger(LOG_DIRECTORY, model_id) if log_metrics else None
+    
+    # Early stopping setup
+    loss_history = []
+    early_stopping_enabled = False
+    check_interval = 50
+    window_size = 100
+    divergence_threshold = 0.5
+    min_episodes = 200
+    max_loss = 50.0
+    
+    if early_stopping_config is not None and early_stopping_config.get("enabled", False):
+        early_stopping_enabled = True
+        check_interval = early_stopping_config.get("check_interval", 50)
+        window_size = early_stopping_config.get("window_size", 100)
+        divergence_threshold = early_stopping_config.get("divergence_threshold", 0.5)
+        min_episodes = early_stopping_config.get("min_episodes", 200)
+        max_loss = early_stopping_config.get("max_loss", 50.0)
     
     # Track total time from start of training (including previous sessions if resuming)
     session_start_time = time.time()
@@ -958,6 +1027,32 @@ def selfPlayTraining(
         loss = None
         if not validating:
             loss = p1.optimize()
+        
+        # Track loss for early stopping
+        if loss is not None and early_stopping_enabled:
+            loss_history.append(loss)
+            
+            if early_stopping_enabled:
+                # Check for maximum loss threshold
+                if loss > max_loss:
+                    print(f"\n{'!'*60}")
+                    print(f"EARLY STOPPING: Loss exceeded maximum threshold ({loss:.2f} > {max_loss})")
+                    print(f"Stopping training at episode {episode + 1}/{episodes}")
+                    print(f"This indicates hyperparameters may be causing divergence.")
+                    print(f"{'!'*60}\n")
+                    break
+                
+                # Check for divergence periodically
+                if (episode + 1) % check_interval == 0 and len(loss_history) >= window_size:
+                    if check_loss_divergence(loss_history, window_size, divergence_threshold, min_episodes):
+                        recent_avg = sum(loss_history[-window_size:]) / window_size
+                        print(f"\n{'!'*60}")
+                        print(f"EARLY STOPPING: Loss divergence detected")
+                        print(f"Recent average loss: {recent_avg:.4f}")
+                        print(f"Stopping training at episode {episode + 1}/{episodes}")
+                        print(f"Consider adjusting: learning_rate, target_update_frequency, or gradient_clip_norm")
+                        print(f"{'!'*60}\n")
+                        break
         
         # Calculate and log metrics
         p1_win_rate = p1_wins / (episode + 1)

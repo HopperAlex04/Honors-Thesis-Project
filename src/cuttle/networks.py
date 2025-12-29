@@ -101,11 +101,11 @@ class NeuralNetwork(nn.Module):
             # Conservative architecture: 256 → 128 → num_actions
             # NOTE: No activation on output layer - Q-values should be unbounded
             self.linear_relu_stack = nn.Sequential(
-                nn.Linear(input_length, 256),
+                nn.Linear(input_length, 512),
                 nn.ReLU(),
-                nn.Linear(256, 128),
+                nn.Linear(512, 256),
                 nn.ReLU(),
-                nn.Linear(128, num_actions)
+                nn.Linear(256, num_actions)
                 # No activation function - Q-values need to be unbounded to represent
                 # proper expected future rewards (can be > 1.0 with intermediate rewards)
             )
