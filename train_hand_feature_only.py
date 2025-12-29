@@ -47,6 +47,53 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
+# Load hyperparameters from config file for easy experimentation
+CONFIG_FILE = Path(__file__).parent / "hyperparams_config.json"
+if CONFIG_FILE.exists():
+    with open(CONFIG_FILE, 'r') as f:
+        config = json.load(f)
+    print(f"Loaded hyperparameters from {CONFIG_FILE}")
+else:
+    # Fallback to defaults if config file doesn't exist
+    print(f"Warning: Config file not found at {CONFIG_FILE}, using defaults")
+    config = {
+        "embedding_size": 16,
+        "batch_size": 64,
+        "gamma": 0.90,
+        "eps_start": 0.90,
+        "eps_end": 0.05,
+        "eps_decay": 28510,
+        "tau": 0.005,
+        "target_update_frequency": 2000,
+        "learning_rate": 8e-5,
+        "lr_decay_rate": 0.9,
+        "lr_decay_interval": 2,
+        "gradient_clip_norm": 5.0,
+        "q_value_clip": 15.0,
+        "replay_buffer_size": 100000,
+        "training": {
+            "rounds": 10,
+            "eps_per_round": 500,
+            "quick_test_mode": False,
+            "quick_test_rounds": 3,
+            "quick_test_eps_per_round": 100,
+            "validation_episodes_ratio": 0.5
+        },
+        "early_stopping": {
+            "enabled": True,
+            "check_interval": 50,
+            "window_size": 100,
+            "divergence_threshold": 0.5,
+            "min_episodes": 200,
+            "max_loss": 50.0
+        },
+        "regression_detection": {
+            "grace_rounds": 3,
+            "grace_zone": 0.45,
+            "max_consecutive_regressions": 2
+        }
+    }
+
 # Create environment with only hand feature enabled
 env = CuttleEnvironment(
     include_highest_point_value=True,
@@ -54,27 +101,30 @@ env = CuttleEnvironment(
 )
 actions = env.actions
 
-# Balanced hyperparameters for Cuttle training
-EMBEDDING_SIZE = 16   # Good for 54 vocab size (cards + special values)
-BATCH_SIZE = 64       # Balanced for CPU training
-GAMMA = 0.90          # Reduced from 0.92 to prevent Q-value accumulation and loss divergence
-EPS_START = 0.90      # Start with 90% exploration
-EPS_END = 0.05        # Maintain 5% exploration when trained
-EPS_DECAY = 28510     # Optimized for ~5000 episodes - reaches ~15% exploration by end of training
-TAU = 0.005           # Soft update rate for target network (reduced from 0.01 for more stability)
-TARGET_UPDATE_FREQUENCY = 2000  # Hard update target network every N steps (increased for more stability)
-LR = 8e-5             # Reduced learning rate for more stable training (was 1.2e-4, typical DQN: 1e-4 to 5e-5)
-LR_DECAY_RATE = 0.9   # Decay learning rate by 10% every 2 rounds (proactive scheduling)
-LR_DECAY_INTERVAL = 2 # Decay LR every N rounds
+# Load hyperparameters from config
+EMBEDDING_SIZE = config["embedding_size"]
+BATCH_SIZE = config["batch_size"]
+GAMMA = config["gamma"]
+EPS_START = config["eps_start"]
+EPS_END = config["eps_end"]
+EPS_DECAY = config["eps_decay"]
+TAU = config["tau"]
+TARGET_UPDATE_FREQUENCY = config["target_update_frequency"]
+LR = config["learning_rate"]
+LR_DECAY_RATE = config["lr_decay_rate"]
+LR_DECAY_INTERVAL = config["lr_decay_interval"]
+GRADIENT_CLIP_NORM = config.get("gradient_clip_norm", 5.0)
+Q_VALUE_CLIP = config.get("q_value_clip", 15.0)
+REPLAY_BUFFER_SIZE = config.get("replay_buffer_size", 100000)
 
 model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
 trainee = Players.Agent(
-    "PlayerAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR
+    "PlayerAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR, REPLAY_BUFFER_SIZE
 )
 # Configure target network updates (hard updates every N steps for better stability)
 trainee.set_target_update_frequency(TARGET_UPDATE_FREQUENCY)
 
-valid_agent = Players.Agent("ValidAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR)
+valid_agent = Players.Agent("ValidAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR, REPLAY_BUFFER_SIZE)
 valid_agent.set_target_update_frequency(TARGET_UPDATE_FREQUENCY)
 
 # Ensure models directory exists
@@ -190,6 +240,7 @@ if start_round == 0:
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': trainee.get_optimizer_state(),
                 'steps_done': 0,
+                'target_update_counter': 0,  # Initialize counter
             }
             torch.save(checkpoint, checkpoint_path)
             print(f"Saved initial checkpoint: {checkpoint_path}")
@@ -221,16 +272,47 @@ win_rate_history = {
 
 # Track regression for early stopping
 REGRESSION_GRACE_ZONE = 0.45  # Only count as regression if win rate < this (accounts for variance in small samples)
-# With 500 episodes per round, there's ~2.2% standard error, so 45% threshold gives ~2.3 sigma buffer
+# With 200 episodes per round, there's ~3.5% standard error, so 45% threshold gives ~1.4 sigma buffer
 # This prevents false positives from normal variance while still catching real regressions
-consecutive_regressions = 0  # Count consecutive regressions
-MAX_CONSECUTIVE_REGRESSIONS = 2  # Stop training if this many consecutive regressions
 
-# Training configuration: More rounds with fewer episodes per round
-# Benefits: More frequent regression detection, better model selection, finer progress tracking
-# Total episodes: 10 * 500 = 5000 (same as before, but with better checkpointing)
-rounds = 10
-eps_per_round = 500
+# Grace period: Skip regression detection for first N rounds to allow model to learn
+# Early rounds may show legitimate learning curves (worse before better)
+regression_config = config.get("regression_detection", {})
+GRACE_ROUNDS = regression_config.get("grace_rounds", 3)  # Default: skip regression detection for first 3 rounds
+MAX_CONSECUTIVE_REGRESSIONS = regression_config.get("max_consecutive_regressions", 2)  # Stop after N consecutive regressions
+
+# Track regression for early stopping
+consecutive_regressions = 0  # Count consecutive regressions
+
+# Training configuration: Load from config or use defaults
+training_config = config.get("training", {})
+quick_test_mode = training_config.get("quick_test_mode", False)
+
+# Validation configuration: Ratio of total validation episodes to training episodes
+# 1.0 = same as training, 0.5 = half, 0.25 = quarter
+# Each position gets half of total (both positions are tested)
+validation_episodes_ratio = training_config.get("validation_episodes_ratio", 0.5)
+
+if quick_test_mode:
+    rounds = training_config.get("quick_test_rounds", 3)
+    eps_per_round = training_config.get("quick_test_eps_per_round", 100)
+    print(f"\n{'='*60}")
+    print("QUICK TEST MODE ENABLED - Fast hyperparameter experimentation")
+    print(f"Rounds: {rounds}, Episodes per round: {eps_per_round}")
+    print(f"{'='*60}\n")
+else:
+    rounds = training_config.get("rounds", 10)
+    eps_per_round = training_config.get("eps_per_round", 500)
+
+# Calculate validation episodes per position
+# Total validation = eps_per_round * validation_episodes_ratio
+# Per position = total / 2 (since we test both positions)
+validation_episodes_total = int(eps_per_round * validation_episodes_ratio)
+validation_episodes_per_position = max(1, validation_episodes_total // 2)
+print(f"Validation: {validation_episodes_total} total episodes ({validation_episodes_per_position} per position, ratio: {validation_episodes_ratio})")
+
+# Early stopping configuration
+early_stopping_config = config.get("early_stopping", {})
 
 print(f"\n{'='*60}")
 print(f"TRAINING: Hand Feature Only")
@@ -262,20 +344,33 @@ for x in range(start_round, rounds):
         
         # Handle both old format (full model) and new format (state dict)
         if isinstance(prev_checkpoint, dict) and 'model_state_dict' in prev_checkpoint:
+            # New format: dict with model_state_dict, optimizer_state_dict, steps_done
             trainee.model.load_state_dict(prev_checkpoint['model_state_dict'])
             trainee.policy.load_state_dict(prev_checkpoint['model_state_dict'])
+            # CRITICAL: Always sync target network with policy network when loading checkpoint
+            # This ensures target network is up-to-date and prevents regression from stale targets
+            trainee.target.load_state_dict(prev_checkpoint['model_state_dict'])
+            trainee.target.eval()  # Ensure target stays in eval mode
             if 'optimizer_state_dict' in prev_checkpoint:
                 trainee.set_optimizer_state(prev_checkpoint['optimizer_state_dict'])
                 print(f"Restored optimizer state from checkpoint {x}")
             if 'steps_done' in prev_checkpoint:
                 steps_done = prev_checkpoint['steps_done']
                 print(f"Restored steps_done: {steps_done}")
+            # Restore target update counter if available (for consistency)
+            if 'target_update_counter' in prev_checkpoint:
+                trainee.update_target_counter = prev_checkpoint['target_update_counter']
+                print(f"Restored target_update_counter: {trainee.update_target_counter}")
             prev_model_state = prev_checkpoint['model_state_dict']
         else:
+            # Old format: full model object
             trainee.model.load_state_dict(prev_checkpoint.state_dict())
             trainee.policy.load_state_dict(prev_checkpoint.state_dict())
+            # CRITICAL: Sync target network even for old format checkpoints
+            trainee.target.load_state_dict(prev_checkpoint.state_dict())
+            trainee.target.eval()
             prev_model_state = prev_checkpoint.state_dict()
-        print(f"Updated trainee model with checkpoint {x}")
+        print(f"Updated trainee model and target network with checkpoint {x}")
         
         # Proactive learning rate scheduling: decay LR every N rounds
         if x > 0 and x % LR_DECAY_INTERVAL == 0:
@@ -299,9 +394,11 @@ for x in range(start_round, rounds):
             model_id=f"hand_only_round_{x}_selfplay",
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
+            include_scores=False,
             initial_steps=steps_done,
             round_number=x,
-            initial_total_time=total_time
+            initial_total_time=total_time,
+            early_stopping_config=early_stopping_config
         )
     except Exception as e:
         print(f"Error during self-play training in round {x}: {e}")
@@ -317,12 +414,13 @@ for x in range(start_round, rounds):
     # Create validation agent with previous checkpoint for comparison
     validation_model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
     validation_model.load_state_dict(prev_model_state)
-    valid_agent = Players.Agent("ValidAgent", validation_model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR)
+    valid_agent = Players.Agent("ValidAgent", validation_model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR, REPLAY_BUFFER_SIZE)
+    valid_agent.set_target_update_frequency(TARGET_UPDATE_FREQUENCY)
 
     try:
         # Validate from both positions for fair evaluation
         p1w, p2w = Training.validate_both_positions(
-            trainee, valid_agent, eps_per_round // 2,
+            trainee, valid_agent, validation_episodes_per_position,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             model_id_prefix=f"hand_only_round_{x}_vs_previous",
@@ -339,11 +437,15 @@ for x in range(start_round, rounds):
         sys.exit(0)
     
     # === REGRESSION DETECTION: Check if current round is losing to previous round ===
-    win_rate_vs_previous = p1w / eps_per_round if eps_per_round > 0 else 0.0
-    # Use grace zone to account for statistical variance in small sample sizes (500 episodes)
+    win_rate_vs_previous = p1w / validation_episodes_total if validation_episodes_total > 0 else 0.0
+    # Use grace zone to account for statistical variance in sample sizes (200 episodes per round)
     # Only count as regression if win rate is significantly below 50% (e.g., < 45%)
     # This prevents false positives from normal variance while still catching real regressions
-    is_regression = win_rate_vs_previous < REGRESSION_GRACE_ZONE
+    
+    # Skip regression detection during grace period (first N rounds)
+    # Early rounds may show legitimate learning curves where performance dips before improving
+    in_grace_period = x < GRACE_ROUNDS
+    is_regression = win_rate_vs_previous < REGRESSION_GRACE_ZONE and not in_grace_period
     
     if is_regression:
         consecutive_regressions += 1
@@ -364,6 +466,11 @@ for x in range(start_round, rounds):
             print(f"{'!'*60}\n")
             save_training_state(x + 1, rounds, steps_done, total_time)
             break
+    elif in_grace_period:
+        # During grace period, don't count as regression but still track performance
+        if win_rate_vs_previous < 0.50:
+            print(f"\n[Grace Period] Round {x} win rate: {win_rate_vs_previous:.1%} (regression detection disabled for first {GRACE_ROUNDS} rounds)")
+        consecutive_regressions = 0  # Reset counter during grace period
     else:
         consecutive_regressions = 0  # Reset counter on improvement
         
@@ -384,10 +491,12 @@ for x in range(start_round, rounds):
     new_checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{x + 1}.pt"
     try:
         if p2w < p1w:
+            # New model won - save it with full state
             checkpoint = {
                 'model_state_dict': trainee.model.state_dict(),
                 'optimizer_state_dict': trainee.get_optimizer_state(),
                 'steps_done': steps_done,
+                'target_update_counter': trainee.update_target_counter,  # Save for consistency
             }
             torch.save(checkpoint, new_checkpoint_path)
             print(f"Saved new checkpoint: {new_checkpoint_path} (new model won: p1w={p1w} vs p2w={p2w})")
@@ -404,11 +513,18 @@ for x in range(start_round, rounds):
             trainee.policy.load_state_dict(prev_model_state)
             trainee.target.load_state_dict(prev_model_state)  # Also revert target network
             
-            # Clear replay memory to remove stale bad experiences
-            from cuttle.players import ReplayMemory
+            # Restore replay memory to state from start of round (before bad training)
+            # This preserves good experiences from before the regression while removing bad ones
             memory_size_before = len(trainee.memory)
-            trainee.memory = ReplayMemory(100000)  # Fresh replay memory
-            print(f"   Cleared replay memory ({memory_size_before} -> 0 experiences)")
+            if memory_snapshot is not None and len(memory_snapshot) > 0:
+                trainee.memory.set_state(memory_snapshot)
+                print(f"   Restored replay memory to start-of-round state ({memory_size_before} -> {len(trainee.memory)} experiences)")
+                print(f"   This preserves {len(trainee.memory)} good experiences from before the regression")
+            else:
+                # Fallback: clear memory if snapshot not available or empty
+                from cuttle.players import ReplayMemory
+                trainee.memory = ReplayMemory(REPLAY_BUFFER_SIZE)
+                print(f"   Cleared replay memory ({memory_size_before} -> 0 experiences) - snapshot unavailable or empty")
             
             # Reset optimizer state to prevent momentum from bad training direction
             # Create fresh optimizer with potentially reduced learning rate
@@ -466,6 +582,7 @@ for x in range(start_round, rounds):
                 'model_state_dict': prev_model_state,
                 'optimizer_state_dict': trainee.get_optimizer_state(),
                 'steps_done': steps_done,
+                'target_update_counter': trainee.update_target_counter,  # Save for consistency
             }
             torch.save(checkpoint, new_checkpoint_path)
             print(f"Saved previous checkpoint: {new_checkpoint_path} (previous model won: p1w={p1w} vs p2w={p2w})")
@@ -477,14 +594,14 @@ for x in range(start_round, rounds):
         current_total_time = total_time + (time.time() - round_start_time)
         # Validate from both positions for fair evaluation (dealer gets 6 cards vs 5 for first player)
         trainee_wins_rand, opponent_wins_rand = Training.validate_both_positions(
-            trainee, validation00, eps_per_round // 2,
+            trainee, validation00, validation_episodes_per_position,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             model_id_prefix=f"hand_only_round_{x}_vs_randomized",
             round_number=x,
             initial_total_time=current_total_time
         )
-        win_rate_rand = trainee_wins_rand / eps_per_round
+        win_rate_rand = trainee_wins_rand / validation_episodes_total if validation_episodes_total > 0 else 0.0
         win_rate_history["randomized"].append(win_rate_rand)
         print(f"Round {x}: Validation vs Randomized (both positions) - trainee: {trainee_wins_rand}, opponent: {opponent_wins_rand} (win rate: {win_rate_rand:.1%})")
     except Exception as e:
@@ -500,14 +617,14 @@ for x in range(start_round, rounds):
         current_total_time = total_time + (time.time() - round_start_time)
         # Validate from both positions for fair evaluation
         trainee_wins_hc, opponent_wins_hc = Training.validate_both_positions(
-            trainee, validation01, eps_per_round // 2,
+            trainee, validation01, validation_episodes_per_position,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             model_id_prefix=f"hand_only_round_{x}_vs_heuristic",
             round_number=x,
             initial_total_time=current_total_time
         )
-        win_rate_hc = trainee_wins_hc / eps_per_round
+        win_rate_hc = trainee_wins_hc / validation_episodes_total if validation_episodes_total > 0 else 0.0
         win_rate_history["highcard"].append(win_rate_hc)
         print(f"Round {x}: Validation vs HeuristicHighCard (both positions) - trainee: {trainee_wins_hc}, opponent: {opponent_wins_hc} (win rate: {win_rate_hc:.1%})")
     except Exception as e:
@@ -523,14 +640,14 @@ for x in range(start_round, rounds):
         current_total_time = total_time + (time.time() - round_start_time)
         # Validate from both positions for fair evaluation
         trainee_wins_gap, opponent_wins_gap = Training.validate_both_positions(
-            trainee, validation02, eps_per_round // 2,
+            trainee, validation02, validation_episodes_per_position,
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             model_id_prefix=f"hand_only_round_{x}_vs_gapmaximizer",
             round_number=x,
             initial_total_time=current_total_time
         )
-        win_rate_gap = trainee_wins_gap / eps_per_round
+        win_rate_gap = trainee_wins_gap / validation_episodes_total if validation_episodes_total > 0 else 0.0
         win_rate_history["gapmaximizer"].append(win_rate_gap)
         print(f"Round {x}: Validation vs ScoreGapMaximizer (both positions) - trainee: {trainee_wins_gap}, opponent: {opponent_wins_gap} (win rate: {win_rate_gap:.1%})")
     except Exception as e:

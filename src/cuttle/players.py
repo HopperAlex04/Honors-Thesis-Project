@@ -352,7 +352,8 @@ class Agent(Player):
         eps_end: float,
         eps_decay: int,
         tau: float,
-        lr: float
+        lr: float,
+        replay_buffer_size: int = 100000
     ):
         """
         Initialize a DQN agent.
@@ -367,6 +368,7 @@ class Agent(Player):
             eps_decay: Steps over which epsilon decays from start to end
             tau: Soft update parameter (currently unused, reserved for future use)
             lr: Learning rate for optimizer
+            replay_buffer_size: Size of replay memory buffer (default: 100000)
         """
         super().__init__(name)
         
@@ -396,8 +398,9 @@ class Agent(Player):
         self.exploration_boost = 0  # Temporary boost to exploration (subtracted from steps_done)
 
         # Replay Memory
-        # Reduced to 100000 for 5-round training (still 164% of 5-round capacity, 50% memory savings)
-        self.memory = ReplayMemory(100000)
+        # Configurable buffer size - smaller buffers age out old experiences faster,
+        # which can help with self-play non-stationarity (old experiences become less relevant)
+        self.memory = ReplayMemory(replay_buffer_size)
 
         # Using Adam optimization with weight decay to prevent catastrophic forgetting
         self.optimizer = torch.optim.Adam(
@@ -480,10 +483,9 @@ class Agent(Player):
                 # Get Q-values for all actions from the policy network
                 q_values = self.policy(observation)
                 
-                # Clip Q-values to prevent unbounded growth (same as in optimize)
-                # This ensures action selection uses bounded values
-                Q_VALUE_CLIP = 20.0
-                q_values = torch.clamp(q_values, -Q_VALUE_CLIP, Q_VALUE_CLIP)
+                # Don't clip Q-values during action selection - let the network output natural values
+                # Clipping here can cause issues with action selection and creates inconsistency
+                # with training where we don't clip current Q-values
                 
                 # Mask invalid actions by setting their Q-values to negative infinity
                 for action_id in range(total_actions):
@@ -552,18 +554,23 @@ class Agent(Player):
         
         # Compute Q(s', a') for next states (for non-final states only)
         # Use target network for stability
-        next_state_values = torch.zeros(self.batch_size)
+        # CRITICAL FIX: Ensure tensor is on same device as model and has correct dtype
+        device = next(self.policy.parameters()).device
+        next_state_values = torch.zeros(self.batch_size, device=device, dtype=reward_batch.dtype)
+        
+        # CRITICAL FIX: Use a much larger clip value to only catch extreme outliers
+        # The previous clip of 15.0 was too aggressive. If Q-values naturally grow to 20-30
+        # due to intermediate rewards, clipping at 15 creates a permanent mismatch where
+        # the network can never match the clipped targets. Use 100.0 to only prevent
+        # truly pathological values while allowing natural Q-value growth.
+        EXTREME_CLIP = 100.0
         
         with torch.no_grad():
             if len(non_final_next_states) > 0:
                 # Get max Q-value for next states using target network
                 next_state_q_values = self.target(non_final_next_states).max(1).values
-                # Clip Q-values to prevent unbounded growth and divergence
-                # With rewards in [-1, 1] range, gamma=0.92, and reduced score rewards (0.01 scale),
-                # theoretical max Q-value is ~12.5. Clipping at ±20 provides safety margin.
-                # This prevents Q-value explosion that causes increasing loss despite improving win rates.
-                Q_VALUE_CLIP = 20.0
-                next_state_q_values = torch.clamp(next_state_q_values, -Q_VALUE_CLIP, Q_VALUE_CLIP)
+                # Only clip extreme outliers - allow natural Q-value growth
+                next_state_q_values = torch.clamp(next_state_q_values, -EXTREME_CLIP, EXTREME_CLIP)
                 next_state_values[non_final_mask] = next_state_q_values
         
         # Compute expected Q-values using Bellman equation: Q(s,a) = r + γ * max Q(s',a')
@@ -572,11 +579,18 @@ class Agent(Player):
         ) + reward_batch  # Shape: [batch_size]
         expected_state_action_values = expected_state_action_values.unsqueeze(1)  # Shape: [batch_size, 1]
         
-        # Also clip expected Q-values to prevent divergence
-        # This ensures targets stay bounded even if rewards accumulate
-        expected_state_action_values = torch.clamp(expected_state_action_values, -Q_VALUE_CLIP, Q_VALUE_CLIP)
+        # Use same extreme clip for targets - only prevent truly pathological values
+        expected_state_action_values = torch.clamp(expected_state_action_values, -EXTREME_CLIP, EXTREME_CLIP)
+        
+        # CRITICAL FIX: DO NOT clip current Q-values before loss calculation
+        # Clipping current Q-values creates a mismatch where the network learns values
+        # that get clipped away, causing loss to continuously increase as it tries to
+        # match clipped targets with values that keep exceeding the clip range.
+        # Instead, let the network learn freely and only clip targets.
+        # The Huber loss will naturally handle outliers without causing divergence.
 
         # Compute Huber loss (Smooth L1 Loss)
+        # Huber loss is robust to outliers, so we don't need to clip current Q-values
         loss = self.criterion(state_action_values, expected_state_action_values)
         
         # Optimize the model
@@ -584,18 +598,23 @@ class Agent(Player):
         loss.backward()
         
         # Gradient clipping to prevent exploding gradients
-        # Reduced to 10.0 for more stability and to prevent large weight updates that cause regression
-        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 10.0)
+        # Reduced to 5.0 for more stability and to prevent large weight updates that cause loss divergence
+        # Tighter gradient clipping helps prevent the policy network from diverging from target network
+        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 5.0)
         
         self.optimizer.step()
         
         # Update target network
+        # CRITICAL: Only increment counter when optimization actually happens
+        # (we're already past the early return, so optimization ran)
         self.update_target_counter += 1
         
         if self.target_update_frequency > 0:
             # Hard update: copy policy network to target network every N steps
             if self.update_target_counter % self.target_update_frequency == 0:
                 self.target.load_state_dict(self.policy.state_dict())
+                # Debug: Uncomment to verify updates are happening
+                # print(f"Target network updated at step {self.update_target_counter}")
         elif self.tau > 0:
             # Soft update: target = tau * policy + (1 - tau) * target (every step)
             # This keeps target network stable while gradually tracking policy updates
@@ -685,3 +704,21 @@ class ReplayMemory:
     def __len__(self) -> int:
         """Return the current number of stored transitions."""
         return len(self.memory)
+    
+    def get_state(self):
+        """
+        Get a copy of the current memory state for checkpointing.
+        
+        Returns:
+            List of transitions (can be used to restore memory)
+        """
+        return list(self.memory)
+    
+    def set_state(self, memory_state):
+        """
+        Restore memory from a saved state.
+        
+        Args:
+            memory_state: List of transitions from get_state()
+        """
+        self.memory = deque(memory_state, maxlen=self.memory.maxlen)
