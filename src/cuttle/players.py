@@ -393,6 +393,7 @@ class Agent(Player):
         self.lr = lr
         self.update_target_counter = 0  # Track steps for target network updates
         self.target_update_frequency = 0  # Hard update target network every N steps (0 = use soft updates with tau)
+        self.exploration_boost = 0  # Temporary boost to exploration (subtracted from steps_done)
 
         # Replay Memory
         # Reduced to 100000 for 5-round training (still 164% of 5-round capacity, 50% memory savings)
@@ -426,6 +427,21 @@ class Agent(Player):
             frequency: Number of steps between hard updates (0 = use soft updates with tau)
         """
         self.target_update_frequency = frequency
+    
+    def boost_exploration(self, boost_steps: int = 0) -> None:
+        """
+        Temporarily boost exploration by reducing effective steps_done for epsilon calculation.
+        This helps escape local minima after regression.
+        
+        Args:
+            boost_steps: Number of steps to subtract from steps_done for epsilon calculation
+                        (positive value = more exploration)
+        """
+        self.exploration_boost = boost_steps
+    
+    def reset_exploration_boost(self) -> None:
+        """Reset exploration boost to normal."""
+        self.exploration_boost = 0
 
     def getAction(
         self, 
@@ -452,8 +468,10 @@ class Agent(Player):
         
         # Calculate epsilon threshold for epsilon-greedy exploration
         # As training continues, epsilon decreases, making agent more likely to exploit
+        # Apply exploration boost if set (reduces effective steps_done, increasing exploration)
+        effective_steps = max(0, steps_done - self.exploration_boost)
         eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * math.exp(
-            -1.0 * steps_done / self.eps_decay
+            -1.0 * effective_steps / self.eps_decay
         )
 
         # Use policy (exploit) if random sample exceeds threshold or forced greedy
@@ -461,6 +479,11 @@ class Agent(Player):
             with torch.no_grad():
                 # Get Q-values for all actions from the policy network
                 q_values = self.policy(observation)
+                
+                # Clip Q-values to prevent unbounded growth (same as in optimize)
+                # This ensures action selection uses bounded values
+                Q_VALUE_CLIP = 20.0
+                q_values = torch.clamp(q_values, -Q_VALUE_CLIP, Q_VALUE_CLIP)
                 
                 # Mask invalid actions by setting their Q-values to negative infinity
                 for action_id in range(total_actions):
@@ -534,15 +557,24 @@ class Agent(Player):
         with torch.no_grad():
             if len(non_final_next_states) > 0:
                 # Get max Q-value for next states using target network
-                next_state_values[non_final_mask] = (
-                    self.target(non_final_next_states).max(1).values
-                )
+                next_state_q_values = self.target(non_final_next_states).max(1).values
+                # Clip Q-values to prevent unbounded growth and divergence
+                # With rewards in [-1, 1] range, gamma=0.92, and reduced score rewards (0.01 scale),
+                # theoretical max Q-value is ~12.5. Clipping at ±20 provides safety margin.
+                # This prevents Q-value explosion that causes increasing loss despite improving win rates.
+                Q_VALUE_CLIP = 20.0
+                next_state_q_values = torch.clamp(next_state_q_values, -Q_VALUE_CLIP, Q_VALUE_CLIP)
+                next_state_values[non_final_mask] = next_state_q_values
         
         # Compute expected Q-values using Bellman equation: Q(s,a) = r + γ * max Q(s',a')
         expected_state_action_values = (
             next_state_values * self.gamma
         ) + reward_batch  # Shape: [batch_size]
         expected_state_action_values = expected_state_action_values.unsqueeze(1)  # Shape: [batch_size, 1]
+        
+        # Also clip expected Q-values to prevent divergence
+        # This ensures targets stay bounded even if rewards accumulate
+        expected_state_action_values = torch.clamp(expected_state_action_values, -Q_VALUE_CLIP, Q_VALUE_CLIP)
 
         # Compute Huber loss (Smooth L1 Loss)
         loss = self.criterion(state_action_values, expected_state_action_values)
@@ -551,7 +583,8 @@ class Agent(Player):
         self.optimizer.zero_grad()
         loss.backward()
         
-        # Gradient clipping to prevent exploding gradients (reduced from 100 to 10)
+        # Gradient clipping to prevent exploding gradients
+        # Reduced to 10.0 for more stability and to prevent large weight updates that cause regression
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 10.0)
         
         self.optimizer.step()

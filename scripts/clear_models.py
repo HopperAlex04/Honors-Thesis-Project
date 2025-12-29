@@ -22,7 +22,9 @@ VALID_TRAINING_TYPES = [
     "hand_only",
     "opponent_field_only",
     "no_features",
-    "both_features"
+    "both_features",  # Legacy name, kept for backward compatibility
+    "all_features",
+    "scores"
 ]
 
 
@@ -34,7 +36,9 @@ def get_model_files(models_dir: Path, training_type: Optional[str] = None) -> Li
     - hand_only_checkpoint0.pt
     - opponent_field_only_checkpoint0.pt
     - no_features_checkpoint0.pt
-    - both_features_checkpoint0.pt
+    - both_features_checkpoint0.pt (legacy)
+    - all_features_checkpoint0.pt
+    - scores_checkpoint0.pt
     
     Args:
         models_dir: Path to the models directory

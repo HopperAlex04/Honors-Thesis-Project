@@ -1,12 +1,9 @@
 """
-Training script for model with all features enabled.
+Training script for model with score features enabled.
 
-This script trains a model using all available features:
-- "Highest Point Value in Hand"
-- "Highest Point Value in Opponent Field"
-- "Current Player Score" and "Opponent Score"
-
-This is the full feature set configuration.
+This script trains a model using the "Current Player Score" and "Opponent Score" 
+features. This provides the model with direct information about the game state
+scores, which is a strong hint for learning optimal play.
 """
 
 import os
@@ -50,10 +47,10 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-# Create environment with all features enabled
+# Create environment with scores enabled
 env = CuttleEnvironment(
-    include_highest_point_value=True,
-    include_highest_point_value_opponent_field=True,
+    include_highest_point_value=False,
+    include_highest_point_value_opponent_field=False,
     include_scores=True
 )
 actions = env.actions
@@ -86,11 +83,11 @@ models_dir = Path("./models")
 models_dir.mkdir(parents=True, exist_ok=True)
 print(f"Models directory ready: {models_dir}")
 
-# Training state file for resuming (separate from main training)
-STATE_FILE = models_dir / "training_state_all_features.json"
+# Training state file for resuming (separate from other training scripts)
+STATE_FILE = models_dir / "training_state_scores.json"
 
 # Checkpoint prefix to avoid conflicts with other training scripts
-CHECKPOINT_PREFIX = "all_features_checkpoint"
+CHECKPOINT_PREFIX = "scores_checkpoint"
 
 
 def save_training_state(current_round: int, total_rounds: int, steps_done: int = 0, total_time: float = 0.0) -> None:
@@ -213,7 +210,7 @@ REGRESSION_THRESHOLD = 0.15  # Flag regression if win rate drops by more than th
 REGRESSION_WINDOW = 3  # Number of rounds to consider for regression detection
 
 # Minimum viable performance (training stops if below this vs Randomized)
-# Lowered to 55% to account for variance - agent shows learning
+# Lowered to 55% to account for variance - agent shows learning (56% -> 60.5% -> 59.5%)
 MIN_RANDOM_WIN_RATE = 0.55  # Should beat random player (allowing for variance)
 
 # Track win rates for regression detection
@@ -237,8 +234,8 @@ rounds = 10
 eps_per_round = 500
 
 print(f"\n{'='*60}")
-print(f"TRAINING: All Features Enabled")
-print(f"Features: Hand=ON, Opponent Field=ON, Scores=ON")
+print(f"TRAINING: Scores Feature Enabled")
+print(f"Features: Hand=OFF, Opponent Field=OFF, Scores=ON")
 print(f"Starting training: Rounds {start_round} to {rounds-1}")
 print(f"{'='*60}\n")
 
@@ -266,6 +263,7 @@ for x in range(start_round, rounds):
         
         # Handle both old format (full model) and new format (state dict)
         if isinstance(prev_checkpoint, dict) and 'model_state_dict' in prev_checkpoint:
+            # New format: dict with model_state_dict, optimizer_state_dict, steps_done
             trainee.model.load_state_dict(prev_checkpoint['model_state_dict'])
             trainee.policy.load_state_dict(prev_checkpoint['model_state_dict'])
             if 'optimizer_state_dict' in prev_checkpoint:
@@ -276,6 +274,7 @@ for x in range(start_round, rounds):
                 print(f"Restored steps_done: {steps_done}")
             prev_model_state = prev_checkpoint['model_state_dict']
         else:
+            # Old format: full model object
             trainee.model.load_state_dict(prev_checkpoint.state_dict())
             trainee.policy.load_state_dict(prev_checkpoint.state_dict())
             prev_model_state = prev_checkpoint.state_dict()
@@ -294,14 +293,14 @@ for x in range(start_round, rounds):
         continue
     
     # Feature configuration for this training script
-    INCLUDE_HAND_FEATURE = True
-    INCLUDE_OPPONENT_FIELD_FEATURE = True
+    INCLUDE_HAND_FEATURE = False
+    INCLUDE_OPPONENT_FIELD_FEATURE = False
     INCLUDE_SCORES = True
 
     try:
         _, _, steps_done = Training.selfPlayTraining(
             trainee, trainee, eps_per_round,
-            model_id=f"all_features_round_{x}_selfplay",
+            model_id=f"scores_round_{x}_selfplay",
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             include_scores=INCLUDE_SCORES,
@@ -333,7 +332,7 @@ for x in range(start_round, rounds):
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             include_scores=INCLUDE_SCORES,
-            model_id_prefix=f"all_features_round_{x}_vs_previous",
+            model_id_prefix=f"scores_round_{x}_vs_previous",
             round_number=x,
             initial_total_time=current_total_time
         )
@@ -392,6 +391,7 @@ for x in range(start_round, rounds):
     new_checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{x + 1}.pt"
     try:
         if p2w < p1w:
+            # New model won - save it with full state
             checkpoint = {
                 'model_state_dict': trainee.model.state_dict(),
                 'optimizer_state_dict': trainee.get_optimizer_state(),
@@ -489,7 +489,7 @@ for x in range(start_round, rounds):
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             include_scores=INCLUDE_SCORES,
-            model_id_prefix=f"all_features_round_{x}_vs_randomized",
+            model_id_prefix=f"scores_round_{x}_vs_randomized",
             round_number=x,
             initial_total_time=current_total_time
         )
@@ -513,7 +513,7 @@ for x in range(start_round, rounds):
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             include_scores=INCLUDE_SCORES,
-            model_id_prefix=f"all_features_round_{x}_vs_heuristic",
+            model_id_prefix=f"scores_round_{x}_vs_heuristic",
             round_number=x,
             initial_total_time=current_total_time
         )
@@ -537,7 +537,7 @@ for x in range(start_round, rounds):
             include_highest_point_value=INCLUDE_HAND_FEATURE,
             include_highest_point_value_opponent_field=INCLUDE_OPPONENT_FIELD_FEATURE,
             include_scores=INCLUDE_SCORES,
-            model_id_prefix=f"all_features_round_{x}_vs_gapmaximizer",
+            model_id_prefix=f"scores_round_{x}_vs_gapmaximizer",
             round_number=x,
             initial_total_time=current_total_time
         )

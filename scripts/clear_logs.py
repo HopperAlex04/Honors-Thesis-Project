@@ -22,7 +22,9 @@ VALID_TRAINING_TYPES = [
     "hand_only",
     "opponent_field_only",
     "no_features",
-    "both_features"
+    "both_features",  # Legacy name, kept for backward compatibility
+    "all_features",
+    "scores"
 ]
 
 
@@ -34,7 +36,9 @@ def get_log_files(log_dir: Path, training_type: Optional[str] = None) -> List[Pa
     - action_logs/hand_only/
     - action_logs/opponent_field_only/
     - action_logs/no_features/
-    - action_logs/both_features/
+    - action_logs/both_features/ (legacy)
+    - action_logs/all_features/
+    - action_logs/scores/
     
     Args:
         log_dir: Path to the log directory

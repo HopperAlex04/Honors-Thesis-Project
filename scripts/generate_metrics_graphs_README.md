@@ -28,7 +28,7 @@ python scripts/generate_metrics_graphs.py --comparisons
 - Parse JSONL metrics files from organized subdirectories
 - Aggregate episodes by training phase across rounds
 - Generate visualization graphs with matplotlib/seaborn
-- Support all training types (hand_only, opponent_field_only, no_features, both_features)
+- Support all training types (hand_only, opponent_field_only, no_features, both_features, all_features, scores)
 - Support all training phases (selfplay, vs_previous, vs_randomized, vs_heuristic, vs_gapmaximizer)
 - Combine trainee_first and trainee_second for validation phases
 
@@ -52,7 +52,8 @@ python scripts/generate_metrics_graphs.py --comparisons
 
 ```
 --type, -t          Training type to analyze (hand_only, opponent_field_only, 
-                     no_features, both_features). Default: all types.
+                     no_features, both_features, all_features, scores). 
+                     Default: all types.
 
 --phase, -p          Training phase(s) to visualize (comma-separated).
                      Options: selfplay, vs_previous, vs_randomized, 
@@ -133,7 +134,9 @@ metrics_graphs/
 │   └── ...
 ├── opponent_field_only/
 ├── no_features/
-├── both_features/
+├── both_features/  (legacy)
+├── all_features/
+├── scores/
 └── comparisons/
     ├── p1_win_rate_comparison_vs_gapmaximizer.png
     └── ...

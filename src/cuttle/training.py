@@ -31,7 +31,9 @@ LOG_DIRECTORY = Path("./action_logs")
 REWARD_WIN = 1.0  # Reward for winning an episode
 REWARD_LOSS = -1.0  # Reward for losing an episode
 REWARD_DRAW = -0.5  # Reward for drawing an episode (penalize heavily to discourage passive play)
-REWARD_INTERMEDIATE = 0.0  # Reward for intermediate steps (non-terminal states)
+REWARD_INTERMEDIATE = 0.0  # Base reward for intermediate steps (non-terminal states)
+SCORE_REWARD_SCALE = 0.01  # Scale factor for score-based rewards (reduced from 0.1 to prevent Q-value explosion)
+GAP_REWARD_SCALE = 0.005  # Scale factor for score gap rewards (half of score reward scale to prioritize scoring over gap)
 
 
 def setup_logger(
@@ -80,7 +82,9 @@ def extract_training_type(model_id: Optional[str]) -> Optional[str]:
         "hand_only",
         "opponent_field_only",
         "no_features",
-        "both_features"
+        "both_features",  # Legacy name, kept for backward compatibility
+        "all_features",
+        "scores"
     ]
     
     # Check if model_id starts with any known training type
@@ -425,22 +429,80 @@ def update_replay_memory(
     actions: List[int],
     reward: float,
     next_state: Optional[Dict[str, Any]] = None,
+    score_change: Optional[int] = None,
+    gap_change: Optional[int] = None,
 ) -> None:
     """
     Update player's replay memory with episode transitions.
     
+    For terminal states (reward is WIN/LOSS/DRAW), all actions in the final turn
+    get the terminal reward. This is appropriate because in Cuttle, a turn can include
+    multiple actions (main action, counters, stack resolutions) that all contribute
+    to the outcome. The reward propagates backwards through the turn via the
+    Bellman equation in Q-learning.
+    
+    For intermediate states, rewards are based on score changes and score gap changes
+    to provide more frequent learning signals. Score rewards are scaled to not overwhelm
+    terminal rewards. Gap rewards encourage maintaining or improving relative position.
+    
     Args:
         player: Player whose memory to update
-        states: List of states from the episode
+        states: List of states from the turn (all from the same turn when terminal)
         actions: List of actions taken
-        reward: Reward for the episode
-        next_state: Next state (if available)
+        reward: Reward for the episode (terminal reward) or base intermediate reward
+        next_state: Next state (if available). None indicates terminal state.
+        score_change: Change in player's score during this turn (for intermediate rewards)
+        gap_change: Change in score gap (player_score - opponent_score) during this turn
     """
-    for i in range(len(states)):
-        action_tensor = torch.tensor([actions[i]])
-        reward_tensor = torch.tensor([reward])
-        next_state_tensor = next_state if next_state is not None else None
-        player.memory.push(states[i], action_tensor, next_state_tensor, reward_tensor)
+    if len(states) == 0:
+        return
+    
+    # If this is a terminal reward (WIN/LOSS/DRAW), all actions in the final turn
+    # should get the terminal reward. This makes sense because:
+    # 1. All actions in the final turn are part of the winning/losing sequence
+    # 2. The reward will propagate backwards through the turn via Q-learning
+    # 3. This provides stronger learning signal for the entire winning sequence
+    is_terminal = (next_state is None) and (reward in [REWARD_WIN, REWARD_LOSS, REWARD_DRAW])
+    
+    # Calculate score-based reward for intermediate states
+    score_reward = 0.0
+    if score_change is not None and not is_terminal:
+        # Add score-based reward: positive for scoring points, scaled to not overwhelm terminal rewards
+        score_reward = score_change * SCORE_REWARD_SCALE
+    
+    # Calculate gap-based reward for intermediate states
+    gap_reward = 0.0
+    if gap_change is not None and not is_terminal:
+        # Add gap-based reward: positive for improving relative position (closing gap when behind,
+        # or increasing gap when ahead), scaled smaller than score rewards to prioritize scoring
+        gap_reward = gap_change * GAP_REWARD_SCALE
+    
+    if is_terminal:
+        # All states in the final turn get the terminal reward
+        # Maintain proper state chain: each state points to the next, final state has next_state=None
+        for i in range(len(states)):
+            action_tensor = torch.tensor([actions[i]])
+            reward_tensor = torch.tensor([reward])
+            # Final state has next_state = None (terminal)
+            # All other states point to the next state in the sequence
+            if i == len(states) - 1:
+                next_state_tensor = None
+            else:
+                next_state_tensor = states[i + 1]
+            player.memory.push(states[i], action_tensor, next_state_tensor, reward_tensor)
+    else:
+        # Non-terminal: store all states with base reward + score-based reward + gap-based reward
+        total_reward = reward + score_reward + gap_reward
+        for i in range(len(states)):
+            action_tensor = torch.tensor([actions[i]])
+            reward_tensor = torch.tensor([total_reward])
+            # For the last state, use the provided next_state (if any)
+            if i == len(states) - 1:
+                next_state_tensor = next_state if next_state is not None else None
+            else:
+                # For intermediate states, next_state is the following state
+                next_state_tensor = states[i + 1]
+            player.memory.push(states[i], action_tensor, next_state_tensor, reward_tensor)
 
 
 def log_episode_outcome(
@@ -676,6 +738,7 @@ def selfPlayTraining(
     model_id: Optional[str] = None,
     include_highest_point_value: bool = False,
     include_highest_point_value_opponent_field: bool = False,
+    include_scores: bool = False,
     initial_steps: int = 0,
     round_number: Optional[int] = None,
     initial_total_time: float = 0.0,
@@ -696,6 +759,7 @@ def selfPlayTraining(
         model_id: Optional model identifier for log files (e.g., "round_3", "checkpoint_5")
         include_highest_point_value: If True, include "Highest Point Value in Hand" feature
         include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field" feature
+        include_scores: If True, include "Current Player Score" and "Opponent Score" features
         initial_steps: Starting step count for epsilon decay (for resuming training)
         round_number: Optional round number to display in episode output
         initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
@@ -705,7 +769,8 @@ def selfPlayTraining(
     """
     env = CuttleEnvironment(
         include_highest_point_value=include_highest_point_value,
-        include_highest_point_value_opponent_field=include_highest_point_value_opponent_field
+        include_highest_point_value_opponent_field=include_highest_point_value_opponent_field,
+        include_scores=include_scores
     )
     actions = env.actions
     steps = initial_steps
@@ -742,12 +807,26 @@ def selfPlayTraining(
             if not validating:
                 steps += 1
             
+            # Track scores before P1's turn for score-based rewards and gap calculation
+            # We're in P1's perspective at the start of the loop
+            p1_score_before, _ = env.scoreState()
+            # Switch to P2's perspective to get P2's score before P1's turn
+            env.passControl()
+            p2_score_before_p1_turn, _ = env.scoreState()
+            env.passControl()  # Switch back to P1's perspective
+            
+            # Calculate initial gap (P1's perspective: positive = ahead, negative = behind)
+            gap_before_p1_turn = p1_score_before - p2_score_before_p1_turn
+            
             # Player 1's turn
             observation, p1_score, terminated, truncated = execute_player_turn(
                 env, p1, p2, actions, steps, validating,
                 p1_states, p1_actions, p2_states, p2_actions,
                 episode, turns, action_logger
             )
+            
+            # Calculate score change for P1 (p1_score is from P1's perspective after their turn)
+            p1_score_change = p1_score - p1_score_before
             
             if terminated:
                 # P1 wins
@@ -774,8 +853,23 @@ def selfPlayTraining(
             env.passControl()
             env.end_turn()
             p2_next_state = env.get_obs()
+            # Track score after P1's turn (we're now in P2's perspective after passControl)
+            p2_score_after_p1_turn, _ = env.scoreState()
+            p2_score_before, _ = env.scoreState()  # Same as above, for P2's upcoming turn
             if not validating:
-                update_replay_memory(p2, p2_states, p2_actions, REWARD_INTERMEDIATE, p2_next_state)
+                # Calculate P2's score change during P1's turn (e.g., if P1 scuttled P2's cards)
+                p2_score_change_during_p1_turn = p2_score_after_p1_turn - p2_score_before_p1_turn
+                # Calculate gap change for P2 during P1's turn
+                # From P2's perspective: gap = p2_score - p1_score
+                # Gap before: p2_score_before_p1_turn - p1_score_before
+                # Gap after: p2_score_after_p1_turn - p1_score (p1_score is from P1's perspective after their turn)
+                env.passControl()  # Switch to P1's perspective to get P1's score after their turn
+                p1_score_after_turn, _ = env.scoreState()
+                env.passControl()  # Switch back to P2's perspective
+                gap_before_p1_turn_p2_perspective = p2_score_before_p1_turn - p1_score_before
+                gap_after_p1_turn_p2_perspective = p2_score_after_p1_turn - p1_score_after_turn
+                gap_change_for_p2_during_p1_turn = gap_after_p1_turn_p2_perspective - gap_before_p1_turn_p2_perspective
+                update_replay_memory(p2, p2_states, p2_actions, REWARD_INTERMEDIATE, p2_next_state, p2_score_change_during_p1_turn, gap_change_for_p2_during_p1_turn)
             p2_states = []
             p2_actions = []
             
@@ -785,6 +879,27 @@ def selfPlayTraining(
                 p2_states, p2_actions, p1_states, p1_actions,
                 episode, turns, action_logger
             )
+            
+            # Calculate score change for P2 (p2_score is from P2's perspective after their turn)
+            p2_score_change = p2_score - p2_score_before
+            
+            # Calculate gap change for P2 after their turn
+            # From P2's perspective: gap = p2_score - p1_score
+            # Gap before P2's turn: gap_before_p2_turn = p2_score_before - p1_score_before_p2_turn
+            # Gap after P2's turn: p2_score - p1_score_after_p2_turn
+            env.passControl()  # Switch to P1's perspective to get P1's score
+            p1_score_before_p2_turn, _ = env.scoreState()
+            env.passControl()  # Switch back to P2's perspective
+            gap_before_p2_turn = p2_score_before - p1_score_before_p2_turn
+            gap_after_p2_turn = p2_score - p1_score_before_p2_turn  # P1's score hasn't changed during P2's turn
+            gap_change_for_p2_after_turn = gap_after_p2_turn - gap_before_p2_turn
+            
+            # Update P2's replay memory with their turn's results (before checking termination)
+            # We need to prepare the next state for P2, which will be after the turn ends
+            if not validating:
+                # We'll update P2's memory after we prepare the next state
+                # For now, store the gap change to use later
+                pass
             
             if terminated:
                 # P2 wins
@@ -812,7 +927,30 @@ def selfPlayTraining(
             env.passControl()
             p1_next_state = env.get_obs()
             if not validating:
-                update_replay_memory(p1, p1_states, p1_actions, REWARD_INTERMEDIATE, p1_next_state)
+                # Update P2's replay memory with their turn's results
+                # We calculated gap_change_for_p2_after_turn earlier, now we can use it
+                # The next state for P2 is actually the state after the turn ends (which is P1's perspective)
+                # But we need to get it from P2's perspective
+                env.passControl()  # Switch to P2's perspective
+                p2_next_state = env.get_obs()
+                env.passControl()  # Switch back to P1's perspective
+                update_replay_memory(p2, p2_states, p2_actions, REWARD_INTERMEDIATE, p2_next_state, p2_score_change, gap_change_for_p2_after_turn)
+                
+                # Calculate score change for P1 (we're back in P1's perspective)
+                # p1_score_change was already calculated above, use it
+                # Calculate gap change for P1 after P2's turn
+                # We're in P1's perspective, so gap = p1_score - p2_score
+                # Gap before P1's turn: gap_before_p1_turn (already calculated)
+                # Gap after P2's turn: p1_score_after_p2_turn - p2_score_after_turn
+                p1_score_after_p2_turn, _ = env.scoreState()
+                env.passControl()  # Switch to P2's perspective to get P2's score after their turn
+                p2_score_after_turn, _ = env.scoreState()
+                env.passControl()  # Switch back to P1's perspective
+                gap_after_p2_turn_p1_perspective = p1_score_after_p2_turn - p2_score_after_turn
+                # Gap change for P1: how much the gap changed from before P1's turn to after P2's turn
+                # This captures the net effect of both players' turns
+                gap_change_for_p1_after_p2_turn = gap_after_p2_turn_p1_perspective - gap_before_p1_turn
+                update_replay_memory(p1, p1_states, p1_actions, REWARD_INTERMEDIATE, p1_next_state, p1_score_change, gap_change_for_p1_after_p2_turn)
             p1_states = []
             p1_actions = []
         
@@ -854,6 +992,7 @@ def validate_both_positions(
     episodes_per_position: int,
     include_highest_point_value: bool = False,
     include_highest_point_value_opponent_field: bool = False,
+    include_scores: bool = False,
     model_id_prefix: Optional[str] = None,
     round_number: Optional[int] = None,
     initial_total_time: float = 0.0,
@@ -870,6 +1009,7 @@ def validate_both_positions(
         episodes_per_position: Number of episodes to run for each position (total = 2 * episodes_per_position)
         include_highest_point_value: If True, include "Highest Point Value in Hand" feature
         include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field" feature
+        include_scores: If True, include "Current Player Score" and "Opponent Score" features
         model_id_prefix: Prefix for log file names (e.g., "no_features_round_0_vs_randomized")
         round_number: Optional round number to display in episode output
         initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
@@ -887,6 +1027,7 @@ def validate_both_positions(
         model_id=f"{model_id_prefix}_trainee_first" if model_id_prefix else None,
         include_highest_point_value=include_highest_point_value,
         include_highest_point_value_opponent_field=include_highest_point_value_opponent_field,
+        include_scores=include_scores,
         initial_steps=0,
         round_number=round_number,
         initial_total_time=initial_total_time
@@ -903,6 +1044,7 @@ def validate_both_positions(
         model_id=f"{model_id_prefix}_trainee_second" if model_id_prefix else None,
         include_highest_point_value=include_highest_point_value,
         include_highest_point_value_opponent_field=include_highest_point_value_opponent_field,
+        include_scores=include_scores,
         initial_steps=0,
         round_number=round_number,
         initial_total_time=updated_total_time

@@ -163,6 +163,16 @@ class TestExtractRoundNumber(unittest.TestCase if not HAS_PYTEST else object):
         filename = "metrics_hand_only_round_5_selfplay.jsonl"
         assert extract_round_number(filename) == 5
     
+    def test_extract_round_from_all_features(self):
+        """Test extracting round number from all_features filename."""
+        filename = "metrics_all_features_round_3_selfplay.jsonl"
+        assert extract_round_number(filename) == 3
+    
+    def test_extract_round_from_scores(self):
+        """Test extracting round number from scores filename."""
+        filename = "metrics_scores_round_2_vs_gapmaximizer_trainee_first.jsonl"
+        assert extract_round_number(filename) == 2
+    
     def test_extract_round_from_validation(self):
         """Test extracting round number from validation filename."""
         filename = "metrics_hand_only_round_10_vs_randomized_trainee_first.jsonl"
@@ -275,6 +285,60 @@ class TestAggregatePhaseMetrics(unittest.TestCase if not HAS_PYTEST else object)
             assert 0 not in result
             assert 2 not in result
             assert 4 not in result
+    
+    def test_aggregate_all_features_metrics(self):
+        """Test aggregating all_features training type metrics."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            log_dir = base_dir / "action_logs" / "all_features"
+            log_dir.mkdir(parents=True)
+            
+            # Create test metrics files
+            for round_num in [0, 1]:
+                file_path = log_dir / f"metrics_all_features_round_{round_num}_selfplay.jsonl"
+                with open(file_path, 'w') as f:
+                    for episode in range(2):
+                        data = {
+                            "episode": episode,
+                            "p1_win_rate": 0.5 + round_num * 0.1,
+                            "loss": 0.1 - round_num * 0.01
+                        }
+                        f.write(json.dumps(data) + "\n")
+            
+            result = aggregate_phase_metrics("all_features", "selfplay", base_dir)
+            
+            assert len(result) == 2
+            assert 0 in result
+            assert 1 in result
+            assert len(result[0]) == 2
+            assert len(result[1]) == 2
+    
+    def test_aggregate_scores_metrics(self):
+        """Test aggregating scores training type metrics."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            log_dir = base_dir / "action_logs" / "scores"
+            log_dir.mkdir(parents=True)
+            
+            # Create test metrics files
+            for round_num in [0, 1]:
+                file_path = log_dir / f"metrics_scores_round_{round_num}_selfplay.jsonl"
+                with open(file_path, 'w') as f:
+                    for episode in range(2):
+                        data = {
+                            "episode": episode,
+                            "p1_win_rate": 0.5 + round_num * 0.1,
+                            "loss": 0.1 - round_num * 0.01
+                        }
+                        f.write(json.dumps(data) + "\n")
+            
+            result = aggregate_phase_metrics("scores", "selfplay", base_dir)
+            
+            assert len(result) == 2
+            assert 0 in result
+            assert 1 in result
+            assert len(result[0]) == 2
+            assert len(result[1]) == 2
     
     def test_aggregate_nonexistent_training_type(self):
         """Test aggregating for non-existent training type."""
@@ -449,6 +513,64 @@ class TestGenerateGraph(unittest.TestCase if not HAS_PYTEST else object):
             assert result.parent.exists()  # Directory should exist
             assert result.name == "p1_win_rate_selfplay_hand_only.png"
             # The function uses fig.savefig(), not plt.savefig()
+            mock_fig.savefig.assert_called_once()
+            mock_close.assert_called_once()
+    
+    @patch('generate_metrics_graphs.plt.savefig')
+    @patch('generate_metrics_graphs.plt.close')
+    @patch('generate_metrics_graphs.plt.subplots')
+    @patch('generate_metrics_graphs.plt.tight_layout')
+    @patch('generate_metrics_graphs.sns.set_style')
+    def test_generate_graph_all_features(self, mock_sns, mock_tight, mock_subplots, mock_close, mock_savefig):
+        """Test generating graph for all_features training type."""
+        # Mock subplots to return a figure and axes
+        mock_fig = MagicMock()
+        mock_ax = MagicMock()
+        mock_subplots.return_value = (mock_fig, mock_ax)
+        mock_fig.savefig = MagicMock()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            episodes = [0, 1, 2, 3]
+            values = [0.5, 0.6, 0.7, 0.8]
+            
+            result = generate_graph(
+                episodes, values, "p1_win_rate", "selfplay", "all_features",
+                output_dir, "png", "seaborn"
+            )
+            
+            assert result is not None
+            assert result.parent.exists()
+            assert result.name == "p1_win_rate_selfplay_all_features.png"
+            mock_fig.savefig.assert_called_once()
+            mock_close.assert_called_once()
+    
+    @patch('generate_metrics_graphs.plt.savefig')
+    @patch('generate_metrics_graphs.plt.close')
+    @patch('generate_metrics_graphs.plt.subplots')
+    @patch('generate_metrics_graphs.plt.tight_layout')
+    @patch('generate_metrics_graphs.sns.set_style')
+    def test_generate_graph_scores(self, mock_sns, mock_tight, mock_subplots, mock_close, mock_savefig):
+        """Test generating graph for scores training type."""
+        # Mock subplots to return a figure and axes
+        mock_fig = MagicMock()
+        mock_ax = MagicMock()
+        mock_subplots.return_value = (mock_fig, mock_ax)
+        mock_fig.savefig = MagicMock()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            episodes = [0, 1, 2]
+            values = [0.5, 0.6, 0.7]
+            
+            result = generate_graph(
+                episodes, values, "p1_win_rate", "vs_gapmaximizer", "scores",
+                output_dir, "png", "seaborn"
+            )
+            
+            assert result is not None
+            assert result.parent.exists()
+            assert result.name == "p1_win_rate_vs_gapmaximizer_scores.png"
             mock_fig.savefig.assert_called_once()
             mock_close.assert_called_once()
     
