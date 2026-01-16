@@ -98,3 +98,70 @@ python scripts/clear_models.py -f
 
 **WARNING: This will delete all saved model checkpoints!** Make sure you have backups if needed.
 
+## archive_training.py
+
+Archives all training-related files including models, logs, graphs, and checkpoints into a timestamped directory.
+
+### Usage
+
+```bash
+# Interactive mode - create archive in default 'archives/' directory
+python scripts/archive_training.py
+
+# Specify custom output directory
+python scripts/archive_training.py --output archives/
+
+# Create compressed archive (tar.gz)
+python scripts/archive_training.py --compress
+
+# Include analysis documentation files
+python scripts/archive_training.py --include-docs
+
+# No confirmation prompts
+python scripts/archive_training.py --force
+```
+
+### What it archives
+
+- **models/** - All model checkpoints (.pt files) and training state files (training_state_*.json)
+- **action_logs/** - All training action logs organized by feature configuration
+- **metrics_graphs/** - All training metrics and evaluation graphs
+- **improvement_analysis/** - Analysis graphs comparing model improvements
+- **hyperparams_config.json** - Training hyperparameters configuration
+- **ARCHIVE_MANIFEST.json** - Detailed manifest of archived files (auto-generated)
+- **README.md** - Archive information and restoration instructions (auto-generated)
+- **Documentation** (optional with `--include-docs`) - Analysis markdown files
+
+### Examples
+
+```bash
+# Create basic archive
+python scripts/archive_training.py
+
+# Create compressed archive with documentation
+python scripts/archive_training.py --compress --include-docs
+
+# Archive to custom location without prompts
+python scripts/archive_training.py --output ~/backups --force
+```
+
+### Archive Structure
+
+Each archive is created with a timestamped name: `training_archive_YYYYMMDD_HHMMSS/`
+
+The archive contains:
+- All training files organized in their original directory structure
+- A manifest file (JSON) with detailed information about archived contents
+- A README with restoration instructions
+
+### Restoration
+
+To restore an archive, copy files back to their original locations:
+```bash
+cp -r archives/training_archive_YYYYMMDD_HHMMSS/models/* models/
+cp -r archives/training_archive_YYYYMMDD_HHMMSS/action_logs/* action_logs/
+cp -r archives/training_archive_YYYYMMDD_HHMMSS/metrics_graphs/* metrics_graphs/
+cp -r archives/training_archive_YYYYMMDD_HHMMSS/improvement_analysis/* improvement_analysis/
+cp archives/training_archive_YYYYMMDD_HHMMSS/hyperparams_config.json .
+```
+

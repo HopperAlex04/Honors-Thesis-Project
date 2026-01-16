@@ -75,6 +75,31 @@ The `cuttle` package provides:
 - **`ScoreGapMaximizer`**: Heuristic player that maximizes score gap
 - **`selfPlayTraining`**: Self-play training function
 
+## Versioning
+
+This project uses Git tags for version management. To access a specific version:
+
+```bash
+# List all available versions
+git tag -l
+
+# Checkout a specific version (e.g., v1.0.0)
+git checkout v1.0.0
+
+# Return to the latest version
+git checkout main
+
+# View version information
+git show v1.0.0
+```
+
+**Current Version:** v1.0.0
+
+For detailed versioning instructions, see [VERSIONING.md](VERSIONING.md).
+
+### Version History
+- **v1.0.0** (2026-01-16) - Initial stable release with manual play functionality
+
 ## Development
 
 The codebase follows Python best practices:
