@@ -3,6 +3,7 @@ p1log.txt
 p2log.txt
 *.jsonl
 *.png
+*.tar.gz
 #generated test models
 *.pt
 *.pth
