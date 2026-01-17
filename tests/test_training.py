@@ -221,7 +221,7 @@ class TestUpdateReplayMemory(unittest.TestCase):
     def test_update_replay_memory_score_reward_scale_constant(self):
         """Test that SCORE_REWARD_SCALE constant is defined and has correct value."""
         self.assertIsNotNone(Training.SCORE_REWARD_SCALE)
-        self.assertEqual(Training.SCORE_REWARD_SCALE, 0.1)
+        self.assertEqual(Training.SCORE_REWARD_SCALE, 0.01)  # Reduced from 0.1 to prevent Q-value explosion
         self.assertIsInstance(Training.SCORE_REWARD_SCALE, float)
 
 
@@ -242,7 +242,7 @@ class TestTrainingConstants(unittest.TestCase):
         self.assertEqual(Training.REWARD_LOSS, -1.0)
         self.assertEqual(Training.REWARD_DRAW, -0.5)
         self.assertEqual(Training.REWARD_INTERMEDIATE, 0.0)
-        self.assertEqual(Training.SCORE_REWARD_SCALE, 0.1)
+        self.assertEqual(Training.SCORE_REWARD_SCALE, 0.01)  # Reduced from 0.1 to prevent Q-value explosion
     
     def test_reward_constants_types(self):
         """Test that reward constants have correct types."""

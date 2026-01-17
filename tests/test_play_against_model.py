@@ -210,17 +210,14 @@ class TestLoadModel(unittest.TestCase):
         self.assertIsInstance(env, CuttleEnvironment)
         self.assertEqual(agent.name, "AI")
     
-    def test_load_model_no_features_detection(self):
-        """Test that no_features checkpoints disable features."""
-        # Create checkpoint with no_features in name
-        no_features_path = self.temp_dir / "no_features_checkpoint0.pt"
-        checkpoint = torch.load(self.checkpoint_path, weights_only=False)
-        torch.save(checkpoint, no_features_path)
+    def test_load_model_creates_environment(self):
+        """Test that loading model creates environment with correct structure."""
+        agent, env = play_module.load_model(self.checkpoint_path)
         
-        agent, env = play_module.load_model(no_features_path)
-        
-        self.assertFalse(env.include_highest_point_value)
-        self.assertFalse(env.include_highest_point_value_opponent_field)
+        # Environment should have boolean array structure (no hint-features)
+        self.assertIsInstance(env, CuttleEnvironment)
+        self.assertEqual(len(env.stack), 52)
+        self.assertEqual(env.stack.dtype, bool)
     
     def test_load_model_with_config(self):
         """Test loading model with custom config path."""
