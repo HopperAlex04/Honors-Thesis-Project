@@ -10,27 +10,10 @@ from cuttle.actions import ActionRegistry
 class CuttleEnvironment:
 
     # Initializes the environment and defines the observation and action spaces
-    def __init__(
-        self, 
-        include_highest_point_value: bool = True,
-        include_highest_point_value_opponent_field: bool = True,
-        include_scores: bool = False
-    ) -> None:
+    def __init__(self) -> None:
         """
         Initialize the Cuttle game environment.
-        
-        Args:
-            include_highest_point_value: If True, include "Highest Point Value in Hand" 
-                                        in observations. Default True for backward compatibility.
-            include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field"
-                                                       in observations. Default True for backward compatibility.
-            include_scores: If True, include "Current Player Score" and "Opponent Score" in observations.
-                           Default False (new feature).
         """
-        # Store toggle settings
-        self.include_highest_point_value = include_highest_point_value
-        self.include_highest_point_value_opponent_field = include_highest_point_value_opponent_field
-        self.include_scores = include_scores
 
         # Generates the zones
         # A zone is a bool np array
@@ -46,23 +29,18 @@ class CuttleEnvironment:
         #self.pain_lock = threading.Lock()
 
         # Special Zones which tell a player information about the game state
-        self.stack = [
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]  # Contains the actions and counters after an action has been decided, in a model this is embedded when the observation is passed in
+        # Stack: boolean array where stack[card_index] = True if that card is involved in the current stack
+        self.stack = np.zeros(52, dtype=bool)
+        # Internal tracking of stack action types for game logic (depth 0-4, values 0-53)
+        self._stack_action_types = [0, 0, 0, 0, 0]
         self.dealer_revealed = np.zeros(
             52, dtype=bool
         )  # What cards in the dealer's hand that are public
         self.player_revealed = np.zeros(
             52, dtype=bool
         )  # What cards in the player's hand that are public
-        self.effect_shown = [
-            0,
-            0,
-        ]  # Contains the cards revealed by an effect after an action has been decided, in a model this is embedded when the observation is passed in
+        # Effect-Shown: boolean array where effect_shown[card_index] = True if that card is shown by effect
+        self.effect_shown = np.zeros(52, dtype=bool)
         self.top_deck = []
         self.current_bounced = []
         self.off_bounced = []
@@ -154,87 +132,10 @@ class CuttleEnvironment:
             "Effect-Shown": self.effect_shown,
         }
         
-        # Conditionally include highest point value based on toggle
-        if self.include_highest_point_value:
-            obs["Highest Point Value in Hand"] = self._calculate_highest_point_in_hand()
-        
-        # Conditionally include highest point value in opponent field based on toggle
-        if self.include_highest_point_value_opponent_field:
-            obs["Highest Point Value in Opponent Field"] = self._calculate_highest_point_in_opponent_field()
-        
-        # Conditionally include scores based on toggle
-        if self.include_scores:
-            # Get current player's score (from current perspective)
-            current_score, _ = self.scoreState()
-            # Get opponent's score by switching perspective
-            self.passControl()
-            opponent_score, _ = self.scoreState()
-            self.passControl()  # Switch back to original perspective
-            obs["Current Player Score"] = current_score
-            obs["Opponent Score"] = opponent_score
-        
         return obs
 
     def _get_info(self):
         pass
-
-    def _calculate_highest_point_in_hand(self) -> int:
-        """
-        Calculate the highest point value among scorable cards in hand.
-        
-        Returns:
-            Highest point value (1-10) if scorable cards exist, 0 otherwise
-        """
-        hand = self.current_zones["Hand"]
-        inhand = np.where(hand)[0]
-        
-        if len(inhand) == 0:
-            return 0
-        
-        point_indicies = self.point_indicies
-        card_dict = self.card_dict
-        max_value = 0
-        
-        for card_idx in inhand:
-            # Skip bounced cards
-            if card_idx in self.current_bounced:
-                continue
-            
-            # Check if it's a point card (rank 0-9)
-            is_point_card = any(card_idx in rank_list for rank_list in point_indicies)
-            if is_point_card:
-                rank = card_dict[card_idx]["rank"]
-                point_value = rank + 1
-                max_value = max(max_value, point_value)
-        
-        return max_value
-
-    def _calculate_highest_point_in_opponent_field(self) -> int:
-        """
-        Calculate the highest point value among scorable cards on opponent's field.
-        
-        Returns:
-            Highest point value (1-10) if scorable cards exist, 0 otherwise
-        """
-        opponent_field = self.off_zones["Field"]
-        onfield = np.where(opponent_field)[0]
-        
-        if len(onfield) == 0:
-            return 0
-        
-        point_indicies = self.point_indicies
-        card_dict = self.card_dict
-        max_value = 0
-        
-        for card_idx in onfield:
-            # Check if it's a point card (rank 0-9)
-            is_point_card = any(card_idx in rank_list for rank_list in point_indicies)
-            if is_point_card:
-                rank = card_dict[card_idx]["rank"]
-                point_value = rank + 1
-                max_value = max(max_value, point_value)
-        
-        return max_value
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         random.seed(seed)
@@ -253,8 +154,9 @@ class CuttleEnvironment:
         # Reset game state flags
         self.countered = False
         self.passed = False
-        self.stack = [0, 0, 0, 0, 0]
-        self.effect_shown = [0, 0]
+        self.stack = np.zeros(52, dtype=bool)
+        self._stack_action_types = [0, 0, 0, 0, 0]
+        self.effect_shown = np.zeros(52, dtype=bool)
         self.top_deck = []
         
         # Reset bounced cards
@@ -486,7 +388,8 @@ class CuttleEnvironment:
     # TODO
     def fourAction(self, card):
         if not self.countered:
-            self.stack[0] = 4
+            self._stack_action_types[0] = 4
+            self.stack[card] = True
 
         hand = self.current_zones.get("Hand")
         scrap = self.scrap
@@ -497,7 +400,8 @@ class CuttleEnvironment:
     def resolveFour(self, targets):
         hand = self.current_zones.get("Hand")
         scrap = self.scrap
-        self.stack[0] = 0
+        self._stack_action_types[0] = 0
+        self.stack[:] = False
         if len(targets) > 0:
             t1 = targets[0]
             hand[t1] = False  # type: ignore
@@ -537,26 +441,39 @@ class CuttleEnvironment:
     def sevenAction01(self, card):
         # If a seven isn't already being resolved, reveal the top
         if not self.countered:
-            self.stack[0] = 7
+            self._stack_action_types[0] = 7
+            self.stack[card] = True
         hand = self.current_zones.get("Hand")
         scrap = self.scrap
 
         hand[card] = False  # type: ignore
         scrap[card] = True
         self.reveal_two()
-        if self.effect_shown == [0, 0]:
-            self.stack[0] = 0
+        if not np.any(self.effect_shown):
+            self._stack_action_types[0] = 0
+            self.stack[:] = False
 
     def sevenAction02(self, target):
         field = self.current_zones.get("Field")
 
         field[target] = True  # type: ignore
-        to_top = self.effect_shown[1 - self.effect_shown.index(np.int64(target)[0])] - 1
+        # effect_shown is now boolean array - target is already the card index
+        effect_indices = np.where(self.effect_shown)[0]
+        if len(effect_indices) >= 2:
+            # Find the other card (not target)
+            other_indices = [i for i in effect_indices if i != target]
+            if other_indices:
+                to_top = other_indices[0]
+            else:
+                to_top = effect_indices[0] if len(effect_indices) > 0 else target
+        else:
+            to_top = target
 
         self.top_deck = [to_top]
         self.deck[to_top] = True
-        self.stack = [0, 0, 0, 0, 0]
-        self.effect_shown = [0, 0]
+        self.stack[:] = False
+        self._stack_action_types = [0, 0, 0, 0, 0]
+        self.effect_shown[:] = False
 
     # TODO
     def eightRoyal(self, card):
@@ -803,13 +720,13 @@ class CuttleEnvironment:
             # trunk-ignore(bandit/B311)
             index1 = possible_draws[random.randint(0, len(possible_draws) - 1)]
             self.deck[index1] = False
-            self.effect_shown[0] = index1 + 1
+            self.effect_shown[index1] = True
         possible_draws = np.where(self.deck)[0]
         if possible_draws.any():
             # trunk-ignore(bandit/B311)
             index2 = possible_draws[random.randint(0, len(possible_draws) - 1)]
             self.deck[index2] = False
-            self.effect_shown[1] = index2 + 1
+            self.effect_shown[index2] = True
 
     def end_turn(self):
         self.current_bounced = []
@@ -817,6 +734,7 @@ class CuttleEnvironment:
     def updateStack(self, action, depth = 0):
         # Use new action system
         action_obj = self.action_registry.get_action(action)
+        action_type_value = 53  # Default: not a one-off action
         
         if action_obj is None:
             # Fallback to legacy system
@@ -824,41 +742,50 @@ class CuttleEnvironment:
             if moveType:
                 moveType = moveType[0]
                 if moveType in self.one_offs.keys():
-                    self.stack[depth] = self.one_offs[moveType]
+                    action_type_value = self.one_offs[moveType]
                 else:
-                    self.stack[depth] = 53
+                    action_type_value = 53
             else:
-                self.stack[depth] = 53
+                action_type_value = 53
         else:
             # Map action class to stack value
             from cuttle.actions import (AceAction, TwoAction, ThreeAction, FourAction, 
                                FiveAction, SixAction, SevenAction01, NineAction, TwoCounter)
             
             if isinstance(action_obj, AceAction):
-                self.stack[depth] = 1
+                action_type_value = 1
             elif isinstance(action_obj, TwoAction) or isinstance(action_obj, TwoCounter):
-                self.stack[depth] = 2
+                action_type_value = 2
             elif isinstance(action_obj, ThreeAction):
-                self.stack[depth] = 3
+                action_type_value = 3
             elif isinstance(action_obj, FourAction):
-                self.stack[depth] = 4
+                action_type_value = 4
             elif isinstance(action_obj, FiveAction):
-                self.stack[depth] = 5
+                action_type_value = 5
             elif isinstance(action_obj, SixAction):
-                self.stack[depth] = 6
+                action_type_value = 6
             elif isinstance(action_obj, SevenAction01):
-                self.stack[depth] = 7
+                action_type_value = 7
             elif isinstance(action_obj, NineAction):
-                self.stack[depth] = 8
+                action_type_value = 8
             else:
-                self.stack[depth] = 53  # Not a one-off action
+                action_type_value = 53  # Not a one-off action
+        
+        # Track action type internally for game logic
+        self._stack_action_types[depth] = action_type_value
+        
+        # Track card in boolean array (if action has a card attribute)
+        if action_obj is not None and hasattr(action_obj, 'card'):
+            card = action_obj.card
+            if isinstance(card, (int, np.integer)) and 0 <= card < 52:
+                self.stack[card] = True
 
     def checkResponses(self):
         if self.passed:
             self.passed = False
             return False
         response = False
-        if self.stack[0] != 53 and self.stack[0] != 0:
+        if self._stack_action_types[0] != 53 and self._stack_action_types[0] != 0:
             inhand = np.where(self.off_zones["Hand"])[0]
 
             for x in self.point_indicies[1]:
@@ -867,19 +794,21 @@ class CuttleEnvironment:
         return response
 
     def stackTop(self):
-        return self.stack[0]
+        return self._stack_action_types[0]
 
     def emptyStack(self):
-        self.stack = [0, 0, 0, 0, 0]
+        self.stack[:] = False
+        self._stack_action_types = [0, 0, 0, 0, 0]
 
     def resolveStack(self):
         counters = 0
         for x in range(1,5):
-            if self.stack[x] == 2:
+            if self._stack_action_types[x] == 2:
                 counters += 1
-            self.stack[x] = 0
+            self._stack_action_types[x] = 0
         if counters % 2 == 1:
-            self.stack[0] = 0
+            self._stack_action_types[0] = 0
+            self.stack[:] = False
         self.countered = counters % 2 == 1
 
     def updateRevealed(self):

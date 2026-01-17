@@ -60,7 +60,7 @@ class DrawAction(Action):
     def validate(self, game_state, countering: bool = False) -> bool:
         if countering:
             return False
-        if game_state.stack[0] != 0:
+        if game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         return len(inhand) <= self.MAX_HAND_SIZE  # Can draw if hand size <= 8
@@ -81,7 +81,7 @@ class ScoreAction(Action):
         return f"Scored {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         royal_jacks = game_state.action_registry.royal_indicies[0]
@@ -110,7 +110,7 @@ class ScuttleAction(Action):
         return f"Scuttled {self.target} with {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         onfield = np.where(game_state.off_zones["Field"])[0]
@@ -153,7 +153,7 @@ class AceAction(Action):
         return f"Ace board wipe with {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         return self.card in inhand
@@ -180,7 +180,7 @@ class TwoAction(Action):
         return f"Scrapped {self.target} with {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         onfield = np.where(game_state.off_zones["Field"])[0]
@@ -251,7 +251,7 @@ class ThreeAction(Action):
         return f"Recovered {self.target} with {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         scrap_cards = np.where(game_state.scrap)[0]
@@ -267,7 +267,8 @@ class FourAction(Action):
     
     def execute(self, game_state):
         if not game_state.countered:
-            game_state.stack[0] = 4
+            game_state._stack_action_types[0] = 4
+            game_state.stack[self.card] = True
         hand = game_state.current_zones.get("Hand")
         scrap = game_state.scrap
         hand[self.card] = False
@@ -275,7 +276,7 @@ class FourAction(Action):
         return f"Played Four {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         return self.card in inhand
@@ -291,7 +292,8 @@ class ResolveFour(Action):
     def execute(self, game_state):
         hand = game_state.current_zones.get("Hand")
         scrap = game_state.scrap
-        game_state.stack[0] = 0
+        game_state._stack_action_types[0] = 0
+        game_state.stack[:] = False
         if len(self.targets) > 0:
             t1 = self.targets[0]
             hand[t1] = False
@@ -303,7 +305,7 @@ class ResolveFour(Action):
         return f"Resolved Four with targets {self.targets}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 4:
+        if countering or game_state.stackTop() != 4:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         if len(self.targets) == 0:
@@ -343,7 +345,7 @@ class FiveAction(Action):
         return f"Five drew 2 cards with {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         if self.card not in inhand:
@@ -380,7 +382,7 @@ class SixAction(Action):
         return f"Six royal wipe with {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         return self.card in inhand
@@ -395,19 +397,21 @@ class SevenAction01(Action):
     
     def execute(self, game_state):
         if not game_state.countered:
-            game_state.stack[0] = 7
+            game_state._stack_action_types[0] = 7
+            game_state.stack[self.card] = True
         hand = game_state.current_zones.get("Hand")
         scrap = game_state.scrap
         hand[self.card] = False
         scrap[self.card] = True
         # Call reveal_two method
         game_state.reveal_two()
-        if game_state.effect_shown == [0, 0]:
-            game_state.stack[0] = 0
+        if not np.any(game_state.effect_shown):
+            game_state._stack_action_types[0] = 0
+            game_state.stack[:] = False
         return f"Seven revealed cards with {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         return self.card in inhand
@@ -425,26 +429,27 @@ class SevenAction02(Action):
         field[self.target] = True
         
         # Get the other card and put it on top of deck
-        # effect_shown stores card_index + 1, so target needs to be converted
-        effect_shown = game_state.effect_shown
-        target_plus_one = np.int64(self.target) + 1
-        if target_plus_one in effect_shown:
-            other_idx = 1 - list(effect_shown).index(target_plus_one)
-            to_top = effect_shown[other_idx] - 1  # Convert to actual card index
-            game_state.top_deck = [to_top]
-            game_state.deck[to_top] = True
+        # effect_shown is now boolean array, so target is already the card index
+        effect_indices = np.where(game_state.effect_shown)[0]
+        if len(effect_indices) >= 2:
+            # Find the other card (not target)
+            other_indices = [i for i in effect_indices if i != self.target]
+            if other_indices:
+                to_top = other_indices[0]
+                game_state.top_deck = [to_top]
+                game_state.deck[to_top] = True
         
-        game_state.stack = [0, 0, 0, 0, 0]
-        game_state.effect_shown = [0, 0]
+        game_state.stack[:] = False
+        game_state._stack_action_types = [0, 0, 0, 0, 0]
+        game_state.effect_shown[:] = False
         return f"Seven chose card {self.target}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 7:
+        if countering or game_state.stackTop() != 7:
             return False
-        # effect_shown stores card_index + 1, so we need to check target + 1
-        target_plus_one = self.target + 1
-        # Check if this target is one of the revealed cards (effect_shown stores index+1)
-        return target_plus_one in game_state.effect_shown
+        # effect_shown is now boolean array, so target is already the card index
+        # Check if this target is one of the revealed cards
+        return self.target < 52 and game_state.effect_shown[self.target]
 
 
 class EightRoyal(Action):
@@ -467,7 +472,7 @@ class EightRoyal(Action):
         return f"Scored Eight {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         return self.card in inhand
@@ -509,7 +514,7 @@ class NineAction(Action):
         return f"Nine bounced {self.target} with {self.card}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         self_field = np.where(game_state.current_zones["Field"])[0]
@@ -570,7 +575,7 @@ class JackPlay(Action):
         return f"Jack {self.card} targeting {self.target}"
     
     def validate(self, game_state, countering: bool = False) -> bool:
-        if countering or game_state.stack[0] != 0:
+        if countering or game_state.stackTop() != 0:
             return False
         inhand = np.where(game_state.current_zones["Hand"])[0]
         onfield = np.where(game_state.off_zones["Field"])[0]

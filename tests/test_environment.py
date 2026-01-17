@@ -52,9 +52,11 @@ class TestCuttleEnvironmentInitialization(unittest.TestCase):
         self.assertEqual(self.env.off_zones, self.env.dealer_zones)
     
     def test_initial_stack(self):
-        """Test that stack is initialized correctly."""
-        self.assertEqual(len(self.env.stack), 5)
-        self.assertTrue(all(s == 0 for s in self.env.stack))
+        """Test that stack is initialized correctly as boolean array."""
+        self.assertEqual(len(self.env.stack), 52)
+        self.assertIsInstance(self.env.stack, np.ndarray)
+        self.assertEqual(self.env.stack.dtype, bool)
+        self.assertFalse(np.any(self.env.stack))
     
     def test_action_registry_exists(self):
         """Test that action registry is initialized."""
@@ -438,26 +440,28 @@ class TestCuttleEnvironmentStackManagement(unittest.TestCase):
         self.env = CuttleEnvironment()
         self.env.reset()
     
-    def test_stack_top_returns_top_value(self):
-        """Test that stackTop returns the top stack value."""
-        self.env.stack[0] = 5
-        self.assertEqual(self.env.stackTop(), 5)
-    
-    def test_empty_stack_clears_stack(self):
-        """Test that emptyStack clears the stack."""
-        self.env.stack[0] = 5
-        self.env.emptyStack()
-        self.assertEqual(self.env.stackTop(), 0)
-    
-    def test_update_stack_adds_action(self):
-        """Test that updateStack maps action to stack value."""
-        # Test with a draw action (should map to 53 - not a one-off)
+    def test_stack_top_returns_action_type(self):
+        """Test that stackTop returns the action type from internal tracking."""
+        # Stack is now a boolean array, but stackTop returns action type from _stack_action_types
         draw_action_id = 0
         self.env.updateStack(draw_action_id)
-        self.assertEqual(self.env.stack[0], 53, "Draw action should map to 53")
-        
-        # Test with an Ace action (should map to 1)
-        # First, add an Ace to hand
+        # Draw action maps to 53 (not a one-off)
+        self.assertEqual(self.env.stackTop(), 53)
+    
+    def test_empty_stack_clears_stack(self):
+        """Test that emptyStack clears the stack boolean array."""
+        # Set some cards in stack
+        self.env.stack[5] = True
+        self.env.stack[10] = True
+        self.env.emptyStack()
+        # Stack should be all False
+        self.assertFalse(np.any(self.env.stack))
+        # stackTop should return 0 after clearing
+        self.assertEqual(self.env.stackTop(), 0)
+    
+    def test_update_stack_sets_boolean_array(self):
+        """Test that updateStack sets cards in boolean array."""
+        # Test with an Ace action - card should be marked in stack array
         ace_index = 0
         self.env.current_zones["Hand"][ace_index] = True
         self.env.deck[ace_index] = False
@@ -473,7 +477,10 @@ class TestCuttleEnvironmentStackManagement(unittest.TestCase):
         
         if ace_action_id is not None:
             self.env.updateStack(ace_action_id)
-            self.assertEqual(self.env.stack[0], 1, "Ace action should map to 1")
+            # The card should be marked in the stack boolean array
+            self.assertTrue(self.env.stack[ace_index])
+            # stackTop should return the action type value (1 for Ace)
+            self.assertEqual(self.env.stackTop(), 1)
 
 
 class TestCuttleEnvironmentObservation(unittest.TestCase):
@@ -499,8 +506,7 @@ class TestCuttleEnvironmentObservation(unittest.TestCase):
             "Deck",
             "Scrap",
             "Stack",
-            "Effect-Shown",
-            "Highest Point Value in Hand"
+            "Effect-Shown"
         ]
         for key in expected_keys:
             self.assertIn(key, observation, f"Observation missing key: {key}")
@@ -513,221 +519,21 @@ class TestCuttleEnvironmentObservation(unittest.TestCase):
         for zone_name, zone_data in zones.items():
             self.assertIsInstance(zone_data, np.ndarray)
     
-    def test_highest_point_value_field_exists(self):
-        """Test that Highest Point Value in Hand field exists in observation."""
+    def test_observation_stack_is_boolean_array(self):
+        """Test that Stack in observation is a boolean array of length 52."""
         observation = self.env.get_obs()
-        self.assertIn("Highest Point Value in Hand", observation)
-        self.assertIsInstance(observation["Highest Point Value in Hand"], (int, np.integer))
-        self.assertGreaterEqual(observation["Highest Point Value in Hand"], 0)
-        self.assertLessEqual(observation["Highest Point Value in Hand"], 10)
+        self.assertIn("Stack", observation)
+        self.assertIsInstance(observation["Stack"], np.ndarray)
+        self.assertEqual(len(observation["Stack"]), 52)
+        self.assertEqual(observation["Stack"].dtype, bool)
     
-    def test_highest_point_value_empty_hand(self):
-        """Test that empty hand returns 0."""
-        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
-        value = self.env._calculate_highest_point_in_hand()
-        self.assertEqual(value, 0)
-    
-    def test_highest_point_value_single_card(self):
-        """Test that single scorable card returns correct value."""
-        # Clear hand first
-        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
-        # Add a Nine (rank 9, value 10) to hand - first suit
-        nine_idx = 9  # Rank 9, suit 0
-        self.env.current_zones["Hand"][nine_idx] = True
-        value = self.env._calculate_highest_point_in_hand()
-        self.assertEqual(value, 10)
-    
-    def test_highest_point_value_multiple_cards(self):
-        """Test that multiple scorable cards returns maximum value."""
-        # Clear hand first
-        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
-        # Add cards with different point values
-        ace_idx = 0  # Rank 0, value 1, suit 0
-        five_idx = 4  # Rank 4, value 5, suit 0
-        nine_idx = 9  # Rank 9, value 10, suit 0
-        self.env.current_zones["Hand"][ace_idx] = True
-        self.env.current_zones["Hand"][five_idx] = True
-        self.env.current_zones["Hand"][nine_idx] = True
-        value = self.env._calculate_highest_point_in_hand()
-        self.assertEqual(value, 10)
-    
-    def test_highest_point_value_excludes_bounced(self):
-        """Test that bounced cards are excluded."""
-        # Clear hand first
-        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
-        # Add a Nine to hand and mark as bounced
-        nine_idx = 9
-        self.env.current_zones["Hand"][nine_idx] = True
-        self.env.current_bounced = [nine_idx]
-        value = self.env._calculate_highest_point_in_hand()
-        self.assertEqual(value, 0)
-    
-    def test_highest_point_value_excludes_non_scorable(self):
-        """Test that non-scorable cards (Jacks, Queens, Kings) are excluded."""
-        # Clear hand first
-        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
-        # Add a Jack (rank 10, suit 0) - cannot be scored
-        jack_idx = 10  # Rank 10, suit 0
-        # Add a Queen (rank 11, suit 0) - cannot be scored
-        queen_idx = 11  # Rank 11, suit 0
-        # Add a King (rank 12, suit 0) - cannot be scored
-        king_idx = 12  # Rank 12, suit 0
-        self.env.current_zones["Hand"][jack_idx] = True
-        self.env.current_zones["Hand"][queen_idx] = True
-        self.env.current_zones["Hand"][king_idx] = True
-        value = self.env._calculate_highest_point_in_hand()
-        self.assertEqual(value, 0)
-    
-    def test_highest_point_value_mixed_cards(self):
-        """Test that mixed scorable and non-scorable cards returns max of scorable."""
-        # Clear hand first
-        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
-        # Add non-scorable cards
-        jack_idx = 10
-        queen_idx = 11
-        # Add scorable cards
-        ace_idx = 0  # Value 1
-        five_idx = 4  # Value 5
-        self.env.current_zones["Hand"][jack_idx] = True
-        self.env.current_zones["Hand"][queen_idx] = True
-        self.env.current_zones["Hand"][ace_idx] = True
-        self.env.current_zones["Hand"][five_idx] = True
-        value = self.env._calculate_highest_point_in_hand()
-        self.assertEqual(value, 5)
-    
-    def test_highest_point_value_same_rank_different_suits(self):
-        """Test that multiple cards with same rank returns correct value."""
-        # Clear hand first
-        self.env.current_zones["Hand"] = np.zeros(52, dtype=bool)
-        # Add multiple Nines (rank 9, value 10) from different suits
-        nine_suit0 = 9   # Rank 9, suit 0
-        nine_suit1 = 22  # Rank 9, suit 1 (13*1 + 9)
-        nine_suit2 = 35  # Rank 9, suit 2 (13*2 + 9)
-        self.env.current_zones["Hand"][nine_suit0] = True
-        self.env.current_zones["Hand"][nine_suit1] = True
-        self.env.current_zones["Hand"][nine_suit2] = True
-        value = self.env._calculate_highest_point_in_hand()
-        self.assertEqual(value, 10)
-    
-    def test_observation_includes_field_when_enabled(self):
-        """Test that observation includes field when toggle is True (default)."""
-        env = CuttleEnvironment(include_highest_point_value=True)
-        env.reset()
-        obs = env.get_obs()
-        self.assertIn("Highest Point Value in Hand", obs)
-        self.assertIsInstance(obs["Highest Point Value in Hand"], (int, np.integer))
-        self.assertGreaterEqual(obs["Highest Point Value in Hand"], 0)
-        self.assertLessEqual(obs["Highest Point Value in Hand"], 10)
-    
-    def test_observation_excludes_field_when_disabled(self):
-        """Test that observation excludes field when toggle is False."""
-        env = CuttleEnvironment(include_highest_point_value=False)
-        env.reset()
-        obs = env.get_obs()
-        self.assertNotIn("Highest Point Value in Hand", obs)
-    
-    def test_observation_default_behavior_includes_field(self):
-        """Test that default behavior (no parameter) includes the field."""
-        env = CuttleEnvironment()  # Default should be True
-        env.reset()
-        obs = env.get_obs()
-        self.assertIn("Highest Point Value in Hand", obs)
-    
-    def test_toggle_affects_calculation(self):
-        """Test that calculation still works when feature is enabled."""
-        env = CuttleEnvironment(include_highest_point_value=True)
-        env.reset()
-        # Add a Nine to hand
-        env.current_zones["Hand"][9] = True
-        obs = env.get_obs()
-        self.assertEqual(obs["Highest Point Value in Hand"], 10)
-    
-    def test_opponent_field_includes_field_when_enabled(self):
-        """Test that observation includes opponent field feature when toggle is True (default)."""
-        env = CuttleEnvironment(include_highest_point_value_opponent_field=True)
-        env.reset()
-        obs = env.get_obs()
-        self.assertIn("Highest Point Value in Opponent Field", obs)
-        self.assertIsInstance(obs["Highest Point Value in Opponent Field"], (int, np.integer))
-        self.assertGreaterEqual(obs["Highest Point Value in Opponent Field"], 0)
-        self.assertLessEqual(obs["Highest Point Value in Opponent Field"], 10)
-    
-    def test_opponent_field_excludes_field_when_disabled(self):
-        """Test that observation excludes opponent field feature when toggle is False."""
-        env = CuttleEnvironment(include_highest_point_value_opponent_field=False)
-        env.reset()
-        obs = env.get_obs()
-        self.assertNotIn("Highest Point Value in Opponent Field", obs)
-    
-    def test_opponent_field_default_behavior_includes_field(self):
-        """Test that default behavior (no parameter) includes the opponent field feature."""
-        env = CuttleEnvironment()  # Default should be True
-        env.reset()
-        obs = env.get_obs()
-        self.assertIn("Highest Point Value in Opponent Field", obs)
-    
-    def test_calculate_highest_point_in_opponent_field_empty(self):
-        """Test that empty opponent field returns 0."""
-        env = CuttleEnvironment()
-        env.reset()
-        env.off_zones["Field"] = np.zeros(52, dtype=bool)
-        value = env._calculate_highest_point_in_opponent_field()
-        self.assertEqual(value, 0)
-    
-    def test_calculate_highest_point_in_opponent_field_single_card(self):
-        """Test that single scorable card on opponent field returns correct value."""
-        env = CuttleEnvironment()
-        env.reset()
-        # Clear opponent field first
-        env.off_zones["Field"] = np.zeros(52, dtype=bool)
-        # Add a Nine (rank 9, value 10) to opponent field - first suit
-        nine_idx = 9  # Rank 9, suit 0
-        env.off_zones["Field"][nine_idx] = True
-        value = env._calculate_highest_point_in_opponent_field()
-        self.assertEqual(value, 10)
-    
-    def test_calculate_highest_point_in_opponent_field_multiple_cards(self):
-        """Test that multiple scorable cards on opponent field returns maximum value."""
-        env = CuttleEnvironment()
-        env.reset()
-        # Clear opponent field first
-        env.off_zones["Field"] = np.zeros(52, dtype=bool)
-        # Add cards with different point values
-        ace_idx = 0  # Rank 0, value 1, suit 0
-        five_idx = 4  # Rank 4, value 5, suit 0
-        nine_idx = 9  # Rank 9, value 10, suit 0
-        env.off_zones["Field"][ace_idx] = True
-        env.off_zones["Field"][five_idx] = True
-        env.off_zones["Field"][nine_idx] = True
-        value = env._calculate_highest_point_in_opponent_field()
-        self.assertEqual(value, 10)
-    
-    def test_calculate_highest_point_in_opponent_field_excludes_non_scorable(self):
-        """Test that non-scorable cards (Jacks, Queens, Kings) on opponent field are excluded."""
-        env = CuttleEnvironment()
-        env.reset()
-        # Clear opponent field first
-        env.off_zones["Field"] = np.zeros(52, dtype=bool)
-        # Add a Jack (rank 10, suit 0) - cannot be scored
-        jack_idx = 10  # Rank 10, suit 0
-        # Add a Queen (rank 11, suit 0) - cannot be scored
-        queen_idx = 11  # Rank 11, suit 0
-        # Add a King (rank 12, suit 0) - cannot be scored
-        king_idx = 12  # Rank 12, suit 0
-        env.off_zones["Field"][jack_idx] = True
-        env.off_zones["Field"][queen_idx] = True
-        env.off_zones["Field"][king_idx] = True
-        value = env._calculate_highest_point_in_opponent_field()
-        self.assertEqual(value, 0)
-    
-    def test_opponent_field_toggle_affects_calculation(self):
-        """Test that calculation still works when opponent field feature is enabled."""
-        env = CuttleEnvironment(include_highest_point_value_opponent_field=True)
-        env.reset()
-        # Add a Nine to opponent field
-        env.off_zones["Field"][9] = True
-        obs = env.get_obs()
-        self.assertEqual(obs["Highest Point Value in Opponent Field"], 10)
+    def test_observation_effect_shown_is_boolean_array(self):
+        """Test that Effect-Shown in observation is a boolean array of length 52."""
+        observation = self.env.get_obs()
+        self.assertIn("Effect-Shown", observation)
+        self.assertIsInstance(observation["Effect-Shown"], np.ndarray)
+        self.assertEqual(len(observation["Effect-Shown"]), 52)
+        self.assertEqual(observation["Effect-Shown"].dtype, bool)
 
 
 class TestCuttleEnvironmentSpecialCards(unittest.TestCase):

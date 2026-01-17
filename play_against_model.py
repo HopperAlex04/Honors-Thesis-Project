@@ -110,9 +110,11 @@ def display_game_state(env: CuttleEnvironment, human_is_p1: bool = True):
     else:
         print("  (empty)")
     
-    # Display stack
-    if obs.get("Stack", [0])[0] != 0:
-        print(f"\nStack: {obs['Stack'][0]}")
+    # Display stack (now boolean array - check if any cards are in stack)
+    stack = obs.get("Stack", np.zeros(52, dtype=bool))
+    if isinstance(stack, np.ndarray) and np.any(stack):
+        stack_cards = [i for i in range(52) if stack[i]]
+        print(f"\nStack: {len(stack_cards)} card(s) - {', '.join(card_to_string(c) for c in stack_cards)}")
     
     print("="*60 + "\n")
 
@@ -243,21 +245,8 @@ def load_model(checkpoint_path: Path, config_path: Optional[Path] = None) -> Tup
             "replay_buffer_size": 30000,
         }
     
-    # Determine feature configuration from checkpoint name
-    checkpoint_name = checkpoint_path.name.lower()
-    include_hand = "hand" in checkpoint_name or "no_features" not in checkpoint_name
-    include_opponent = "opponent" in checkpoint_name or "both" in checkpoint_name or "no_features" not in checkpoint_name
-    
-    # For no_features checkpoints, disable both
-    if "no_features" in checkpoint_name:
-        include_hand = False
-        include_opponent = False
-    
-    # Create environment with appropriate features
-    env = CuttleEnvironment(
-        include_highest_point_value=include_hand,
-        include_highest_point_value_opponent_field=include_opponent
-    )
+    # Create environment (no feature flags needed anymore)
+    env = CuttleEnvironment()
     actions = env.actions
     
     # Create model

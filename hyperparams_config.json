@@ -1,6 +1,7 @@
 {
-  "comment": "Hyperparameter configuration for fast experimentation. Edit these values and restart training.",
+  "comment": "Hyperparameter configuration for training DQN agent in Cuttle game.",
   "embedding_size": 16,
+  "comment_embedding_size": "Kept for backward compatibility, no longer used (no embeddings - all inputs are boolean arrays)",
   "batch_size": 128,
   "gamma": 0.90,
   "eps_start": 0.90,
@@ -15,32 +16,22 @@
   "q_value_clip": 15.0,
   "replay_buffer_size": 30000,
   "training": {
-    "comment": "Training configuration - more rounds for better progress tracking and research analysis",
     "rounds": 4,
     "eps_per_round": 500,
     "quick_test_mode": false,
     "quick_test_rounds": 1,
     "quick_test_eps_per_round": 500,
     "validation_episodes_ratio": 0.5,
-    "validation_comment": "validation_episodes_ratio: Total validation episodes relative to training episodes. 1.0 = same as training (eps_per_round total), 0.5 = half (eps_per_round/2 total), 0.25 = quarter. Each position gets half of total (both positions tested).",
-    "target_win_rate": 0.99,
-    "stop_on_target": true,
-    "target_comment": "target_win_rate: Win rate vs ScoreGapMaximizer to achieve. stop_on_target: If true, stop training immediately when target is reached (prevents regression from overtraining)."
+    "validation_opponent": "randomized",
+    "validation_opponent_comment": "Options: 'randomized', 'gapmaximizer', or 'both'"
   },
   "early_stopping": {
-    "comment": "Early stopping based on loss trends - enables fast detection of bad hyperparameters",
     "enabled": true,
     "check_interval": 50,
     "window_size": 100,
     "divergence_threshold": 0.5,
     "min_episodes": 200,
     "max_loss": 50.0
-  },
-  "regression_detection": {
-    "comment": "Regression detection settings - prevents stopping training too early",
-    "grace_rounds": 0,
-    "grace_zone": 0.45,
-    "max_consecutive_regressions": 2
   }
 }
 

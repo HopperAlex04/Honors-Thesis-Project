@@ -19,14 +19,16 @@ A reinforcement learning project for training DQN agents to play the Cuttle card
 │   ├── test_environment.py  # Environment tests
 │   ├── test_networks.py     # Neural network tests
 │   └── test_players.py       # Player tests
-├── scripts/                 # Scripts directory (optional)
+├── scripts/                 # Utility scripts
+│   ├── generate_metrics_graphs.py  # Generate training metrics visualizations
+│   └── archive/             # Archived utility scripts
+├── docs/                    # Documentation
+│   └── archive/             # Archived analysis documents
 ├── models/                  # Saved model checkpoints
 ├── action_logs/             # Training logs
-├── train_no_features.py     # Baseline training (no features)
-├── train_hand_feature_only.py      # Hand feature only
-├── train_opponent_field_only.py    # Opponent field feature only
-├── train_both_features.py   # All features enabled (hand + opponent field + scores)
-├── train_scores.py          # Scores feature only
+├── train.py                 # Unified training script
+├── play_against_model.py    # Interactive play against trained model
+├── hyperparams_config.json  # Hyperparameter configuration
 ├── setup.py                 # Package setup
 ├── requirements.txt         # Python dependencies
 └── Dockerfile               # Docker configuration
@@ -47,13 +49,30 @@ pip install -e .
 
 ## Usage
 
-Run training scripts for different feature configurations:
+### Training
+
+Run the unified training script:
 ```bash
-python train_no_features.py        # Baseline (no features)
-python train_hand_feature_only.py  # Hand feature only
-python train_opponent_field_only.py # Opponent field feature only
-python train_both_features.py      # All features (hand + opponent field + scores)
-python train_scores.py             # Scores feature only
+python train.py
+```
+
+Training configuration is controlled via `hyperparams_config.json`:
+- Training rounds and episodes per round
+- Validation opponent selection (`validation_opponent`: "randomized", "gapmaximizer", or "both")
+- Hyperparameters (learning rate, batch size, etc.)
+- Early stopping configuration
+
+The training script uses raw game state only (no hint-features) with uniform boolean array representation:
+- All zones: boolean arrays of length 52
+- Stack: boolean array of length 52
+- Effect-Shown: boolean array of length 52
+
+### Interactive Play
+
+Play against a trained model:
+```bash
+python play_against_model.py
+python play_against_model.py --checkpoint models/checkpoint0.pt
 ```
 
 Run tests:
@@ -65,15 +84,25 @@ python -m unittest discover tests
 
 The `cuttle` package provides:
 
-- **`CuttleEnvironment`**: Gymnasium-compatible game environment
+- **`CuttleEnvironment`**: Gymnasium-compatible game environment with uniform boolean array observations
 - **`ActionRegistry`**: Manages all possible game actions with integer indices
-- **`NeuralNetwork`**: DQN neural network architecture
+- **`NeuralNetwork`**: DQN neural network architecture (no embeddings - all boolean arrays)
 - **`Player`**: Base player interface
 - **`Agent`**: DQN-based learning agent
 - **`Randomized`**: Random action player
 - **`HeuristicHighCard`**: Simple heuristic player
 - **`ScoreGapMaximizer`**: Heuristic player that maximizes score gap
 - **`selfPlayTraining`**: Self-play training function
+
+## Observation Format
+
+All observations use uniform boolean array representation:
+- **Zones** (7 zones × 52 cards = 364 booleans): Hand, Field, Revealed, Off-Player Field, Off-Player Revealed, Deck, Scrap
+- **Stack** (52 booleans): Which cards are involved in current stack
+- **Effect-Shown** (52 booleans): Which cards are shown by effects
+- **Total**: 468 boolean presence indicators concatenated into single input vector
+
+No embeddings are used - all input is boolean presence arrays of length 52.
 
 ## Versioning
 
