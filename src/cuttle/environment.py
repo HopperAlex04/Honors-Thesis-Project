@@ -10,27 +10,10 @@ from cuttle.actions import ActionRegistry
 class CuttleEnvironment:
 
     # Initializes the environment and defines the observation and action spaces
-    def __init__(
-        self, 
-        include_highest_point_value: bool = True,
-        include_highest_point_value_opponent_field: bool = True,
-        include_scores: bool = False
-    ) -> None:
+    def __init__(self) -> None:
         """
         Initialize the Cuttle game environment.
-        
-        Args:
-            include_highest_point_value: If True, include "Highest Point Value in Hand" 
-                                        in observations. Default True for backward compatibility.
-            include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field"
-                                                       in observations. Default True for backward compatibility.
-            include_scores: If True, include "Current Player Score" and "Opponent Score" in observations.
-                           Default False (new feature).
         """
-        # Store toggle settings
-        self.include_highest_point_value = include_highest_point_value
-        self.include_highest_point_value_opponent_field = include_highest_point_value_opponent_field
-        self.include_scores = include_scores
 
         # Generates the zones
         # A zone is a bool np array
@@ -154,87 +137,10 @@ class CuttleEnvironment:
             "Effect-Shown": self.effect_shown,
         }
         
-        # Conditionally include highest point value based on toggle
-        if self.include_highest_point_value:
-            obs["Highest Point Value in Hand"] = self._calculate_highest_point_in_hand()
-        
-        # Conditionally include highest point value in opponent field based on toggle
-        if self.include_highest_point_value_opponent_field:
-            obs["Highest Point Value in Opponent Field"] = self._calculate_highest_point_in_opponent_field()
-        
-        # Conditionally include scores based on toggle
-        if self.include_scores:
-            # Get current player's score (from current perspective)
-            current_score, _ = self.scoreState()
-            # Get opponent's score by switching perspective
-            self.passControl()
-            opponent_score, _ = self.scoreState()
-            self.passControl()  # Switch back to original perspective
-            obs["Current Player Score"] = current_score
-            obs["Opponent Score"] = opponent_score
-        
         return obs
 
     def _get_info(self):
         pass
-
-    def _calculate_highest_point_in_hand(self) -> int:
-        """
-        Calculate the highest point value among scorable cards in hand.
-        
-        Returns:
-            Highest point value (1-10) if scorable cards exist, 0 otherwise
-        """
-        hand = self.current_zones["Hand"]
-        inhand = np.where(hand)[0]
-        
-        if len(inhand) == 0:
-            return 0
-        
-        point_indicies = self.point_indicies
-        card_dict = self.card_dict
-        max_value = 0
-        
-        for card_idx in inhand:
-            # Skip bounced cards
-            if card_idx in self.current_bounced:
-                continue
-            
-            # Check if it's a point card (rank 0-9)
-            is_point_card = any(card_idx in rank_list for rank_list in point_indicies)
-            if is_point_card:
-                rank = card_dict[card_idx]["rank"]
-                point_value = rank + 1
-                max_value = max(max_value, point_value)
-        
-        return max_value
-
-    def _calculate_highest_point_in_opponent_field(self) -> int:
-        """
-        Calculate the highest point value among scorable cards on opponent's field.
-        
-        Returns:
-            Highest point value (1-10) if scorable cards exist, 0 otherwise
-        """
-        opponent_field = self.off_zones["Field"]
-        onfield = np.where(opponent_field)[0]
-        
-        if len(onfield) == 0:
-            return 0
-        
-        point_indicies = self.point_indicies
-        card_dict = self.card_dict
-        max_value = 0
-        
-        for card_idx in onfield:
-            # Check if it's a point card (rank 0-9)
-            is_point_card = any(card_idx in rank_list for rank_list in point_indicies)
-            if is_point_card:
-                rank = card_dict[card_idx]["rank"]
-                point_value = rank + 1
-                max_value = max(max_value, point_value)
-        
-        return max_value
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         random.seed(seed)

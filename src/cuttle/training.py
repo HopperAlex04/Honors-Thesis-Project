@@ -786,9 +786,6 @@ def selfPlayTraining(
     log_actions: bool = True,
     log_metrics: bool = True,
     model_id: Optional[str] = None,
-    include_highest_point_value: bool = False,
-    include_highest_point_value_opponent_field: bool = False,
-    include_scores: bool = False,
     initial_steps: int = 0,
     round_number: Optional[int] = None,
     initial_total_time: float = 0.0,
@@ -808,9 +805,6 @@ def selfPlayTraining(
         log_actions: If True, log all actions to file for strategy analysis
         log_metrics: If True, log training metrics (win rates, loss, etc.)
         model_id: Optional model identifier for log files (e.g., "round_3", "checkpoint_5")
-        include_highest_point_value: If True, include "Highest Point Value in Hand" feature
-        include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field" feature
-        include_scores: If True, include "Current Player Score" and "Opponent Score" features
         initial_steps: Starting step count for epsilon decay (for resuming training)
         round_number: Optional round number to display in episode output
         initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
@@ -819,11 +813,7 @@ def selfPlayTraining(
     Returns:
         Tuple of (p1_wins, p2_wins, final_steps) counts
     """
-    env = CuttleEnvironment(
-        include_highest_point_value=include_highest_point_value,
-        include_highest_point_value_opponent_field=include_highest_point_value_opponent_field,
-        include_scores=include_scores
-    )
+    env = CuttleEnvironment()
     actions = env.actions
     steps = initial_steps
     p1_wins = 0
@@ -1085,9 +1075,6 @@ def validate_both_positions(
     trainee: Players.Player,
     opponent: Players.Player,
     episodes_per_position: int,
-    include_highest_point_value: bool = False,
-    include_highest_point_value_opponent_field: bool = False,
-    include_scores: bool = False,
     model_id_prefix: Optional[str] = None,
     round_number: Optional[int] = None,
     initial_total_time: float = 0.0,
@@ -1102,10 +1089,7 @@ def validate_both_positions(
         trainee: The agent being evaluated
         opponent: The opponent to play against
         episodes_per_position: Number of episodes to run for each position (total = 2 * episodes_per_position)
-        include_highest_point_value: If True, include "Highest Point Value in Hand" feature
-        include_highest_point_value_opponent_field: If True, include "Highest Point Value in Opponent Field" feature
-        include_scores: If True, include "Current Player Score" and "Opponent Score" features
-        model_id_prefix: Prefix for log file names (e.g., "no_features_round_0_vs_randomized")
+        model_id_prefix: Prefix for log file names (e.g., "round_0_vs_randomized")
         round_number: Optional round number to display in episode output
         initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
         
@@ -1120,9 +1104,6 @@ def validate_both_positions(
         trainee, opponent, episodes_per_position,
         validating=True,
         model_id=f"{model_id_prefix}_trainee_first" if model_id_prefix else None,
-        include_highest_point_value=include_highest_point_value,
-        include_highest_point_value_opponent_field=include_highest_point_value_opponent_field,
-        include_scores=include_scores,
         initial_steps=0,
         round_number=round_number,
         initial_total_time=initial_total_time
@@ -1137,9 +1118,6 @@ def validate_both_positions(
         opponent, trainee, episodes_per_position,
         validating=True,
         model_id=f"{model_id_prefix}_trainee_second" if model_id_prefix else None,
-        include_highest_point_value=include_highest_point_value,
-        include_highest_point_value_opponent_field=include_highest_point_value_opponent_field,
-        include_scores=include_scores,
         initial_steps=0,
         round_number=round_number,
         initial_total_time=updated_total_time

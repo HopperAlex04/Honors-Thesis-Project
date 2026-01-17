@@ -243,21 +243,8 @@ def load_model(checkpoint_path: Path, config_path: Optional[Path] = None) -> Tup
             "replay_buffer_size": 30000,
         }
     
-    # Determine feature configuration from checkpoint name
-    checkpoint_name = checkpoint_path.name.lower()
-    include_hand = "hand" in checkpoint_name or "no_features" not in checkpoint_name
-    include_opponent = "opponent" in checkpoint_name or "both" in checkpoint_name or "no_features" not in checkpoint_name
-    
-    # For no_features checkpoints, disable both
-    if "no_features" in checkpoint_name:
-        include_hand = False
-        include_opponent = False
-    
-    # Create environment with appropriate features
-    env = CuttleEnvironment(
-        include_highest_point_value=include_hand,
-        include_highest_point_value_opponent_field=include_opponent
-    )
+    # Create environment (no feature flags needed anymore)
+    env = CuttleEnvironment()
     actions = env.actions
     
     # Create model
