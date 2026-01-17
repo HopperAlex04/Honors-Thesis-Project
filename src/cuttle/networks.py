@@ -12,9 +12,7 @@ from torch import nn
 
 
 # Constants
-EMBEDDING_VOCAB_SIZE = 54  # 0 = empty, 1-52 = cards, 53+ = special values
-STACK_SIZE = 5  # Stack depth for action history
-EFFECT_SHOWN_SIZE = 2  # Number of revealed cards
+# Stack and effect_shown are now boolean arrays of length 52 (no embeddings needed)
 
 
 class NeuralNetwork(nn.Module):
@@ -25,9 +23,8 @@ class NeuralNetwork(nn.Module):
     and outputs Q-values for all possible actions.
     
     The network:
-    1. Concatenates boolean zone arrays (hand, field, deck, scrap, etc.)
-    2. Embeds discrete values (stack, effect_shown) using embedding layers
-    3. Passes through a linear layer to output Q-values
+    1. Concatenates boolean zone arrays (hand, field, deck, scrap, stack, effect_shown)
+    2. Passes through a linear layer to output Q-values
     
     Args:
         observation_space: Dictionary representing the observation space structure
@@ -39,7 +36,7 @@ class NeuralNetwork(nn.Module):
     def __init__(
         self,
         observation_space: Dict[str, Any],
-        embedding_size: int,
+        embedding_size: int,  # Kept for backward compatibility, no longer used (no embeddings)
         num_actions: int,
         custom_network: Optional[nn.Sequential] = None
     ) -> None:
@@ -48,26 +45,19 @@ class NeuralNetwork(nn.Module):
         
         Args:
             observation_space: Dictionary representing observation structure
-            embedding_size: Dimension of embedding vectors
+            embedding_size: Deprecated - kept for backward compatibility, no longer used
             num_actions: Total number of possible actions
             custom_network: Optional custom network architecture
         """
         super().__init__()
         
-        self.embedding_size = embedding_size
         self.num_actions = num_actions
         
         if custom_network is not None:
             self.linear_relu_stack = custom_network
-            # Still need embedding for stack and effect_shown
-            self.embedding = nn.Embedding(EMBEDDING_VOCAB_SIZE, embedding_size)
         else:
             # Calculate input dimension from observation space
-            input_length = self._calculate_input_dimension(observation_space, embedding_size)
-            
-            # Embedding layer for discrete values (stack, effect_shown)
-            # Vocab size 54: 0 = empty, 1-52 = cards, 53+ = special values
-            self.embedding = nn.Embedding(EMBEDDING_VOCAB_SIZE, embedding_size)
+            input_length = self._calculate_input_dimension(observation_space)
             
             # Default network: two hidden layers with ReLU activations
             # Conservative architecture: 256 → 128 → num_actions
@@ -84,15 +74,15 @@ class NeuralNetwork(nn.Module):
     
     def _calculate_input_dimension(
         self,
-        observation_space: Dict[str, Any],
-        embedding_size: int
+        observation_space: Dict[str, Any]
     ) -> int:
         """
         Calculate the input dimension from observation space structure.
         
+        All inputs are boolean arrays: zones (52 each), stack (52), effect_shown (52).
+        
         Args:
             observation_space: Dictionary representing observation structure
-            embedding_size: Dimension of embedding vectors
             
         Returns:
             Total input dimension for the network
@@ -106,11 +96,8 @@ class NeuralNetwork(nn.Module):
                     if isinstance(nested_item, np.ndarray):
                         input_length += len(nested_item)
             elif isinstance(item, np.ndarray):
-                # Direct numpy array
+                # Direct numpy array (stack, effect_shown, zones)
                 input_length += len(item)
-            elif isinstance(item, list):
-                # List items are embedded (stack, effect_shown)
-                input_length += len(item) * embedding_size
         
         return input_length
     
@@ -183,7 +170,7 @@ class NeuralNetwork(nn.Module):
         # Validate observation structure
         self._validate_observation(obs)
         
-        # Concatenate boolean zone arrays
+        # Concatenate boolean zone arrays (all are boolean arrays of length 52)
         zone_arrays = [
             obs["Current Zones"]["Hand"],
             obs["Current Zones"]["Field"],
@@ -192,26 +179,14 @@ class NeuralNetwork(nn.Module):
             obs["Off-Player Revealed"],
             obs["Deck"],
             obs["Scrap"],
+            obs["Stack"],      # Boolean array of length 52
+            obs["Effect-Shown"],  # Boolean array of length 52
         ]
         state = np.concatenate(zone_arrays, axis=0)
-        state_tensor = torch.from_numpy(state).float()
-        
-        # Embed discrete values (stack and effect_shown)
         device = next(self.parameters()).device
-        stack_tensor = torch.tensor(obs["Stack"], dtype=torch.long, device=device)
-        effect_tensor = torch.tensor(obs["Effect-Shown"], dtype=torch.long, device=device)
+        state_tensor = torch.from_numpy(state).float().to(device)
         
-        embed_stack = self.embedding(stack_tensor).flatten()
-        embed_effect = self.embedding(effect_tensor).flatten()
-        
-        # Concatenate all features
-        final = torch.cat([
-            state_tensor.to(device), 
-            embed_stack, 
-            embed_effect
-        ])
-        
-        return final
+        return state_tensor
     
     def _preprocess_batch(
         self, 
@@ -278,13 +253,12 @@ class NeuralNetwork(nn.Module):
         if "Revealed" not in obs["Current Zones"]:
             raise ValueError("Missing 'Revealed' in 'Current Zones'")
         
-        # Validate list lengths
-        if len(obs["Stack"]) != STACK_SIZE:
+        # Validate array lengths (stack and effect_shown are now boolean arrays)
+        if not isinstance(obs["Stack"], np.ndarray) or len(obs["Stack"]) != 52:
             raise ValueError(
-                f"Stack must have length {STACK_SIZE}, got {len(obs['Stack'])}"
+                f"Stack must be a boolean array of length 52, got {type(obs['Stack'])} with length {len(obs['Stack']) if hasattr(obs['Stack'], '__len__') else 'N/A'}"
             )
-        if len(obs["Effect-Shown"]) != EFFECT_SHOWN_SIZE:
+        if not isinstance(obs["Effect-Shown"], np.ndarray) or len(obs["Effect-Shown"]) != 52:
             raise ValueError(
-                f"Effect-Shown must have length {EFFECT_SHOWN_SIZE}, "
-                f"got {len(obs['Effect-Shown'])}"
+                f"Effect-Shown must be a boolean array of length 52, got {type(obs['Effect-Shown'])} with length {len(obs['Effect-Shown']) if hasattr(obs['Effect-Shown'], '__len__') else 'N/A'}"
             )

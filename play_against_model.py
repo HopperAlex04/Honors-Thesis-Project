@@ -110,9 +110,11 @@ def display_game_state(env: CuttleEnvironment, human_is_p1: bool = True):
     else:
         print("  (empty)")
     
-    # Display stack
-    if obs.get("Stack", [0])[0] != 0:
-        print(f"\nStack: {obs['Stack'][0]}")
+    # Display stack (now boolean array - check if any cards are in stack)
+    stack = obs.get("Stack", np.zeros(52, dtype=bool))
+    if isinstance(stack, np.ndarray) and np.any(stack):
+        stack_cards = [i for i in range(52) if stack[i]]
+        print(f"\nStack: {len(stack_cards)} card(s) - {', '.join(card_to_string(c) for c in stack_cards)}")
     
     print("="*60 + "\n")
 

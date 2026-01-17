@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
+import numpy as np
 import torch
 
 from cuttle import players as Players
@@ -175,13 +176,17 @@ def extract_state_features(state: Dict[str, Any]) -> Dict[str, int]:
     Returns:
         Dictionary of extracted state features
     """
+    # Stack is now a boolean array - count cards in stack
+    stack_size = int(state["Stack"].sum()) if isinstance(state["Stack"], np.ndarray) else 0
+    # Note: stack_top action type is not available from observation, use 0 as placeholder
+    # (actual stack top action type is tracked internally by environment)
     return {
         "hand_size": int(state["Current Zones"]["Hand"].sum()),
         "field_size": int(state["Current Zones"]["Field"].sum()),
         "opponent_field_size": int(state["Off-Player Field"].sum()),
         "deck_size": int(state["Deck"].sum()),
         "scrap_size": int(state["Scrap"].sum()),
-        "stack_top": state["Stack"][0] if isinstance(state["Stack"], list) else 0,
+        "stack_size": stack_size,  # Number of cards in stack (boolean array)
     }
 
 
