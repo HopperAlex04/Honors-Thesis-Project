@@ -240,7 +240,7 @@ class TestTrainingConstants(unittest.TestCase):
         """Test that reward constants have expected values."""
         self.assertEqual(Training.REWARD_WIN, 1.0)
         self.assertEqual(Training.REWARD_LOSS, -1.0)
-        self.assertEqual(Training.REWARD_DRAW, -0.5)
+        self.assertEqual(Training.REWARD_DRAW, 0.0)
         self.assertEqual(Training.REWARD_INTERMEDIATE, 0.0)
         self.assertEqual(Training.SCORE_REWARD_SCALE, 0.01)  # Reduced from 0.1 to prevent Q-value explosion
     

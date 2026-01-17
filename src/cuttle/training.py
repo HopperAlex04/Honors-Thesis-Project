@@ -31,10 +31,11 @@ LOG_DIRECTORY = Path("./action_logs")
 # Reward constants
 REWARD_WIN = 1.0  # Reward for winning an episode
 REWARD_LOSS = -1.0  # Reward for losing an episode
-REWARD_DRAW = -0.5  # Reward for drawing an episode (penalize heavily to discourage passive play)
+REWARD_DRAW = 0.0  # Reward for drawing an episode (neutral - neither good nor bad)
 REWARD_INTERMEDIATE = 0.0  # Base reward for intermediate steps (non-terminal states)
 SCORE_REWARD_SCALE = 0.01  # Scale factor for score-based rewards (reduced from 0.1 to prevent Q-value explosion)
 GAP_REWARD_SCALE = 0.005  # Scale factor for score gap rewards (half of score reward scale to prioritize scoring over gap)
+USE_INTERMEDIATE_REWARDS = False  # Flag to enable/disable intermediate rewards (score-based and gap-based)
 
 
 def setup_logger(
@@ -471,13 +472,13 @@ def update_replay_memory(
     
     # Calculate score-based reward for intermediate states
     score_reward = 0.0
-    if score_change is not None and not is_terminal:
+    if USE_INTERMEDIATE_REWARDS and score_change is not None and not is_terminal:
         # Add score-based reward: positive for scoring points, scaled to not overwhelm terminal rewards
         score_reward = score_change * SCORE_REWARD_SCALE
     
     # Calculate gap-based reward for intermediate states
     gap_reward = 0.0
-    if gap_change is not None and not is_terminal:
+    if USE_INTERMEDIATE_REWARDS and gap_change is not None and not is_terminal:
         # Add gap-based reward: positive for improving relative position (closing gap when behind,
         # or increasing gap when ahead), scaled smaller than score rewards to prioritize scoring
         gap_reward = gap_change * GAP_REWARD_SCALE
