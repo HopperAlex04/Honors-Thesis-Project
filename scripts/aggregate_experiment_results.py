@@ -55,41 +55,68 @@ def load_run_metrics(run_path: Path, network_type: str) -> Dict[str, List[float]
     """
     metrics = {
         "win_rates_by_round": [],
+        "round_win_rates": [],  # Per-round win rates for training curves
         "losses_by_episode": [],
         "final_win_rate": None,
     }
     
+    # Check metrics_logs first, fall back to action_logs for legacy experiments
+    metrics_logs = run_path / "metrics_logs"
     action_logs = run_path / "action_logs"
-    if not action_logs.exists():
+    
+    log_dir = metrics_logs if metrics_logs.exists() else action_logs
+    if not log_dir.exists():
         return metrics
     
-    # The new training stores logs under round_X directories or directly
-    # Look for validation metrics files
-    for subdir in action_logs.iterdir():
-        if not subdir.is_dir():
+    # Find validation files (vs_randomized or vs_gapmaximizer)
+    # Files are directly in the log directory, not in subdirectories
+    validation_files = sorted(log_dir.glob("metrics_round_*_vs_*.jsonl"))
+    
+    # Group by round to get per-round win rates
+    round_data: Dict[int, List[float]] = {}
+    
+    for vf in validation_files:
+        # Extract round number from filename
+        import re
+        match = re.search(r'round_(\d+)', vf.name)
+        if not match:
             continue
+        round_num = int(match.group(1))
         
-        # Find validation files (vs_randomized or vs_gapmaximizer)
-        validation_files = sorted(subdir.glob("metrics_round_*_vs_*.jsonl"))
-        
-        for vf in validation_files:
-            # Read the last line to get final round stats
-            with open(vf, 'r') as f:
-                lines = f.readlines()
-                if lines:
-                    last_metrics = json.loads(lines[-1])
+        # Read the last line to get final round stats
+        with open(vf, 'r') as f:
+            lines = f.readlines()
+            if lines:
+                last_metrics = json.loads(lines[-1])
+                # Determine win rate based on player position
+                p1_name = last_metrics.get("p1_name", "")
+                if "PlayerAgent" in p1_name:
                     win_rate = last_metrics.get("p1_win_rate", 0)
-                    metrics["win_rates_by_round"].append(win_rate)
-        
-        # Find selfplay files for loss
-        selfplay_files = sorted(subdir.glob("metrics_round_*_selfplay.jsonl"))
-        
-        for sf in selfplay_files:
-            with open(sf, 'r') as f:
-                for line in f:
+                else:
+                    win_rate = last_metrics.get("p2_win_rate", 0)
+                
+                if round_num not in round_data:
+                    round_data[round_num] = []
+                round_data[round_num].append(win_rate)
+    
+    # Calculate average win rate per round (combining first/second positions)
+    for round_num in sorted(round_data.keys()):
+        avg_win_rate = sum(round_data[round_num]) / len(round_data[round_num])
+        metrics["round_win_rates"].append(avg_win_rate)
+        metrics["win_rates_by_round"].append(avg_win_rate)
+    
+    # Find selfplay files for loss
+    selfplay_files = sorted(log_dir.glob("metrics_round_*_selfplay.jsonl"))
+    
+    for sf in selfplay_files:
+        with open(sf, 'r') as f:
+            for line in f:
+                try:
                     data = json.loads(line)
                     if data.get("loss") is not None:
                         metrics["losses_by_episode"].append(data["loss"])
+                except json.JSONDecodeError:
+                    continue
     
     # Set final win rate
     if metrics["win_rates_by_round"]:

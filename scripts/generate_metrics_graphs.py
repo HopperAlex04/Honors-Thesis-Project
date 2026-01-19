@@ -1,972 +1,633 @@
 #!/usr/bin/env python3
 """
-Script to generate visualization graphs from training metrics files.
+Generate visualization graphs from experiment metrics.
 
-This script aggregates metrics across training rounds and generates comprehensive
-visualizations to track training progress.
+This script generates graphs from training metrics stored in the experiment
+manager's directory structure. It supports both round-level and episode-level
+visualizations, and can compare multiple experiments.
 
 Usage:
-    python scripts/generate_metrics_graphs.py --type hand_only
-    python scripts/generate_metrics_graphs.py --phase selfplay --metrics win_rate
+    python scripts/generate_metrics_graphs.py                      # Current experiment
+    python scripts/generate_metrics_graphs.py --experiment NAME    # Specific experiment
+    python scripts/generate_metrics_graphs.py --compare EXP1 EXP2  # Compare experiments
+    python scripts/generate_metrics_graphs.py --episodic           # Episode-level graphs
 """
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 
-# Valid training types
-VALID_TRAINING_TYPES = [
-    "hand_only",
-    "opponent_field_only",
-    "no_features",
-    "both_features",  # Legacy name, kept for backward compatibility
-    "all_features",
-    "scores"
-]
+# Optional seaborn import
+try:
+    import seaborn as sns
+    HAS_SEABORN = True
+except ImportError:
+    HAS_SEABORN = False
 
-# Valid phases
-VALID_PHASES = [
-    "selfplay",
-    "vs_previous",
-    "vs_randomized",
-    "vs_heuristic",
-    "vs_gapmaximizer"
-]
+# Project paths
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
+CURRENT_EXPERIMENT_FILE = EXPERIMENTS_DIR / ".current_experiment"
 
-# Metric groups
-METRIC_GROUPS = {
-    "win_rate": ["p1_win_rate", "p2_win_rate", "draw_rate"],
-    "loss": ["loss"],
-    "epsilon": ["p1_epsilon", "p2_epsilon"],
-    "memory_size": ["p1_memory_size", "p2_memory_size"],
-    "score": ["p1_score", "p2_score"],
-    "turns": ["episode_turns"]
-}
+# Valid phases for validation
+VALIDATION_PHASES = ["vs_randomized", "vs_gapmaximizer"]
+SELFPLAY_PHASE = "selfplay"
+
+
+def get_current_experiment() -> Optional[Path]:
+    """Get the path to the current experiment."""
+    if not CURRENT_EXPERIMENT_FILE.exists():
+        return None
+    
+    with open(CURRENT_EXPERIMENT_FILE, 'r') as f:
+        exp_path = Path(f.read().strip())
+    
+    if exp_path.exists():
+        return exp_path
+    return None
+
+
+def find_experiment(name: str) -> Optional[Path]:
+    """Find an experiment by name (partial match)."""
+    if not EXPERIMENTS_DIR.exists():
+        return None
+    
+    for exp_dir in EXPERIMENTS_DIR.iterdir():
+        if exp_dir.is_dir() and name in exp_dir.name:
+            return exp_dir
+    
+    return None
+
+
+def get_metrics_dir(run_path: Path) -> Optional[Path]:
+    """Get the metrics directory for a run (metrics_logs or action_logs fallback)."""
+    metrics_logs = run_path / "metrics_logs"
+    if metrics_logs.exists():
+        return metrics_logs
+    
+    action_logs = run_path / "action_logs"
+    if action_logs.exists():
+        return action_logs
+    
+    return None
 
 
 def parse_metrics_file(file_path: Path) -> List[Dict[str, Any]]:
-    """
-    Parse a JSONL metrics file and return list of episode metrics.
-    
-    Args:
-        file_path: Path to the metrics JSONL file
-        
-    Returns:
-        List of episode metric dictionaries
-    """
+    """Parse a JSONL metrics file and return list of episode metrics."""
     metrics = []
     if not file_path.exists():
         return metrics
     
-    try:
-        with open(file_path, 'r') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line:
-                    continue
+    with open(file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line:
                 try:
                     metrics.append(json.loads(line))
-                except json.JSONDecodeError as e:
-                    print(f"Warning: Skipping invalid JSON in {file_path} at line {line_num}: {e}")
-    except Exception as e:
-        print(f"Error reading {file_path}: {e}")
+                except json.JSONDecodeError:
+                    continue
     
     return metrics
 
 
 def extract_round_number(filename: str) -> Optional[int]:
-    """
-    Extract round number from metrics filename.
-    
-    Args:
-        filename: Metrics filename (e.g., "metrics_hand_only_round_5_selfplay.jsonl")
-        
-    Returns:
-        Round number or None if not found
-    """
-    match = re.search(r'_round_(\d+)_', filename)
+    """Extract round number from filename like 'metrics_round_3_selfplay.jsonl'."""
+    import re
+    match = re.search(r'round_(\d+)', filename)
     if match:
         return int(match.group(1))
     return None
 
 
-def aggregate_phase_metrics(
-    training_type: str,
-    phase: str,
-    base_dir: Path,
-    combine_positions: bool = True,
-    rounds_filter: Optional[List[int]] = None
-) -> Dict[int, List[Dict[str, Any]]]:
+def load_run_metrics(run_path: Path) -> Dict[str, Any]:
     """
-    Aggregate metrics for a specific phase across all rounds.
+    Load all metrics from a single run.
     
-    For validation phases, combines trainee_first and trainee_second files.
-    Adds metadata to track which player is the trainee for each episode.
-    
-    Args:
-        training_type: Training type (e.g., "hand_only")
-        phase: Phase name (e.g., "selfplay", "vs_previous")
-        base_dir: Base directory containing action_logs
-        combine_positions: If True, combine trainee_first and trainee_second
-        rounds_filter: Optional list of round numbers to include
-        
-    Returns:
-        Dictionary mapping round number to list of episode metrics
+    Returns dict with:
+        - selfplay: {round: [episode_metrics]}
+        - vs_randomized: {round: [episode_metrics]}  
+        - vs_gapmaximizer: {round: [episode_metrics]}
     """
-    metrics_by_round = {}
-    log_dir = base_dir / "action_logs" / training_type
+    metrics_dir = get_metrics_dir(run_path)
+    if not metrics_dir:
+        return {}
     
-    if not log_dir.exists():
-        print(f"Warning: Log directory not found: {log_dir}")
-        return metrics_by_round
-    
-    if phase == "selfplay":
-        # Single file per round
-        pattern = f"metrics_{training_type}_round_*_selfplay.jsonl"
-        for file_path in log_dir.glob(pattern):
-            round_num = extract_round_number(file_path.name)
-            if round_num is None:
-                continue
-            if rounds_filter is not None and round_num not in rounds_filter:
-                continue
-            
-            episodes = parse_metrics_file(file_path)
-            # In selfplay, both players are the same agent, so no trainee tracking needed
-            if episodes:
-                metrics_by_round[round_num] = episodes
-    else:
-        # Two files per round (trainee_first and trainee_second)
-        # Phase already includes "vs_" prefix, so don't add it again
-        first_pattern = f"metrics_{training_type}_round_*_{phase}_trainee_first.jsonl"
-        second_pattern = f"metrics_{training_type}_round_*_{phase}_trainee_second.jsonl"
-        
-        # Filter out None values from extract_round_number
-        first_files = {}
-        for f in log_dir.glob(first_pattern):
-            round_num = extract_round_number(f.name)
-            if round_num is not None:
-                first_files[round_num] = f
-        
-        second_files = {}
-        for f in log_dir.glob(second_pattern):
-            round_num = extract_round_number(f.name)
-            if round_num is not None:
-                second_files[round_num] = f
-        
-        all_rounds = set(first_files.keys()) | set(second_files.keys())
-        
-        for round_num in all_rounds:
-            if rounds_filter is not None and round_num not in rounds_filter:
-                continue
-            
-            episodes = []
-            
-            if round_num in first_files:
-                file_path = first_files[round_num]
-                first_episodes = parse_metrics_file(file_path)
-                # Mark that p1 is the trainee in these episodes
-                for ep in first_episodes:
-                    ep["_trainee_is_p1"] = True
-                episodes.extend(first_episodes)
-            
-            if combine_positions and round_num in second_files:
-                file_path = second_files[round_num]
-                second_episodes = parse_metrics_file(file_path)
-                # Mark that p2 is the trainee in these episodes
-                for ep in second_episodes:
-                    ep["_trainee_is_p1"] = False
-                episodes.extend(second_episodes)
-            
-            # Only add if we have episodes
-            if episodes:
-                metrics_by_round[round_num] = episodes
-    
-    return metrics_by_round
-
-
-def extract_metric_series(
-    metrics_by_round: Dict[int, List[Dict[str, Any]]],
-    metric_name: str,
-    aggregation: str = "mean"
-) -> Tuple[List[int], List[float], Optional[List[float]]]:
-    """
-    Extract a metric series across episodes (not aggregated by round).
-    
-    For win rate metrics, recalculates cumulative win rates across all rounds
-    since win rates in the data are cumulative per round only.
-    
-    Args:
-        metrics_by_round: Dictionary mapping round to episode metrics
-        metric_name: Name of metric to extract
-        aggregation: Ignored (kept for backward compatibility)
-        
-    Returns:
-        Tuple of (episode_numbers, metric_values, None)
-        Episode numbers are cumulative across rounds (episode 0 from round 0, episode 0 from round 1, etc.)
-    """
-    episode_numbers = []
-    values = []
-    
-    # Special handling for win rate metrics - need to recalculate cumulative across rounds
-    is_win_rate_metric = metric_name in ["p1_win_rate", "p2_win_rate", "draw_rate"]
-    
-    if is_win_rate_metric:
-        # Check if this is a validation phase (has _trainee_is_p1 metadata)
-        # For selfplay, both players are the same agent, so we use raw p1/p2 values
-        is_validation_phase = any(
-            "_trainee_is_p1" in ep
-            for episodes in metrics_by_round.values()
-            for ep in episodes
-        )
-        
-        if is_validation_phase:
-            # Track cumulative wins/draws across all rounds
-            # For validation phases, track trainee wins (not p1/p2 wins)
-            cumulative_trainee_wins = 0
-            cumulative_opponent_wins = 0
-            cumulative_draws = 0
-            cumulative_episode = 0
-            
-            # Sort rounds to process in order
-            rounds = sorted(metrics_by_round.keys())
-            
-            for round_num in rounds:
-                episodes = metrics_by_round[round_num]
-                # Sort episodes by episode number if available, then by trainee position
-                # This ensures trainee_first episodes come before trainee_second for same episode number
-                sorted_episodes = sorted(episodes, key=lambda ep: (
-                    ep.get("episode", 0),
-                    ep.get("_trainee_is_p1", True)  # trainee_first (True) before trainee_second (False)
-                ))
-                
-                # Track wins/draws from previous episode in this round to calculate deltas
-                # Need separate tracking for trainee_first and trainee_second since they're separate files
-                # Use a dict keyed by trainee_is_p1 to track per-file state
-                prev_state = {
-                    True: {"p1_wins": 0, "p2_wins": 0, "draws": 0, "last_episode": -1},  # trainee_first
-                    False: {"p1_wins": 0, "p2_wins": 0, "draws": 0, "last_episode": -1}   # trainee_second
-                }
-                
-                for ep in sorted_episodes:
-                    # Get current wins/draws for this round
-                    # These are cumulative within the round (and within each file)
-                    episode_num = ep.get("episode", 0)
-                    p1_wins_in_round = ep.get("p1_wins", 0)
-                    p2_wins_in_round = ep.get("p2_wins", 0)
-                    draws_in_round = ep.get("draws", 0)
-                    
-                    # Determine which player is the trainee (must exist for validation phases)
-                    trainee_is_p1 = ep.get("_trainee_is_p1")
-                    if trainee_is_p1 is None:
-                        # Should not happen in validation phases, but handle gracefully
-                        print(f"Warning: Missing _trainee_is_p1 in validation phase at episode {episode_num}, round {round_num}")
-                        trainee_is_p1 = True  # Default fallback
-                    file_state = prev_state[trainee_is_p1]
-                
-                # Reset counters if we're starting a new file (episode 0 after a higher episode)
-                # OR if this is the first time we're seeing this file type in this round
-                # This handles the case where trainee_first and trainee_second are interleaved
-                if episode_num == 0:
-                    if file_state["last_episode"] > 0:
-                        # Starting a new file (same type, new round), reset counters
-                        file_state["p1_wins"] = 0
-                        file_state["p2_wins"] = 0
-                        file_state["draws"] = 0
-                    elif file_state["last_episode"] == -1:
-                        # First time seeing this file type in this round, initialize to 0
-                        file_state["p1_wins"] = 0
-                        file_state["p2_wins"] = 0
-                        file_state["draws"] = 0
-                
-                # Calculate new wins/draws since last episode in this file
-                new_p1_wins = p1_wins_in_round - file_state["p1_wins"]
-                new_p2_wins = p2_wins_in_round - file_state["p2_wins"]
-                new_draws = draws_in_round - file_state["draws"]
-                
-                # Safety check: deltas should never be negative (wins are cumulative)
-                # If negative, it means we're seeing a reset or there's a bug
-                if new_p1_wins < 0 or new_p2_wins < 0 or new_draws < 0:
-                    # This shouldn't happen, but if it does, it means we need to reset
-                    # This can happen if we're seeing episode 0 after a higher episode (new file)
-                    if episode_num == 0:
-                        # Reset state and recalculate
-                        file_state["p1_wins"] = 0
-                        file_state["p2_wins"] = 0
-                        file_state["draws"] = 0
-                        new_p1_wins = p1_wins_in_round
-                        new_p2_wins = p2_wins_in_round
-                        new_draws = draws_in_round
-                    else:
-                        # This is a real bug - log it but continue
-                        print(f"Warning: Negative delta detected for {metric_name} at episode {episode_num}, "
-                              f"round {round_num}, trainee_is_p1={trainee_is_p1}. "
-                              f"p1_wins: {p1_wins_in_round} - {file_state['p1_wins']} = {new_p1_wins}, "
-                              f"p2_wins: {p2_wins_in_round} - {file_state['p2_wins']} = {new_p2_wins}")
-                        # Clamp to 0 to prevent undercounting
-                        new_p1_wins = max(0, new_p1_wins)
-                        new_p2_wins = max(0, new_p2_wins)
-                        new_draws = max(0, new_draws)
-                
-                # Update file state for next iteration
-                file_state["p1_wins"] = p1_wins_in_round
-                file_state["p2_wins"] = p2_wins_in_round
-                file_state["draws"] = draws_in_round
-                file_state["last_episode"] = episode_num
-                
-                # Update cumulative totals based on who is the trainee
-                if trainee_is_p1:
-                    cumulative_trainee_wins += new_p1_wins
-                    cumulative_opponent_wins += new_p2_wins
-                else:
-                    cumulative_trainee_wins += new_p2_wins
-                    cumulative_opponent_wins += new_p1_wins
-                
-                cumulative_draws += new_draws
-                cumulative_episode += 1
-                
-                # Recalculate win rate based on cumulative totals
-                total_episodes = cumulative_episode
-                if metric_name == "p1_win_rate":
-                    # For validation, p1_win_rate always shows trainee win rate (regardless of position)
-                    # This ensures consistent graphs that don't switch meaning between trainee_first and trainee_second
-                    recalculated_value = cumulative_trainee_wins / total_episodes if total_episodes > 0 else 0.0
-                elif metric_name == "p2_win_rate":
-                    # For validation, p2_win_rate always shows opponent win rate (regardless of position)
-                    # This ensures consistent graphs that don't switch meaning between trainee_first and trainee_second
-                    recalculated_value = cumulative_opponent_wins / total_episodes if total_episodes > 0 else 0.0
-                elif metric_name == "draw_rate":
-                    recalculated_value = cumulative_draws / total_episodes if total_episodes > 0 else 0.0
-                else:
-                    recalculated_value = 0.0
-                
-                episode_numbers.append(cumulative_episode - 1)  # 0-indexed for x-axis
-                values.append(recalculated_value)
-        else:
-            # Selfplay phase: use raw p1/p2 values (both players are the same agent)
-            # Sort rounds to process in order
-            rounds = sorted(metrics_by_round.keys())
-            cumulative_episode = 0
-            
-            for round_num in rounds:
-                episodes = metrics_by_round[round_num]
-                # Sort episodes by episode number if available
-                sorted_episodes = sorted(episodes, key=lambda ep: ep.get("episode", 0))
-                
-                for ep in sorted_episodes:
-                    if metric_name in ep and ep[metric_name] is not None:
-                        # Use cumulative episode count to ensure unique x-axis values
-                        # This handles cases where episodes restart at 0 for each round
-                        episode_numbers.append(cumulative_episode)
-                        values.append(float(ep[metric_name]))
-                        cumulative_episode += 1
-    else:
-        # For non-win-rate metrics, use original values
-        # Sort rounds to process in order
-        rounds = sorted(metrics_by_round.keys())
-        cumulative_episode = 0
-        
-        for round_num in rounds:
-            episodes = metrics_by_round[round_num]
-            # Sort episodes by episode number if available
-            sorted_episodes = sorted(episodes, key=lambda ep: ep.get("episode", 0))
-            
-            for ep in sorted_episodes:
-                if metric_name in ep and ep[metric_name] is not None:
-                    # Use cumulative episode count to ensure unique x-axis values
-                    # This handles cases where episodes restart at 0 for each round
-                    episode_numbers.append(cumulative_episode)
-                    values.append(float(ep[metric_name]))
-                    cumulative_episode += 1
-    
-    # Return None for std_devs since we're not aggregating
-    return episode_numbers, values, None
-
-
-def calculate_statistics(values: List[float]) -> Dict[str, float]:
-    """
-    Calculate statistical measures for a metric series.
-    
-    Args:
-        values: List of metric values
-        
-    Returns:
-        Dictionary with statistical measures
-    """
-    valid_values = [v for v in values if not np.isnan(v)]
-    
-    if not valid_values:
-        return {
-            "mean": np.nan,
-            "std": np.nan,
-            "min": np.nan,
-            "max": np.nan,
-            "median": np.nan,
-            "trend": np.nan,
-            "r_squared": np.nan
-        }
-    
-    valid_values = np.array(valid_values)
-    
-    # Calculate basic statistics
-    stats = {
-        "mean": float(np.mean(valid_values)),
-        "std": float(np.std(valid_values)),
-        "min": float(np.min(valid_values)),
-        "max": float(np.max(valid_values)),
-        "median": float(np.median(valid_values))
+    result = {
+        "selfplay": {},
+        "vs_randomized": {},
+        "vs_gapmaximizer": {},
     }
     
-    # Calculate trend (linear regression slope)
-    if len(valid_values) > 1:
-        x = np.arange(len(valid_values))
-        coeffs = np.polyfit(x, valid_values, 1)
-        stats["trend"] = float(coeffs[0])  # Slope
+    for metrics_file in metrics_dir.glob("metrics_*.jsonl"):
+        filename = metrics_file.name
+        round_num = extract_round_number(filename)
         
-        # Calculate R-squared
-        y_pred = np.polyval(coeffs, x)
-        ss_res = np.sum((valid_values - y_pred) ** 2)
-        ss_tot = np.sum((valid_values - np.mean(valid_values)) ** 2)
-        if ss_tot > 0:
-            stats["r_squared"] = float(1 - (ss_res / ss_tot))
-        else:
-            stats["r_squared"] = 0.0
-    else:
-        stats["trend"] = 0.0
-        stats["r_squared"] = 0.0
+        if round_num is None:
+            continue
+        
+        episodes = parse_metrics_file(metrics_file)
+        if not episodes:
+            continue
+        
+        if "selfplay" in filename:
+            result["selfplay"][round_num] = episodes
+        elif "vs_randomized" in filename:
+            # Combine trainee_first and trainee_second
+            if round_num not in result["vs_randomized"]:
+                result["vs_randomized"][round_num] = []
+            result["vs_randomized"][round_num].extend(episodes)
+        elif "vs_gapmaximizer" in filename:
+            if round_num not in result["vs_gapmaximizer"]:
+                result["vs_gapmaximizer"][round_num] = []
+            result["vs_gapmaximizer"][round_num].extend(episodes)
     
-    return stats
+    return result
 
 
-def compute_moving_average(values: List[float], window_size: int) -> Tuple[List[float], List[float], List[float]]:
+def load_experiment_metrics(experiment_path: Path) -> Dict[str, Dict[str, Any]]:
     """
-    Compute moving average with standard deviation for confidence intervals.
+    Load metrics from all completed runs in an experiment.
     
-    Args:
-        values: List of metric values
-        window_size: Size of the moving window
-        
-    Returns:
-        Tuple of (smoothed_values, lower_bounds, upper_bounds)
+    Returns dict mapping run_id -> run_metrics
     """
-    if len(values) < window_size:
-        return values, values, values
+    runs_dir = experiment_path / "runs"
+    if not runs_dir.exists():
+        return {}
     
-    smoothed = []
-    lower_bounds = []
-    upper_bounds = []
-    
-    for i in range(len(values)):
-        start = max(0, i - window_size // 2)
-        end = min(len(values), i + window_size // 2 + 1)
-        window_values = [v for v in values[start:end] if not np.isnan(v)]
+    result = {}
+    for run_dir in sorted(runs_dir.iterdir()):
+        if not run_dir.is_dir():
+            continue
         
-        if window_values:
-            mean_val = np.mean(window_values)
-            std_val = np.std(window_values)
-            smoothed.append(mean_val)
-            lower_bounds.append(mean_val - std_val)
-            upper_bounds.append(mean_val + std_val)
-        else:
-            smoothed.append(np.nan)
-            lower_bounds.append(np.nan)
-            upper_bounds.append(np.nan)
+        # Check if run has metrics
+        metrics = load_run_metrics(run_dir)
+        if metrics:
+            result[run_dir.name] = metrics
     
-    return smoothed, lower_bounds, upper_bounds
+    return result
 
 
-def bin_episodes(
-    episodes: List[int],
-    values: List[float],
-    bin_size: int
-) -> Tuple[List[int], List[float], List[float], List[float]]:
+def calculate_round_win_rates(
+    experiment_metrics: Dict[str, Dict[str, Any]],
+    phase: str = "vs_randomized"
+) -> Dict[int, List[float]]:
     """
-    Bin episodes into groups and compute mean and std for each bin.
+    Calculate win rates per round across all runs.
     
-    Args:
-        episodes: List of episode numbers
-        values: List of metric values
-        bin_size: Number of episodes per bin
-        
-    Returns:
-        Tuple of (bin_centers, bin_means, bin_stds_lower, bin_stds_upper)
+    Returns dict mapping round_number -> list of win rates (one per run)
     """
-    if bin_size <= 0 or len(episodes) == 0:
-        return episodes, values, values, values
+    round_win_rates: Dict[int, List[float]] = {}
     
-    binned_episodes = []
-    binned_means = []
-    binned_stds_lower = []
-    binned_stds_upper = []
-    
-    for i in range(0, len(episodes), bin_size):
-        bin_episodes = episodes[i:i+bin_size]
-        bin_values = [v for v in values[i:i+bin_size] if not np.isnan(v)]
+    for run_id, run_metrics in experiment_metrics.items():
+        if phase not in run_metrics:
+            continue
         
-        if bin_values:
-            bin_center = np.mean(bin_episodes)
-            bin_mean = np.mean(bin_values)
-            bin_std = np.std(bin_values)
+        for round_num, episodes in run_metrics[phase].items():
+            if not episodes:
+                continue
             
-            binned_episodes.append(bin_center)
-            binned_means.append(bin_mean)
-            binned_stds_lower.append(bin_mean - bin_std)
-            binned_stds_upper.append(bin_mean + bin_std)
+            # Get final episode which has cumulative stats
+            last_ep = episodes[-1]
+            
+            # Determine trainee win rate based on position
+            if "trainee" in str(last_ep.get("p1_name", "")):
+                win_rate = last_ep.get("p1_win_rate", 0)
+            elif "trainee" in str(last_ep.get("p2_name", "")):
+                win_rate = last_ep.get("p2_win_rate", 0)
+            else:
+                # Default: use p1_wins and p2_wins to calculate
+                p1_wins = last_ep.get("p1_wins", 0)
+                p2_wins = last_ep.get("p2_wins", 0)
+                total = p1_wins + p2_wins
+                # Assume PlayerAgent is the trainee
+                if "PlayerAgent" in str(last_ep.get("p1_name", "")):
+                    win_rate = p1_wins / total if total > 0 else 0
+                else:
+                    win_rate = p2_wins / total if total > 0 else 0
+            
+            if round_num not in round_win_rates:
+                round_win_rates[round_num] = []
+            round_win_rates[round_num].append(win_rate)
     
-    return binned_episodes, binned_means, binned_stds_lower, binned_stds_upper
+    return round_win_rates
 
 
-def generate_graph(
-    episodes: List[int],
-    values: List[float],
-    metric_name: str,
-    phase: str,
-    training_type: str,
-    output_dir: Path,
-    file_format: str = "png",
-    style: str = "seaborn",
-    std_devs: Optional[List[float]] = None,
-    statistics: Optional[Dict[str, float]] = None,
-    smoothing_window: Optional[int] = None,
-    bin_size: Optional[int] = None,
-    show_raw: bool = False
-) -> Path:
+def calculate_episodic_metrics(
+    experiment_metrics: Dict[str, Dict[str, Any]],
+    phase: str = "selfplay",
+    metric: str = "loss"
+) -> Tuple[List[int], List[float], List[float]]:
     """
-    Generate a graph for a specific metric with research-standard visualization.
+    Calculate episode-level metrics with mean and std across runs.
     
-    Args:
-        episodes: List of episode numbers
-        values: List of metric values
-        metric_name: Name of the metric
-        phase: Training phase name
-        training_type: Training type
-        output_dir: Directory to save graph
-        file_format: Output format (png, svg, pdf)
-        style: Plot style
-        std_devs: Optional standard deviations for error bars (ignored)
-        statistics: Optional statistics to display
-        smoothing_window: Optional window size for moving average (auto if None)
-        bin_size: Optional bin size for aggregation (auto if None)
-        show_raw: If True, show raw data points with low opacity
-        
     Returns:
-        Path to saved graph file
+        - episode_numbers: List of global episode numbers
+        - means: Mean value at each episode
+        - stds: Std value at each episode
     """
-    # Set style
-    if style == "seaborn":
+    # Collect all data by global episode number
+    episode_data: Dict[int, List[float]] = {}
+    
+    for run_id, run_metrics in experiment_metrics.items():
+        if phase not in run_metrics:
+            continue
+        
+        global_episode = 0
+        for round_num in sorted(run_metrics[phase].keys()):
+            episodes = run_metrics[phase][round_num]
+            
+            for ep in episodes:
+                value = ep.get(metric)
+                if value is not None and not (isinstance(value, float) and np.isnan(value)):
+                    if global_episode not in episode_data:
+                        episode_data[global_episode] = []
+                    episode_data[global_episode].append(value)
+                global_episode += 1
+    
+    if not episode_data:
+        return [], [], []
+    
+    episodes = sorted(episode_data.keys())
+    means = [np.mean(episode_data[e]) for e in episodes]
+    stds = [np.std(episode_data[e]) if len(episode_data[e]) > 1 else 0 for e in episodes]
+    
+    return episodes, means, stds
+
+
+def generate_round_win_rate_graph(
+    experiment_path: Path,
+    experiment_metrics: Dict[str, Dict[str, Any]],
+    output_dir: Path,
+    phases: List[str] = None
+) -> List[Path]:
+    """Generate win rate by round graphs."""
+    if phases is None:
+        phases = VALIDATION_PHASES
+    
+    generated = []
+    
+    if HAS_SEABORN:
         sns.set_style("whitegrid")
-    elif style == "ggplot":
-        plt.style.use("ggplot")
-    else:
-        plt.style.use("default")
     
-    # Create figure
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, axes = plt.subplots(1, len(phases), figsize=(7 * len(phases), 5))
+    if len(phases) == 1:
+        axes = [axes]
     
-    # Filter out NaN values for plotting
-    valid_indices = [i for i, v in enumerate(values) if not np.isnan(v)]
-    valid_episodes = [episodes[i] for i in valid_indices]
-    valid_values = [values[i] for i in valid_indices]
+    colors = ['#2ecc71', '#3498db', '#e74c3c', '#9b59b6', '#f39c12']
     
-    if not valid_values:
-        print(f"Warning: No valid data for {metric_name} in {phase} for {training_type}")
-        plt.close(fig)
-        return None
-    
-    # Determine visualization strategy based on data size
-    num_episodes = len(valid_episodes)
-    
-    # Auto-determine smoothing window if not specified
-    if smoothing_window is None:
-        if num_episodes > 1000:
-            smoothing_window = max(50, num_episodes // 50)
-        elif num_episodes > 100:
-            smoothing_window = max(10, num_episodes // 20)
-        else:
-            smoothing_window = 5
-    
-    # Auto-determine bin size if not specified and data is very large
-    if bin_size is None and num_episodes > 500:
-        bin_size = max(10, num_episodes // 100)
-    
-    # Plot raw data if requested (with low opacity)
-    if show_raw and num_episodes < 1000:
-        ax.scatter(valid_episodes, valid_values, s=1, alpha=0.1, color='gray', label='Raw data')
-    
-    # Apply binning if specified and data is large
-    if bin_size and num_episodes > 100:
-        plot_episodes, plot_values, plot_lower, plot_upper = bin_episodes(
-            valid_episodes, valid_values, bin_size
-        )
-        # Plot binned data with error bars
-        ax.plot(plot_episodes, plot_values, linewidth=2.5, label=metric_name, color='#2E86AB', zorder=3)
-        ax.fill_between(plot_episodes, plot_lower, plot_upper, alpha=0.2, color='#2E86AB', label='±1 std')
-    else:
-        # Apply moving average smoothing
-        smoothed, lower_bounds, upper_bounds = compute_moving_average(valid_values, smoothing_window)
+    for idx, phase in enumerate(phases):
+        ax = axes[idx]
+        round_win_rates = calculate_round_win_rates(experiment_metrics, phase)
         
-        # Plot smoothed line with confidence interval
-        ax.plot(valid_episodes, smoothed, linewidth=2.5, label=metric_name, color='#2E86AB', zorder=3)
-        ax.fill_between(valid_episodes, lower_bounds, upper_bounds, alpha=0.2, color='#2E86AB', label='±1 std')
+        if not round_win_rates:
+            ax.text(0.5, 0.5, f"No data for {phase}", ha='center', va='center', transform=ax.transAxes)
+            continue
+        
+        rounds = sorted(round_win_rates.keys())
+        means = [np.mean(round_win_rates[r]) for r in rounds]
+        stds = [np.std(round_win_rates[r]) if len(round_win_rates[r]) > 1 else 0 for r in rounds]
+        
+        # Plot mean line with confidence band
+        ax.plot(rounds, means, marker='o', linewidth=2, markersize=8, color=colors[0], label='Mean')
+        ax.fill_between(rounds, 
+                       [m - s for m, s in zip(means, stds)],
+                       [m + s for m, s in zip(means, stds)],
+                       alpha=0.2, color=colors[0])
+        
+        # Plot individual runs
+        for run_id, run_metrics in experiment_metrics.items():
+            if phase not in run_metrics:
+                continue
+            
+            run_rounds = []
+            run_rates = []
+            for round_num in sorted(run_metrics[phase].keys()):
+                episodes = run_metrics[phase][round_num]
+                if episodes:
+                    last_ep = episodes[-1]
+                    p1_wins = last_ep.get("p1_wins", 0)
+                    p2_wins = last_ep.get("p2_wins", 0)
+                    total = p1_wins + p2_wins
+                    if "PlayerAgent" in str(last_ep.get("p1_name", "")):
+                        wr = p1_wins / total if total > 0 else 0
+                    else:
+                        wr = p2_wins / total if total > 0 else 0
+                    run_rounds.append(round_num)
+                    run_rates.append(wr)
+            
+            if run_rounds:
+                ax.plot(run_rounds, run_rates, alpha=0.3, linewidth=1, color=colors[0])
+        
+        ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, label='Random baseline')
+        ax.set_xlabel('Training Round', fontsize=12)
+        ax.set_ylabel('Win Rate', fontsize=12)
+        ax.set_title(f'Win Rate {phase.replace("_", " ").title()}', fontsize=14)
+        ax.set_ylim(0, 1)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
+        ax.legend(loc='lower right')
+        ax.grid(True, alpha=0.3)
     
-    # Add trend line if statistics available
-    if statistics and not np.isnan(statistics.get("trend", np.nan)):
-        x_trend = np.array(valid_episodes)
-        y_mean = statistics["mean"]
-        trend = statistics["trend"]
-        y_trend = y_mean + trend * (x_trend - np.mean(x_trend))
-        ax.plot(valid_episodes, y_trend, '--', linewidth=2, alpha=0.7, color='#A23B72', label=f'Linear trend (slope={trend:.4f})', zorder=2)
+    plt.suptitle(f'Win Rate by Round - {experiment_path.name}', fontsize=16, y=1.02)
+    plt.tight_layout()
     
-    # Customize plot
-    metric_display = metric_name.replace('_', ' ').title()
-    phase_display = phase.replace('_', ' ').title()
-    type_display = training_type.replace('_', ' ').title()
+    output_file = output_dir / "round_win_rates.png"
+    fig.savefig(output_file, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    generated.append(output_file)
     
-    # For validation phases, adjust labels to reflect trainee/opponent instead of p1/p2
-    if phase in ["vs_previous", "vs_randomized", "vs_gapmaximizer", "vs_heuristic"]:
-        if metric_name == "p1_win_rate":
-            metric_display = "Trainee Win Rate"
-        elif metric_name == "p2_win_rate":
-            metric_display = "Opponent Win Rate"
+    return generated
+
+
+def generate_episodic_loss_graph(
+    experiment_path: Path,
+    experiment_metrics: Dict[str, Dict[str, Any]],
+    output_dir: Path
+) -> List[Path]:
+    """Generate episode-level loss graph."""
+    generated = []
     
-    ax.set_xlabel("Episode", fontsize=12)
-    ax.set_ylabel(metric_display, fontsize=12)
-    ax.set_title(f"{metric_display} - {phase_display} ({type_display})", fontsize=14, fontweight='bold')
+    if HAS_SEABORN:
+        sns.set_style("whitegrid")
+    
+    episodes, means, stds = calculate_episodic_metrics(experiment_metrics, "selfplay", "loss")
+    
+    if not episodes:
+        print("No loss data found for episodic graph")
+        return generated
+    
+    fig, ax = plt.subplots(figsize=(12, 5))
+    
+    # Apply smoothing for readability
+    window = min(50, len(means) // 10) if len(means) > 100 else 1
+    if window > 1:
+        smoothed_means = np.convolve(means, np.ones(window)/window, mode='valid')
+        smoothed_episodes = episodes[window-1:]
+    else:
+        smoothed_means = means
+        smoothed_episodes = episodes
+    
+    ax.plot(smoothed_episodes, smoothed_means, linewidth=1.5, color='#3498db', label='Loss (smoothed)')
+    
+    # Show raw data with low opacity if not too many points
+    if len(episodes) < 2000:
+        ax.plot(episodes, means, alpha=0.2, linewidth=0.5, color='#3498db')
+    
+    ax.set_xlabel('Episode', fontsize=12)
+    ax.set_ylabel('Loss', fontsize=12)
+    ax.set_title(f'Training Loss Over Episodes - {experiment_path.name}', fontsize=14)
+    ax.legend(loc='upper right')
     ax.grid(True, alpha=0.3)
-    ax.legend()
-    
-    # Add statistics text box if available
-    if statistics:
-        stats_text = f"Mean: {statistics['mean']:.4f}\n"
-        stats_text += f"Std: {statistics['std']:.4f}\n"
-        if not np.isnan(statistics.get('r_squared', np.nan)):
-            stats_text += f"R²: {statistics['r_squared']:.4f}\n"
-        if not np.isnan(statistics.get('trend', np.nan)):
-            stats_text += f"Trend: {statistics['trend']:.4f}"
-        
-        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
-                fontsize=9, verticalalignment='top',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     
     plt.tight_layout()
     
-    # Create output directory structure
-    phase_dir = output_dir / training_type / phase
-    phase_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Save figure
-    filename = f"{metric_name}_{phase}_{training_type}.{file_format}"
-    file_path = phase_dir / filename
-    fig.savefig(file_path, format=file_format, dpi=300, bbox_inches='tight')
+    output_file = output_dir / "episodic_loss.png"
+    fig.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close(fig)
+    generated.append(output_file)
     
-    print(f"Generated: {file_path}")
-    return file_path
+    return generated
+
+
+def generate_episodic_epsilon_graph(
+    experiment_path: Path,
+    experiment_metrics: Dict[str, Dict[str, Any]],
+    output_dir: Path
+) -> List[Path]:
+    """Generate episode-level epsilon decay graph."""
+    generated = []
+    
+    if HAS_SEABORN:
+        sns.set_style("whitegrid")
+    
+    episodes, means, stds = calculate_episodic_metrics(experiment_metrics, "selfplay", "p1_epsilon")
+    
+    if not episodes:
+        print("No epsilon data found for episodic graph")
+        return generated
+    
+    fig, ax = plt.subplots(figsize=(12, 5))
+    
+    ax.plot(episodes, means, linewidth=1.5, color='#e74c3c', label='Epsilon')
+    ax.fill_between(episodes,
+                   [m - s for m, s in zip(means, stds)],
+                   [m + s for m, s in zip(means, stds)],
+                   alpha=0.2, color='#e74c3c')
+    
+    ax.set_xlabel('Episode', fontsize=12)
+    ax.set_ylabel('Epsilon', fontsize=12)
+    ax.set_title(f'Exploration Rate (Epsilon) Over Episodes - {experiment_path.name}', fontsize=14)
+    ax.set_ylim(0, 1)
+    ax.legend(loc='upper right')
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    output_file = output_dir / "episodic_epsilon.png"
+    fig.savefig(output_file, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    generated.append(output_file)
+    
+    return generated
 
 
 def generate_comparison_graph(
-    all_metrics: Dict[str, Dict[int, List[Dict[str, Any]]]],
-    metric_name: str,
-    phase: str,
+    experiments: List[Tuple[str, Path]],
     output_dir: Path,
-    file_format: str = "png",
-    style: str = "seaborn"
-) -> Optional[Path]:
-    """
-    Generate a comparison graph across multiple training types.
+    phase: str = "vs_randomized"
+) -> List[Path]:
+    """Generate comparison graph across multiple experiments."""
+    generated = []
     
-    Args:
-        all_metrics: Dictionary mapping training_type to metrics_by_round
-        metric_name: Name of metric to compare
-        phase: Training phase name
-        output_dir: Directory to save graph
-        file_format: Output format
-        style: Plot style
-        
-    Returns:
-        Path to saved graph file or None
-    """
-    if style == "seaborn":
-        sns.set_style("darkgrid")
-    elif style == "ggplot":
-        plt.style.use("ggplot")
-    else:
-        plt.style.use("default")
+    if HAS_SEABORN:
+        sns.set_style("whitegrid")
     
-    fig, ax = plt.subplots(figsize=(14, 8))
+    fig, ax = plt.subplots(figsize=(12, 6))
+    colors = ['#2ecc71', '#3498db', '#e74c3c', '#9b59b6', '#f39c12', '#1abc9c']
     
-    colors = sns.color_palette("husl", len(all_metrics))
-    
-    for idx, (training_type, metrics_by_round) in enumerate(all_metrics.items()):
-        episodes, values, _ = extract_metric_series(metrics_by_round, metric_name, "mean")
-        
-        valid_indices = [i for i, v in enumerate(values) if not np.isnan(v)]
-        if not valid_indices:
+    for idx, (exp_name, exp_path) in enumerate(experiments):
+        exp_metrics = load_experiment_metrics(exp_path)
+        if not exp_metrics:
             continue
         
-        valid_episodes = [episodes[i] for i in valid_indices]
-        valid_values = [values[i] for i in valid_indices]
+        round_win_rates = calculate_round_win_rates(exp_metrics, phase)
+        if not round_win_rates:
+            continue
         
-        # Apply smoothing for comparison graphs too
-        num_episodes = len(valid_episodes)
-        smoothing_window = max(10, num_episodes // 20) if num_episodes > 100 else 5
+        rounds = sorted(round_win_rates.keys())
+        means = [np.mean(round_win_rates[r]) for r in rounds]
         
-        smoothed, lower_bounds, upper_bounds = compute_moving_average(valid_values, smoothing_window)
-        
-        type_display = training_type.replace('_', ' ').title()
-        ax.plot(valid_episodes, smoothed, linewidth=2.5, label=type_display, color=colors[idx], zorder=3)
-        ax.fill_between(valid_episodes, lower_bounds, upper_bounds, alpha=0.15, color=colors[idx])
+        color = colors[idx % len(colors)]
+        ax.plot(rounds, means, marker='o', linewidth=2, markersize=8, 
+                color=color, label=exp_name)
     
-    metric_display = metric_name.replace('_', ' ').title()
-    phase_display = phase.replace('_', ' ').title()
-    
-    ax.set_xlabel("Episode", fontsize=12)
-    ax.set_ylabel(metric_display, fontsize=12)
-    ax.set_title(f"{metric_display} Comparison - {phase_display}", fontsize=14, fontweight='bold')
+    ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, label='Random baseline')
+    ax.set_xlabel('Training Round', fontsize=12)
+    ax.set_ylabel('Win Rate', fontsize=12)
+    ax.set_title(f'Experiment Comparison - {phase.replace("_", " ").title()}', fontsize=14)
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
+    ax.legend(loc='lower right')
     ax.grid(True, alpha=0.3)
-    ax.legend(loc='best')
     
     plt.tight_layout()
     
-    # Save comparison graph
-    comparisons_dir = output_dir / "comparisons"
-    comparisons_dir.mkdir(parents=True, exist_ok=True)
-    
-    filename = f"{metric_name}_comparison_{phase}.{file_format}"
-    file_path = comparisons_dir / filename
-    fig.savefig(file_path, format=file_format, dpi=300, bbox_inches='tight')
+    output_file = output_dir / f"comparison_{phase}.png"
+    fig.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close(fig)
+    generated.append(output_file)
     
-    print(f"Generated comparison: {file_path}")
-    return file_path
+    return generated
 
 
 def main():
-    """Main entry point for the script."""
     parser = argparse.ArgumentParser(
-        description="Generate visualization graphs from training metrics files",
+        description="Generate visualization graphs from experiment metrics",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"""
+        epilog="""
 Examples:
-  python scripts/generate_metrics_graphs.py --type hand_only
-  python scripts/generate_metrics_graphs.py --phase selfplay --metrics win_rate
-  python scripts/generate_metrics_graphs.py --type hand_only --rounds 0,1,2,3
-  python scripts/generate_metrics_graphs.py --format pdf --style seaborn
-
-Valid training types: {', '.join(VALID_TRAINING_TYPES)}
-Valid phases: {', '.join(VALID_PHASES)}
-        """
-    )
-    
-    parser.add_argument(
-        "--type", "-t",
-        choices=VALID_TRAINING_TYPES,
-        help="Training type to analyze"
+    python scripts/generate_metrics_graphs.py                      # Current experiment
+    python scripts/generate_metrics_graphs.py --experiment sparse  # Match by name
+    python scripts/generate_metrics_graphs.py --compare exp1 exp2  # Compare experiments
+    python scripts/generate_metrics_graphs.py --episodic           # Episode-level graphs
+    python scripts/generate_metrics_graphs.py --all                # All graph types
+"""
     )
     parser.add_argument(
-        "--phase", "-p",
-        help="Training phase to visualize (comma-separated for multiple)"
+        "--experiment", "-e",
+        type=str,
+        help="Experiment name (partial match supported)"
+    )
+    parser.add_argument(
+        "--compare", "-c",
+        nargs="+",
+        type=str,
+        help="Compare multiple experiments by name"
     )
     parser.add_argument(
         "--output-dir", "-o",
-        type=Path,
-        default=Path("./metrics_graphs"),
-        help="Directory to save generated graphs (default: ./metrics_graphs)"
+        type=str,
+        help="Output directory for graphs (default: experiment/analysis/graphs)"
     )
     parser.add_argument(
-        "--format", "-f",
-        choices=["png", "svg", "pdf"],
-        default="png",
-        help="Output format (default: png)"
-    )
-    parser.add_argument(
-        "--metrics", "-m",
-        help="Comma-separated list of metrics to plot (default: all)"
+        "--episodic",
+        action="store_true",
+        help="Generate episode-level graphs (loss, epsilon)"
     )
     parser.add_argument(
         "--rounds",
-        help="Comma-separated list of rounds to include (e.g., '0,1,2,3')"
-    )
-    parser.add_argument(
-        "--style", "-s",
-        choices=["default", "seaborn", "ggplot"],
-        default="seaborn",
-        help="Plot style (default: seaborn)"
-    )
-    parser.add_argument(
-        "--no-combine",
         action="store_true",
-        help="Don't combine trainee_first and trainee_second for validation phases"
+        help="Generate round-level win rate graphs"
     )
     parser.add_argument(
-        "--base-dir",
-        type=Path,
-        default=Path("."),
-        help="Base directory containing action_logs (default: current directory)"
-    )
-    parser.add_argument(
-        "--comparisons",
+        "--all",
         action="store_true",
-        help="Generate comparison graphs across training types"
+        help="Generate all graph types"
     )
     parser.add_argument(
-        "--smoothing-window",
-        type=int,
-        default=None,
-        help="Window size for moving average smoothing (auto if not specified)"
-    )
-    parser.add_argument(
-        "--bin-size",
-        type=int,
-        default=None,
-        help="Bin size for aggregating episodes (auto if not specified, only used for large datasets)"
-    )
-    parser.add_argument(
-        "--show-raw",
-        action="store_true",
-        help="Show raw data points with low opacity (only for datasets < 1000 episodes)"
+        "--phase",
+        type=str,
+        choices=["vs_randomized", "vs_gapmaximizer", "both"],
+        default="both",
+        help="Validation phase to graph (default: both)"
     )
     
     args = parser.parse_args()
     
-    # Determine training types to process
-    if args.type:
-        training_types = [args.type]
-    else:
-        training_types = VALID_TRAINING_TYPES
-    
-    # Determine phases to process
-    if args.phase:
-        phases = [p.strip() for p in args.phase.split(",")]
-        for phase in phases:
-            if phase not in VALID_PHASES:
-                print(f"Error: Invalid phase '{phase}'. Valid phases: {', '.join(VALID_PHASES)}")
-                return 1
-    else:
-        phases = VALID_PHASES
-    
-    # Determine rounds filter
-    rounds_filter = None
-    if args.rounds:
-        try:
-            rounds_filter = [int(r.strip()) for r in args.rounds.split(",")]
-        except ValueError:
-            print(f"Error: Invalid rounds format: {args.rounds}")
-            return 1
-    
-    # Determine metrics to plot
-    if args.metrics:
-        requested_metrics = [m.strip() for m in args.metrics.split(",")]
-        metrics_to_plot = []
-        for metric in requested_metrics:
-            if metric in METRIC_GROUPS:
-                metrics_to_plot.extend(METRIC_GROUPS[metric])
+    # Handle comparison mode
+    if args.compare:
+        experiments = []
+        for name in args.compare:
+            exp_path = find_experiment(name)
+            if exp_path:
+                # Extract display name from metadata or use folder name
+                metadata_file = exp_path / "experiment_metadata.json"
+                if metadata_file.exists():
+                    with open(metadata_file, 'r') as f:
+                        metadata = json.load(f)
+                    display_name = metadata.get("display_name", exp_path.name)
+                else:
+                    display_name = exp_path.name
+                experiments.append((display_name, exp_path))
             else:
-                metrics_to_plot.append(metric)
-    else:
-        # Default: plot all common metrics
-        metrics_to_plot = [
-            "p1_win_rate", "p2_win_rate", "draw_rate",
-            "loss", "p1_epsilon", "p2_epsilon",
-            "p1_memory_size", "p2_memory_size",
-            "p1_score", "p2_score", "episode_turns"
-        ]
-    
-    # Process each training type and phase
-    all_metrics_for_comparison = {}
-    
-    for training_type in training_types:
-        print(f"\nProcessing {training_type}...")
+                print(f"Warning: Experiment '{name}' not found")
+        
+        if len(experiments) < 2:
+            print("Error: Need at least 2 experiments to compare")
+            return 1
+        
+        # Output to first experiment's analysis folder
+        output_dir = Path(args.output_dir) if args.output_dir else experiments[0][1] / "analysis" / "graphs"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        phases = VALIDATION_PHASES if args.phase == "both" else [args.phase]
         
         for phase in phases:
-            print(f"  Phase: {phase}")
-            
-            # Aggregate metrics
-            metrics_by_round = aggregate_phase_metrics(
-                training_type,
-                phase,
-                args.base_dir,
-                combine_positions=not args.no_combine,
-                rounds_filter=rounds_filter
-            )
-            
-            if not metrics_by_round:
-                print(f"    No metrics found for {phase}")
-                continue
-            
-            # Store for comparison graphs
-            if args.comparisons:
-                all_metrics_for_comparison[training_type] = all_metrics_for_comparison.get(training_type, {})
-                all_metrics_for_comparison[training_type][phase] = metrics_by_round
-            
-            # Generate graphs for each metric
-            for metric_name in metrics_to_plot:
-                # Check if metric exists in any episode
-                has_metric = any(
-                    metric_name in ep
-                    for episodes in metrics_by_round.values()
-                    for ep in episodes
-                )
-                
-                if not has_metric:
-                    continue
-                
-                # Extract metric series (now returns episodes, not rounds)
-                episodes, values, std_devs = extract_metric_series(
-                    metrics_by_round, metric_name, "mean"
-                )
-                
-                if not episodes or not any(not np.isnan(v) for v in values):
-                    continue
-                
-                # Calculate statistics
-                statistics = calculate_statistics(values)
-                
-                # Generate graph
-                generate_graph(
-                    episodes, values, metric_name, phase, training_type,
-                    args.output_dir, args.format, args.style,
-                    std_devs=std_devs, statistics=statistics,
-                    smoothing_window=args.smoothing_window,
-                    bin_size=args.bin_size,
-                    show_raw=args.show_raw
-                )
+            generated = generate_comparison_graph(experiments, output_dir, phase)
+            for g in generated:
+                print(f"Generated: {g}")
+        
+        return 0
     
-    # Generate comparison graphs if requested
-    if args.comparisons and len(training_types) > 1:
-        print("\nGenerating comparison graphs...")
-        for phase in phases:
-            phase_metrics = {}
-            for training_type in training_types:
-                if phase in all_metrics_for_comparison.get(training_type, {}):
-                    phase_metrics[training_type] = all_metrics_for_comparison[training_type][phase]
-            
-            if len(phase_metrics) > 1:
-                for metric_name in metrics_to_plot:
-                    # Check if metric exists
-                    has_metric = any(
-                        metric_name in ep
-                        for metrics_by_round in phase_metrics.values()
-                        for episodes in metrics_by_round.values()
-                        for ep in episodes
-                    )
-                    
-                    if has_metric:
-                        generate_comparison_graph(
-                            phase_metrics, metric_name, phase,
-                            args.output_dir, args.format, args.style
-                        )
+    # Single experiment mode
+    if args.experiment:
+        experiment_path = find_experiment(args.experiment)
+        if not experiment_path:
+            print(f"Error: Experiment '{args.experiment}' not found")
+            return 1
+    else:
+        experiment_path = get_current_experiment()
+        if not experiment_path:
+            print("Error: No current experiment. Use --experiment to specify one.")
+            return 1
     
-    print(f"\n✓ Graph generation complete. Output directory: {args.output_dir}")
+    print(f"Generating graphs for: {experiment_path.name}")
+    
+    # Load metrics
+    experiment_metrics = load_experiment_metrics(experiment_path)
+    if not experiment_metrics:
+        print("Error: No metrics found in experiment")
+        return 1
+    
+    print(f"Found {len(experiment_metrics)} runs with metrics")
+    
+    # Determine output directory
+    output_dir = Path(args.output_dir) if args.output_dir else experiment_path / "analysis" / "graphs"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Determine which graphs to generate
+    generate_rounds = args.rounds or args.all or (not args.episodic)
+    generate_episodic = args.episodic or args.all
+    
+    phases = VALIDATION_PHASES if args.phase == "both" else [args.phase]
+    
+    generated_files = []
+    
+    # Generate round-level graphs
+    if generate_rounds:
+        generated = generate_round_win_rate_graph(experiment_path, experiment_metrics, output_dir, phases)
+        generated_files.extend(generated)
+    
+    # Generate episodic graphs
+    if generate_episodic:
+        generated = generate_episodic_loss_graph(experiment_path, experiment_metrics, output_dir)
+        generated_files.extend(generated)
+        
+        generated = generate_episodic_epsilon_graph(experiment_path, experiment_metrics, output_dir)
+        generated_files.extend(generated)
+    
+    # Print summary
+    print(f"\nGenerated {len(generated_files)} graphs:")
+    for f in generated_files:
+        print(f"  {f}")
+    
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
-

@@ -17,6 +17,9 @@ python scripts/run_full_experiment.py --parallel 3
 
 # Analyze results
 python scripts/aggregate_experiment_results.py --graphs
+
+# Generate detailed graphs
+python scripts/generate_metrics_graphs.py --all
 ```
 
 ### Experiment Scripts
@@ -26,6 +29,20 @@ python scripts/aggregate_experiment_results.py --graphs
 | `experiment_manager.py` | Initialize, track, and manage experiments |
 | `run_full_experiment.py` | Execute training runs (sequential or parallel) |
 | `aggregate_experiment_results.py` | Analyze and visualize results |
+| `generate_metrics_graphs.py` | Generate round-level and episode-level graphs |
+| `migrate_experiment_logs.py` | Migrate legacy experiments to new log structure |
+
+### Directory Structure
+
+Each experiment run has separate directories for different log types:
+```
+runs/<run_id>/
+├── action_logs/    # Per-turn action data (for strategy analysis)
+├── metrics_logs/   # Per-episode metrics (for graphing)
+├── models/         # Model checkpoints
+├── hyperparams_config.json
+└── run_metadata.json
+```
 
 ---
 

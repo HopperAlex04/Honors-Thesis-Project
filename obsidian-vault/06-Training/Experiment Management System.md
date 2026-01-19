@@ -148,7 +148,7 @@ When you run `run_full_experiment.py`:
 1. **For each pending run**:
    - Creates run directory with its own config
    - Sets `network_type` and `random_seed` in config
-   - Creates isolated workspace (models/, action_logs/)
+   - Creates isolated workspace (models/, action_logs/, metrics_logs/)
    - Executes `train.py` with run-specific settings
    - Collects results and metrics
    - Updates run status
@@ -200,8 +200,12 @@ experiments/
     │   │   ├── models/
     │   │   │   ├── model_initial.pt    # Before training
     │   │   │   └── model_final.pt      # After training
-    │   │   ├── action_logs/
+    │   │   ├── action_logs/            # Per-turn action data (strategy analysis)
+    │   │   │   ├── actions_round_0_selfplay.jsonl
+    │   │   │   └── ...
+    │   │   ├── metrics_logs/           # Per-episode metrics (graphing)
     │   │   │   ├── metrics_round_0_selfplay.jsonl
+    │   │   │   ├── metrics_round_0_vs_randomized_trainee_first.jsonl
     │   │   │   └── ...
     │   │   ├── hyperparams_config.json   # Run-specific config
     │   │   └── run_metadata.json         # Run metadata
@@ -212,9 +216,10 @@ experiments/
     │   └── multi_encoder_run_07/
     ├── analysis/
     │   ├── graphs/
-    │   │   ├── win_rate_comparison.png
-    │   │   ├── training_curves.png
-    │   │   └── win_rate_distribution.png
+    │   │   ├── round_win_rates.png      # Win rate by round
+    │   │   ├── episodic_loss.png        # Training loss over episodes
+    │   │   ├── episodic_epsilon.png     # Exploration decay
+    │   │   └── comparison_*.png         # Experiment comparisons
     │   ├── full_analysis.json
     │   └── statistics.json
     ├── base_hyperparams_config.json
@@ -222,7 +227,11 @@ experiments/
     └── runs_status.json
 ```
 
-**Note**: Each run saves only initial and final models (no intermediate checkpoints). If interrupted, a run restarts from the beginning. With ~1 hour per run, this is acceptable.
+**Note**: Logs are split into two directories:
+- `action_logs/`: Per-turn action data for strategy analysis (larger files)
+- `metrics_logs/`: Per-episode metrics for graphing (smaller files)
+
+Each run saves only initial and final models (no intermediate checkpoints). If interrupted, a run restarts from the beginning. With ~1 hour per run, this is acceptable.
 
 ## Reproducibility
 
