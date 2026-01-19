@@ -28,7 +28,7 @@ torch.set_num_threads(4)
 
 from cuttle import players as Players
 from cuttle.environment import CuttleEnvironment
-from cuttle.networks import NeuralNetwork
+from cuttle.networks import NeuralNetwork, EmbeddingBasedNetwork, MultiEncoderNetwork
 from cuttle import training as Training
 
 # Global flag for graceful shutdown
@@ -109,7 +109,17 @@ GRADIENT_CLIP_NORM = config.get("gradient_clip_norm", 5.0)
 Q_VALUE_CLIP = config.get("q_value_clip", 15.0)
 REPLAY_BUFFER_SIZE = config.get("replay_buffer_size", 100000)
 
-model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
+# Network type selection
+network_type = config.get("network_type", "boolean")
+embedding_dim = config.get("embedding_dim", 32)
+
+if network_type == "embedding":
+    model = EmbeddingBasedNetwork(env.observation_space, embedding_dim=embedding_dim, num_actions=actions)
+elif network_type == "multi_encoder":
+    model = MultiEncoderNetwork(env.observation_space, num_actions=actions)
+else:
+    # Default: boolean network (current NeuralNetwork)
+    model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
 trainee = Players.Agent(
     "PlayerAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR, REPLAY_BUFFER_SIZE
 )

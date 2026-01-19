@@ -71,11 +71,28 @@ Where:
 
 ## Network Input Processing
 
-The [[Neural Network Architecture]]:
-1. Receives observation dictionary
-2. Extracts all boolean arrays (zones, stack, effect_shown)
-3. Concatenates them into a single 468-dimensional vector
-4. Passes through fully connected layers
+This project implements three preprocessing strategies (see [[Network Architectures]]):
+
+1. **Boolean Network**: 
+   - Receives observation dictionary
+   - Extracts all boolean arrays (zones, stack, effect_shown)
+   - Concatenates them into a single 468-dimensional vector
+   - Passes through 52-neuron hidden layer
+
+2. **Embedding-Based Network**:
+   - Receives observation dictionary
+   - Embeds cards using learned embeddings
+   - Aggregates cards per zone using max pooling
+   - Concatenates zone encodings
+   - Passes through 52-neuron hidden layer
+
+3. **Multi-Encoder Network**:
+   - Receives observation dictionary
+   - Processes each zone through zone-specific encoder
+   - Concatenates all zone encodings
+   - Passes through 52-neuron hidden layer
+
+All networks share the same 52-neuron game-based hidden layer. See [[Input Representation Experiments]] for the experimental design comparing these approaches.
 
 See [[Neural Network Basics]] for how networks process inputs.
 
@@ -104,7 +121,8 @@ See [[Neural Network Basics]] for how networks process inputs.
 ## Related Concepts
 
 - [[CuttleEnvironment]] - Environment that produces these observations
-- [[Neural Network Architecture]] - Network that processes observations
+- [[Network Architectures]] - Three network types that process observations differently
+- [[Input Representation Experiments]] - Experimental comparison of preprocessing strategies
 - [[Action System]] - Actions taken based on observations
 - [[Feature Engineering]] - Designing effective input representations
 

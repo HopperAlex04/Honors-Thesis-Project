@@ -183,31 +183,43 @@ Techniques to prevent overfitting:
 
 ## Neural Networks in This Project
 
-### Architecture
+### Architecture Overview
 
-[[Neural Network Architecture|DQN network]]:
+This project implements three network architectures (see [[Network Architectures]] for details):
+
+1. **Boolean Network**: Simple concatenation → 52 neurons → num_actions
+2. **Embedding-Based Network**: Card embeddings → zone aggregation → 52 neurons → num_actions
+3. **Multi-Encoder Network**: Zone encoders → fusion → 52 neurons → num_actions
+
+### Shared Architecture
+
+**All networks share a game-based hidden layer**:
 ```
-Input (468 dims)
-  → Linear(468 → 512) + ReLU
-  → Linear(512 → 256) + ReLU
-  → Linear(256 → num_actions)  [no activation]
+Preprocessing (varies)
+  → 52 neurons (game-based, one per card) + ReLU
+  → num_actions (no activation, unbounded Q-values)
 ```
 
-- **2 hidden layers** with ReLU activation
-- **Output layer** with no activation (unbounded Q-values)
+- **52-neuron hidden layer**: Game-based design (one neuron per card)
+- **Output layer**: No activation (unbounded Q-values)
 - **Fully connected** (dense layers)
 
 ### Purpose
 
 Approximate Q-function Q(s,a) for [[Deep Q-Network|DQN]]:
-- Input: Game state (468 boolean features)
+- Input: Game state (observation dictionary)
 - Output: Q-values for all actions
+- **Experimental variable**: Preprocessing/input representation complexity
 
 ### Training
 
 - Loss: Mean Squared Error (TD error)
 - Optimizer: Adam (see [[Optimization Algorithms]])
 - Framework: [[PyTorch]]
+
+### Network Types
+
+See [[Network Architectures]] for detailed descriptions of each network type and [[Input Representation Experiments]] for the experimental design.
 
 ## Key Concepts
 

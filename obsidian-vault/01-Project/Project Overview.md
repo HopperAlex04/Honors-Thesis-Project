@@ -20,10 +20,11 @@ A reinforcement learning project training Deep Q-Network (DQN) agents to play th
    - Provides uniform boolean array observations
    - Handles action execution and rewards
 
-2. **[[Neural Network Architecture]]** - Deep Q-Network implementation
-   - Processes game observations (468 boolean features)
-   - Outputs Q-values for all possible actions
-   - Architecture: 512 → 256 → num_actions (fully connected)
+2. **[[Network Architectures]]** - Multiple DQN network implementations
+   - Three network types: Boolean, Embedding-Based, Multi-Encoder
+   - All share 52-neuron game-based hidden layer
+   - Different preprocessing strategies for input representation
+   - See [[Input Representation Experiments]] for experimental design
 
 3. **[[Training Process]]** - Self-play training system
    - Agents train by playing against themselves
@@ -86,7 +87,10 @@ This project explores:
 1. **[[Self-Play]]** training effectiveness for card games
 2. **[[Reward Engineering]]** for complex multi-turn games
 3. **[[Deep Q-Network|DQN]]** scalability to card game state spaces
-4. Observation representation (boolean arrays vs embeddings)
+4. **[[Input Representation Experiments]]** - Comparing preprocessing strategies:
+   - Boolean concatenation (baseline)
+   - Card embeddings with zone aggregation
+   - Zone-specific encoders
 5. Training stability and convergence in card game RL
 
 ## Related Concepts

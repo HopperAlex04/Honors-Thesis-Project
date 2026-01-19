@@ -3,6 +3,8 @@ Neural network architecture for DQN agent in Cuttle game environment.
 
 This module provides a neural network that processes game observations
 and outputs Q-values for all possible actions.
+
+For dimension calculation utilities, see cuttle.network_dimensions module.
 """
 
 from typing import Dict, List, Union, Optional, Any, Tuple
@@ -262,3 +264,443 @@ class NeuralNetwork(nn.Module):
             raise ValueError(
                 f"Effect-Shown must be a boolean array of length 52, got {type(obs['Effect-Shown'])} with length {len(obs['Effect-Shown']) if hasattr(obs['Effect-Shown'], '__len__') else 'N/A'}"
             )
+
+
+class EmbeddingBasedNetwork(nn.Module):
+    """
+    Embedding-based DQN network for Cuttle card game.
+    
+    Uses learned card embeddings with zone aggregation to process observations.
+    Architecture: Embedding → Zone aggregation → 52 neurons → num_actions
+    
+    Args:
+        observation_space: Dictionary representing the observation space structure
+        embedding_dim: Dimension of card embeddings (default: 32)
+        num_actions: Number of possible actions in the environment
+        zone_encoded_dim: Dimension of each zone encoding after aggregation (default: 32)
+    """
+    
+    def __init__(
+        self,
+        observation_space: Dict[str, Any],
+        embedding_dim: int = 52,
+        num_actions: int = 3157,
+        zone_encoded_dim: int = 52
+    ) -> None:
+        """
+        Initialize the embedding-based network.
+        
+        Args:
+            observation_space: Dictionary representing observation structure
+            embedding_dim: Dimension of card embeddings
+            num_actions: Total number of possible actions
+            zone_encoded_dim: Dimension of each zone encoding after aggregation
+        """
+        super().__init__()
+        
+        self.num_actions = num_actions
+        self.embedding_dim = embedding_dim
+        self.zone_encoded_dim = zone_encoded_dim
+        
+        # Card embedding layer: 52 cards → embedding_dim
+        self.card_embedding = nn.Embedding(52, embedding_dim)
+        
+        # Zone aggregation: Use max pooling to aggregate cards in each zone
+        # Each zone will be aggregated to zone_encoded_dim
+        # We'll use a small MLP to process the aggregated embeddings
+        self.zone_aggregator = nn.Sequential(
+            nn.Linear(embedding_dim, zone_encoded_dim),
+            nn.ReLU()
+        )
+        
+        # Number of zones: Hand, Field, Revealed (current), Field, Revealed (off), Deck, Scrap, Stack, Effect-Shown = 9
+        num_zones = 9
+        fusion_dim = num_zones * zone_encoded_dim
+        
+        # Shared game-based hidden layer: 52 neurons (one per card)
+        self.hidden_layer = nn.Sequential(
+            nn.Linear(fusion_dim, 52),
+            nn.ReLU()
+        )
+        
+        # Output layer: 52 neurons → num_actions
+        self.output_layer = nn.Linear(52, num_actions)
+    
+    def forward(
+        self,
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
+    ) -> torch.Tensor:
+        """
+        Forward pass through the network.
+        
+        Args:
+            observation: Single observation dict, list of observations, or tuple of observations for batching
+            
+        Returns:
+            Q-values tensor of shape [batch_size, num_actions] or [num_actions]
+        """
+        preprocessed = self._preprocess_observation(observation)
+        hidden = self.hidden_layer(preprocessed)
+        q_values = self.output_layer(hidden)
+        return q_values
+    
+    def _preprocess_observation(
+        self,
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
+    ) -> torch.Tensor:
+        """
+        Preprocess observation(s) using embeddings and zone aggregation.
+        
+        Args:
+            observation: Single observation dict, list of observations, or tuple of observations
+            
+        Returns:
+            Preprocessed tensor ready for network input
+        """
+        if isinstance(observation, dict):
+            return self._preprocess_single(observation)
+        elif isinstance(observation, (list, tuple)):
+            return self._preprocess_batch(list(observation))
+        else:
+            raise TypeError(
+                f"Expected dict, list, or tuple of dicts, got {type(observation)}"
+            )
+    
+    def _preprocess_single(self, obs: Dict[str, Any]) -> torch.Tensor:
+        """
+        Preprocess a single observation using embeddings.
+        
+        Args:
+            obs: Single observation dictionary
+            
+        Returns:
+            Preprocessed tensor of shape [fusion_dim]
+        """
+        # Validate observation structure
+        self._validate_observation(obs)
+        
+        # Get all zones
+        zones = [
+            obs["Current Zones"]["Hand"],
+            obs["Current Zones"]["Field"],
+            obs["Current Zones"]["Revealed"],
+            obs["Off-Player Field"],
+            obs["Off-Player Revealed"],
+            obs["Deck"],
+            obs["Scrap"],
+            obs["Stack"],
+            obs["Effect-Shown"],
+        ]
+        
+        device = next(self.parameters()).device
+        zone_encodings = []
+        
+        for zone in zones:
+            # Get indices of present cards in this zone
+            card_indices = np.where(zone)[0]
+            
+            if len(card_indices) == 0:
+                # Empty zone: use zero embedding
+                zone_embedding = torch.zeros(self.embedding_dim, device=device)
+            else:
+                # Embed cards and aggregate using max pooling
+                card_indices_tensor = torch.from_numpy(card_indices).long().to(device)
+                card_embeddings = self.card_embedding(card_indices_tensor)  # [num_cards, embedding_dim]
+                # Max pooling across cards in zone
+                zone_embedding = torch.max(card_embeddings, dim=0)[0]  # [embedding_dim]
+            
+            # Process through zone aggregator
+            zone_encoding = self.zone_aggregator(zone_embedding)  # [zone_encoded_dim]
+            zone_encodings.append(zone_encoding)
+        
+        # Concatenate all zone encodings
+        fusion = torch.cat(zone_encodings, dim=0)  # [fusion_dim]
+        return fusion
+    
+    def _preprocess_batch(
+        self,
+        observations: Union[List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
+    ) -> torch.Tensor:
+        """
+        Preprocess a batch of observations.
+        
+        Args:
+            observations: List or tuple of observation dictionaries
+            
+        Returns:
+            Preprocessed tensor of shape [batch_size, fusion_dim]
+        """
+        if isinstance(observations, tuple):
+            observations = list(observations)
+        if not observations:
+            device = next(self.parameters()).device
+            fusion_dim = 9 * self.zone_encoded_dim
+            return torch.empty(0, fusion_dim, device=device)
+        
+        processed = [self._preprocess_single(obs) for obs in observations]
+        return torch.stack(processed)
+    
+    def _validate_observation(self, obs: Dict[str, Any]) -> None:
+        """Validate observation structure (same as NeuralNetwork)."""
+        required_keys = [
+            "Current Zones",
+            "Off-Player Field",
+            "Off-Player Revealed",
+            "Deck",
+            "Scrap",
+            "Stack",
+            "Effect-Shown",
+        ]
+        
+        for key in required_keys:
+            if key not in obs:
+                raise ValueError(f"Missing required observation key: {key}")
+        
+        if "Hand" not in obs["Current Zones"]:
+            raise ValueError("Missing 'Hand' in 'Current Zones'")
+        if "Field" not in obs["Current Zones"]:
+            raise ValueError("Missing 'Field' in 'Current Zones'")
+        if "Revealed" not in obs["Current Zones"]:
+            raise ValueError("Missing 'Revealed' in 'Current Zones'")
+
+
+class MultiEncoderNetwork(nn.Module):
+    """
+    Multi-encoder DQN network for Cuttle card game.
+    
+    Uses separate encoders for each zone type, then fuses representations.
+    Architecture: Zone encoders → Fusion → 52 neurons → num_actions
+    
+    Args:
+        observation_space: Dictionary representing the observation space structure
+        num_actions: Number of possible actions in the environment
+        encoder_hidden_dim: Hidden dimension for zone encoders (default: 26, game-based: 2×13 ranks)
+        encoder_output_dim: Output dimension for each zone encoder (default: 13, game-based: one per rank)
+    """
+    
+    def __init__(
+        self,
+        observation_space: Dict[str, Any],
+        num_actions: int = 3157,
+        encoder_hidden_dim: int = 26,  # Game-based: 2×13 (ranks)
+        encoder_output_dim: int = 13   # Game-based: one per rank
+    ) -> None:
+        """
+        Initialize the multi-encoder network.
+        
+        Args:
+            observation_space: Dictionary representing observation structure
+            num_actions: Total number of possible actions
+            encoder_hidden_dim: Hidden dimension for zone encoders (default: 26, game-based: 2×13 ranks)
+            encoder_output_dim: Output dimension for each zone encoder (default: 13, game-based: one per rank)
+        """
+        super().__init__()
+        
+        self.num_actions = num_actions
+        self.encoder_output_dim = encoder_output_dim
+        
+        # Separate encoders for each zone type
+        # Each processes a 52-dim boolean array
+        self.hand_encoder = nn.Sequential(
+            nn.Linear(52, encoder_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(encoder_hidden_dim, encoder_output_dim)
+        )
+        self.field_encoder = nn.Sequential(
+            nn.Linear(52, encoder_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(encoder_hidden_dim, encoder_output_dim)
+        )
+        self.revealed_encoder = nn.Sequential(
+            nn.Linear(52, encoder_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(encoder_hidden_dim, encoder_output_dim)
+        )
+        self.off_field_encoder = nn.Sequential(
+            nn.Linear(52, encoder_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(encoder_hidden_dim, encoder_output_dim)
+        )
+        self.off_revealed_encoder = nn.Sequential(
+            nn.Linear(52, encoder_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(encoder_hidden_dim, encoder_output_dim)
+        )
+        self.deck_encoder = nn.Sequential(
+            nn.Linear(52, encoder_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(encoder_hidden_dim, encoder_output_dim)
+        )
+        self.scrap_encoder = nn.Sequential(
+            nn.Linear(52, encoder_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(encoder_hidden_dim, encoder_output_dim)
+        )
+        self.stack_encoder = nn.Sequential(
+            nn.Linear(52, encoder_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(encoder_hidden_dim, encoder_output_dim)
+        )
+        self.effect_shown_encoder = nn.Sequential(
+            nn.Linear(52, encoder_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(encoder_hidden_dim, encoder_output_dim)
+        )
+        
+        # Number of zones: 9
+        num_zones = 9
+        fusion_dim = num_zones * encoder_output_dim
+        
+        # Shared game-based hidden layer: 52 neurons (one per card)
+        self.hidden_layer = nn.Sequential(
+            nn.Linear(fusion_dim, 52),
+            nn.ReLU()
+        )
+        
+        # Output layer: 52 neurons → num_actions
+        self.output_layer = nn.Linear(52, num_actions)
+    
+    def forward(
+        self,
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
+    ) -> torch.Tensor:
+        """
+        Forward pass through the network.
+        
+        Args:
+            observation: Single observation dict, list of observations, or tuple of observations for batching
+            
+        Returns:
+            Q-values tensor of shape [batch_size, num_actions] or [num_actions]
+        """
+        preprocessed = self._preprocess_observation(observation)
+        hidden = self.hidden_layer(preprocessed)
+        q_values = self.output_layer(hidden)
+        return q_values
+    
+    def _preprocess_observation(
+        self,
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
+    ) -> torch.Tensor:
+        """
+        Preprocess observation(s) using zone-specific encoders.
+        
+        Args:
+            observation: Single observation dict, list of observations, or tuple of observations
+            
+        Returns:
+            Preprocessed tensor ready for network input
+        """
+        if isinstance(observation, dict):
+            return self._preprocess_single(observation)
+        elif isinstance(observation, (list, tuple)):
+            return self._preprocess_batch(list(observation))
+        else:
+            raise TypeError(
+                f"Expected dict, list, or tuple of dicts, got {type(observation)}"
+            )
+    
+    def _preprocess_single(self, obs: Dict[str, Any]) -> torch.Tensor:
+        """
+        Preprocess a single observation using zone encoders.
+        
+        Args:
+            obs: Single observation dictionary
+            
+        Returns:
+            Preprocessed tensor of shape [fusion_dim]
+        """
+        # Validate observation structure
+        self._validate_observation(obs)
+        
+        device = next(self.parameters()).device
+        
+        # Encode each zone using its specific encoder
+        hand_encoded = self.hand_encoder(
+            torch.from_numpy(obs["Current Zones"]["Hand"]).float().to(device)
+        )
+        field_encoded = self.field_encoder(
+            torch.from_numpy(obs["Current Zones"]["Field"]).float().to(device)
+        )
+        revealed_encoded = self.revealed_encoder(
+            torch.from_numpy(obs["Current Zones"]["Revealed"]).float().to(device)
+        )
+        off_field_encoded = self.off_field_encoder(
+            torch.from_numpy(obs["Off-Player Field"]).float().to(device)
+        )
+        off_revealed_encoded = self.off_revealed_encoder(
+            torch.from_numpy(obs["Off-Player Revealed"]).float().to(device)
+        )
+        deck_encoded = self.deck_encoder(
+            torch.from_numpy(obs["Deck"]).float().to(device)
+        )
+        scrap_encoded = self.scrap_encoder(
+            torch.from_numpy(obs["Scrap"]).float().to(device)
+        )
+        stack_encoded = self.stack_encoder(
+            torch.from_numpy(obs["Stack"]).float().to(device)
+        )
+        effect_shown_encoded = self.effect_shown_encoder(
+            torch.from_numpy(obs["Effect-Shown"]).float().to(device)
+        )
+        
+        # Concatenate all zone encodings
+        fusion = torch.cat([
+            hand_encoded,
+            field_encoded,
+            revealed_encoded,
+            off_field_encoded,
+            off_revealed_encoded,
+            deck_encoded,
+            scrap_encoded,
+            stack_encoded,
+            effect_shown_encoded,
+        ], dim=0)
+        
+        return fusion
+    
+    def _preprocess_batch(
+        self,
+        observations: Union[List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
+    ) -> torch.Tensor:
+        """
+        Preprocess a batch of observations.
+        
+        Args:
+            observations: List or tuple of observation dictionaries
+            
+        Returns:
+            Preprocessed tensor of shape [batch_size, fusion_dim]
+        """
+        if isinstance(observations, tuple):
+            observations = list(observations)
+        if not observations:
+            device = next(self.parameters()).device
+            fusion_dim = 9 * self.encoder_output_dim
+            return torch.empty(0, fusion_dim, device=device)
+        
+        processed = [self._preprocess_single(obs) for obs in observations]
+        return torch.stack(processed)
+    
+    def _validate_observation(self, obs: Dict[str, Any]) -> None:
+        """Validate observation structure (same as NeuralNetwork)."""
+        required_keys = [
+            "Current Zones",
+            "Off-Player Field",
+            "Off-Player Revealed",
+            "Deck",
+            "Scrap",
+            "Stack",
+            "Effect-Shown",
+        ]
+        
+        for key in required_keys:
+            if key not in obs:
+                raise ValueError(f"Missing required observation key: {key}")
+        
+        if "Hand" not in obs["Current Zones"]:
+            raise ValueError("Missing 'Hand' in 'Current Zones'")
+        if "Field" not in obs["Current Zones"]:
+            raise ValueError("Missing 'Field' in 'Current Zones'")
+        if "Revealed" not in obs["Current Zones"]:
+            raise ValueError("Missing 'Revealed' in 'Current Zones'")

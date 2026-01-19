@@ -36,13 +36,21 @@ Q-values for all possible actions:
 
 ### Network Structure
 
-In this project (see [[Neural Network Architecture]]):
+This project implements three network architectures (see [[Network Architectures]] for details):
+
+**Shared Architecture** (all networks):
 ```
-Input (468 dims) 
-  → Linear(468 → 512) + ReLU
-  → Linear(512 → 256) + ReLU
-  → Linear(256 → num_actions)  [no activation - unbounded Q-values]
+Preprocessing (varies by network type)
+  → 52 neurons (game-based, one per card) + ReLU
+  → num_actions (no activation - unbounded Q-values)
 ```
+
+**Network Types**:
+1. **Boolean Network**: Simple concatenation → 52 neurons → num_actions
+2. **Embedding-Based Network**: Card embeddings → zone aggregation → 52 neurons → num_actions
+3. **Multi-Encoder Network**: Zone encoders → fusion → 52 neurons → num_actions
+
+All networks share the same 52-neuron game-based hidden layer, with preprocessing complexity as the experimental variable. See [[Input Representation Experiments]] for the experimental design.
 
 ## Training Process
 

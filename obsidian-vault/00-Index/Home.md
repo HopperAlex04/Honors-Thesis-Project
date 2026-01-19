@@ -37,6 +37,13 @@ Welcome to the knowledge base for the Cuttle card game Deep Q-Network (DQN) rein
 
 ### Neural Networks
 - [[Neural Network Basics]] - Fundamentals of artificial neural networks
+- [[Network Architectures]] - Three network types: Boolean, Embedding, Multi-Encoder
+- [[Game-Based Architecture]] - 52-neuron hidden layer design rationale
+- [[Game-Based Dimension Rationale]] - Rationale for game-based dimension choices
+- [[Dimension Selection]] - Rigorous methods for choosing encoder dimensions
+- [[Dimension Strategy Comparison]] - Comprehensive comparison of all strategies for thesis analysis
+- [[Dimension Strategies Summary]] - Quick reference for all dimension strategies
+- [[Input Representation Experiments]] - Experimental design comparing input representations
 - [[Feedforward Networks]] - Forward propagation
 - [[Activation Functions]] - ReLU, Sigmoid, Tanh, and more
 - [[Backpropagation]] - Gradient computation and weight updates
@@ -57,6 +64,8 @@ Welcome to the knowledge base for the Cuttle card game Deep Q-Network (DQN) rein
 - [[Early Stopping]] - Preventing overfitting
 - [[Training Metrics]] - Loss, Q-values, win rates
 - [[Validation]] - Evaluating model performance
+- [[Training Schedule and Rounds]] - Configuring rounds and episodes per round
+- [[Statistical Significance and Multiple Runs]] - Running multiple experiments for statistical significance
 
 ## 🔗 Quick Links
 
@@ -68,7 +77,8 @@ Welcome to the knowledge base for the Cuttle card game Deep Q-Network (DQN) rein
 ### Technical Implementation
 - [[Observation Space]] - Input format (468 boolean features)
 - [[Action System]] - Discrete action space
-- [[Neural Network Architecture]] - 512→256→num_actions
+- [[Network Architectures]] - Three network types with shared 52-neuron hidden layer
+- [[Input Representation Experiments]] - Experimental comparison of preprocessing strategies
 
 ## 📝 Note-taking Tips
 

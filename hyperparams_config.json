@@ -1,5 +1,9 @@
 {
   "comment": "Hyperparameter configuration for training DQN agent in Cuttle game.",
+  "network_type": "boolean",
+  "comment_network_type": "Options: 'boolean', 'embedding', 'multi_encoder'",
+  "embedding_dim": 32,
+  "comment_embedding_dim": "For embedding-based network only",
   "embedding_size": 16,
   "comment_embedding_size": "Kept for backward compatibility, no longer used (no embeddings - all inputs are boolean arrays)",
   "batch_size": 128,

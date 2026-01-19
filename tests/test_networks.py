@@ -20,7 +20,7 @@ if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
 from cuttle.environment import CuttleEnvironment
-from cuttle.networks import NeuralNetwork
+from cuttle.networks import NeuralNetwork, EmbeddingBasedNetwork, MultiEncoderNetwork
 
 
 class TestNeuralNetworkInitialization(unittest.TestCase):
@@ -503,6 +503,161 @@ class TestNeuralNetworkCustomSequence(unittest.TestCase):
             pass
         except Exception:
             self.skipTest("Custom sequence requires manual state processing")
+
+
+class TestEmbeddingBasedNetwork(unittest.TestCase):
+    """Test EmbeddingBasedNetwork architecture."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.env = CuttleEnvironment()
+        self.env.reset()
+        self.observation_space = self.env.observation_space
+        self.actions = self.env.actions
+        self.model = EmbeddingBasedNetwork(
+            self.observation_space,
+            embedding_dim=52,  # Game-based: one per card
+            zone_encoded_dim=52,  # Game-based: one per card
+            num_actions=self.actions
+        )
+        self.model.eval()
+    
+    def test_initialization(self):
+        """Test that EmbeddingBasedNetwork initializes correctly."""
+        self.assertIsNotNone(self.model)
+        self.assertIsNotNone(self.model.card_embedding)
+        self.assertIsNotNone(self.model.zone_aggregator)
+        self.assertIsNotNone(self.model.hidden_layer)
+        self.assertIsNotNone(self.model.output_layer)
+        self.assertEqual(self.model.num_actions, self.actions)
+    
+    def test_forward_with_dict_returns_q_values(self):
+        """Test that forward returns Q-values for each action."""
+        observation = self.env.get_obs()
+        
+        with torch.no_grad():
+            q_values = self.model(observation)
+        
+        self.assertIsInstance(q_values, torch.Tensor)
+        self.assertEqual(q_values.shape[0], self.actions)
+        self.assertEqual(q_values.dim(), 1)
+    
+    def test_forward_with_list_returns_batch_q_values(self):
+        """Test that forward returns batched Q-values for list input."""
+        observations = [self.env.get_obs() for _ in range(3)]
+        
+        with torch.no_grad():
+            q_values = self.model(observations)
+        
+        self.assertIsInstance(q_values, torch.Tensor)
+        self.assertEqual(q_values.shape[0], 3)  # Batch size
+        self.assertEqual(q_values.shape[1], self.actions)  # Actions per sample
+    
+    def test_forward_accepts_same_observation_format(self):
+        """Test that network accepts same observation format as NeuralNetwork."""
+        observation = self.env.get_obs()
+        
+        with torch.no_grad():
+            q_values = self.model(observation)
+        
+        self.assertIsInstance(q_values, torch.Tensor)
+        self.assertEqual(q_values.shape[0], self.actions)
+    
+    def test_hidden_layer_size(self):
+        """Test that hidden layer has 52 neurons (game-based)."""
+        # Check that hidden layer input size is correct (fusion_dim)
+        # and output size is 52
+        hidden_layer = self.model.hidden_layer[0]  # First Linear layer
+        self.assertEqual(hidden_layer.out_features, 52)
+    
+    def test_output_layer_size(self):
+        """Test that output layer outputs correct number of actions."""
+        self.assertEqual(self.model.output_layer.out_features, self.actions)
+        self.assertEqual(self.model.output_layer.in_features, 52)
+
+
+class TestMultiEncoderNetwork(unittest.TestCase):
+    """Test MultiEncoderNetwork architecture."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.env = CuttleEnvironment()
+        self.env.reset()
+        self.observation_space = self.env.observation_space
+        self.actions = self.env.actions
+        self.model = MultiEncoderNetwork(
+            self.observation_space,
+            num_actions=self.actions
+        )
+        self.model.eval()
+    
+    def test_initialization(self):
+        """Test that MultiEncoderNetwork initializes correctly."""
+        self.assertIsNotNone(self.model)
+        self.assertIsNotNone(self.model.hand_encoder)
+        self.assertIsNotNone(self.model.field_encoder)
+        self.assertIsNotNone(self.model.deck_encoder)
+        self.assertIsNotNone(self.model.scrap_encoder)
+        self.assertIsNotNone(self.model.stack_encoder)
+        self.assertIsNotNone(self.model.effect_shown_encoder)
+        self.assertIsNotNone(self.model.hidden_layer)
+        self.assertIsNotNone(self.model.output_layer)
+        self.assertEqual(self.model.num_actions, self.actions)
+    
+    def test_forward_with_dict_returns_q_values(self):
+        """Test that forward returns Q-values for each action."""
+        observation = self.env.get_obs()
+        
+        with torch.no_grad():
+            q_values = self.model(observation)
+        
+        self.assertIsInstance(q_values, torch.Tensor)
+        self.assertEqual(q_values.shape[0], self.actions)
+        self.assertEqual(q_values.dim(), 1)
+    
+    def test_forward_with_list_returns_batch_q_values(self):
+        """Test that forward returns batched Q-values for list input."""
+        observations = [self.env.get_obs() for _ in range(3)]
+        
+        with torch.no_grad():
+            q_values = self.model(observations)
+        
+        self.assertIsInstance(q_values, torch.Tensor)
+        self.assertEqual(q_values.shape[0], 3)  # Batch size
+        self.assertEqual(q_values.shape[1], self.actions)  # Actions per sample
+    
+    def test_forward_accepts_same_observation_format(self):
+        """Test that network accepts same observation format as NeuralNetwork."""
+        observation = self.env.get_obs()
+        
+        with torch.no_grad():
+            q_values = self.model(observation)
+        
+        self.assertIsInstance(q_values, torch.Tensor)
+        self.assertEqual(q_values.shape[0], self.actions)
+    
+    def test_hidden_layer_size(self):
+        """Test that hidden layer has 52 neurons (game-based)."""
+        # Check that hidden layer output size is 52
+        hidden_layer = self.model.hidden_layer[0]  # First Linear layer
+        self.assertEqual(hidden_layer.out_features, 52)
+    
+    def test_output_layer_size(self):
+        """Test that output layer outputs correct number of actions."""
+        self.assertEqual(self.model.output_layer.out_features, self.actions)
+        self.assertEqual(self.model.output_layer.in_features, 52)
+    
+    def test_all_zone_encoders_exist(self):
+        """Test that all zone encoders are present."""
+        self.assertIsNotNone(self.model.hand_encoder)
+        self.assertIsNotNone(self.model.field_encoder)
+        self.assertIsNotNone(self.model.revealed_encoder)
+        self.assertIsNotNone(self.model.off_field_encoder)
+        self.assertIsNotNone(self.model.off_revealed_encoder)
+        self.assertIsNotNone(self.model.deck_encoder)
+        self.assertIsNotNone(self.model.scrap_encoder)
+        self.assertIsNotNone(self.model.stack_encoder)
+        self.assertIsNotNone(self.model.effect_shown_encoder)
 
 
 if __name__ == '__main__':
