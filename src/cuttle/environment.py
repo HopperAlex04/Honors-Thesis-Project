@@ -138,7 +138,10 @@ class CuttleEnvironment:
         pass
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        random.seed(seed)
+        # Set seeds for reproducibility if provided
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
         # Reset to open state to make new game
         self.dealer_hand = np.zeros(52, dtype=bool)
         self.dealer_field = np.zeros(52, dtype=bool)

@@ -1,3 +1,9 @@
+# Editor files
+.vscode/
+.cursorrules
+.cursorindexingignore
+.cursorignore
+
 #Logging files:
 p1log.txt
 p2log.txt

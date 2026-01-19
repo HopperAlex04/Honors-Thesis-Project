@@ -221,16 +221,17 @@ class TestNeuralNetworkForward(unittest.TestCase):
         self.assertEqual(q_values.shape[0], self.actions)
         self.assertEqual(q_values.dim(), 1)
     
-    def test_forward_output_range(self):
-        """Test that forward output is in expected range (Tanh outputs [-1, 1])."""
+    def test_forward_output_is_finite(self):
+        """Test that forward output contains finite values (no NaN or Inf)."""
         observation = self.env.get_obs()
         
         with torch.no_grad():
             q_values = self.model(observation)
         
-        # Tanh activation should output values in [-1, 1]
-        self.assertTrue(torch.all(q_values >= -1.0))
-        self.assertTrue(torch.all(q_values <= 1.0))
+        # Q-values should be finite (no NaN or Inf)
+        # Note: DQN output layer has no activation, so Q-values are unbounded
+        # This is correct - Q-values represent expected cumulative rewards
+        self.assertTrue(torch.all(torch.isfinite(q_values)))
     
     def test_forward_with_list_returns_batch_q_values(self):
         """Test that forward returns batched Q-values for list input."""

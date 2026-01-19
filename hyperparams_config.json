@@ -1,5 +1,7 @@
 {
   "comment": "Hyperparameter configuration for training DQN agent in Cuttle game.",
+  "random_seed": 42,
+  "comment_random_seed": "Seed for reproducibility. Set to null for non-deterministic runs. Experiment manager overrides this.",
   "network_type": "boolean",
   "comment_network_type": "Options: 'boolean', 'embedding', 'multi_encoder'",
   "embedding_dim": 32,
@@ -20,9 +22,9 @@
   "q_value_clip": 15.0,
   "replay_buffer_size": 30000,
   "training": {
-    "rounds": 4,
-    "eps_per_round": 500,
-    "quick_test_mode": true,
+    "rounds": 20,
+    "eps_per_round": 250,
+    "quick_test_mode": false,
     "quick_test_rounds": 1,
     "quick_test_eps_per_round": 100,
     "validation_episodes_ratio": 0.5,

@@ -14,7 +14,10 @@ import os
 import sys
 import json
 import time
+import random
 from pathlib import Path
+
+import numpy as np
 
 # Limit CPU threads to 4 cores (must be set before importing torch)
 os.environ["OMP_NUM_THREADS"] = "4"
@@ -27,6 +30,27 @@ if str(src_path) not in sys.path:
 
 import torch
 torch.set_num_threads(4)
+
+
+def set_random_seeds(seed: int) -> None:
+    """
+    Set random seeds for reproducibility across all random number generators.
+    
+    This ensures that experiments are reproducible when using the same seed.
+    Critical for scientific validity of RL experiments.
+    
+    Args:
+        seed: Random seed to use for all generators
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        # Ensure deterministic behavior on CUDA (may impact performance)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 from cuttle import players as Players
 from cuttle.environment import CuttleEnvironment
@@ -95,6 +119,14 @@ LR_DECAY_INTERVAL = config.get("lr_decay_interval", 2)
 GRADIENT_CLIP_NORM = config.get("gradient_clip_norm", 5.0)
 Q_VALUE_CLIP = config.get("q_value_clip", 15.0)
 REPLAY_BUFFER_SIZE = config.get("replay_buffer_size", 100000)
+
+# Random seed for reproducibility
+RANDOM_SEED = config.get("random_seed", None)
+if RANDOM_SEED is not None:
+    set_random_seeds(RANDOM_SEED)
+    print(f"Random seed set: {RANDOM_SEED}")
+else:
+    print("Warning: No random seed specified. Results will not be reproducible.")
 
 # Network type selection
 network_type = config.get("network_type", "boolean")
@@ -174,6 +206,7 @@ initial_model_path = models_dir / "model_initial.pt"
 torch.save({
     'model_state_dict': model.state_dict(),
     'network_type': network_type,
+    'random_seed': RANDOM_SEED,
     'config': config,
 }, initial_model_path)
 print(f"Saved initial model: {initial_model_path}")
@@ -235,10 +268,12 @@ torch.save({
     'model_state_dict': model.state_dict(),
     'optimizer_state_dict': trainee.get_optimizer_state(),
     'network_type': network_type,
+    'random_seed': RANDOM_SEED,
     'config': config,
     'steps_done': steps_done,
     'total_time': total_time,
     'win_rate_history': win_rate_history,
+    'final_win_rate': win_rate_history[validation_opponents[0][0]][-1] if win_rate_history and validation_opponents else None,
 }, final_model_path)
 
 total_elapsed = time.time() - training_start_time

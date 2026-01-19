@@ -17,6 +17,27 @@ from torch import nn
 # Stack and effect_shown are now boolean arrays of length 52 (no embeddings needed)
 
 
+def init_weights(module: nn.Module) -> None:
+    """
+    Initialize network weights using Kaiming/He initialization.
+    
+    This initialization is recommended for networks using ReLU activation
+    functions. It helps prevent vanishing/exploding gradients and ensures
+    proper signal propagation through deep networks.
+    
+    Args:
+        module: Neural network module to initialize
+    """
+    if isinstance(module, nn.Linear):
+        # Kaiming/He initialization for ReLU networks
+        nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+    elif isinstance(module, nn.Embedding):
+        # Standard normal initialization for embeddings
+        nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+
 class NeuralNetwork(nn.Module):
     """
     Deep Q-Network (DQN) for Cuttle card game.
@@ -73,6 +94,9 @@ class NeuralNetwork(nn.Module):
                 # No activation function - Q-values need to be unbounded to represent
                 # proper expected future rewards (can be > 1.0 with intermediate rewards)
             )
+            
+            # Apply Kaiming initialization for ReLU networks
+            self.apply(init_weights)
     
     def _calculate_input_dimension(
         self,
@@ -325,6 +349,9 @@ class EmbeddingBasedNetwork(nn.Module):
         
         # Output layer: 52 neurons → num_actions
         self.output_layer = nn.Linear(52, num_actions)
+        
+        # Apply Kaiming initialization for ReLU networks
+        self.apply(init_weights)
     
     def forward(
         self,
@@ -559,6 +586,9 @@ class MultiEncoderNetwork(nn.Module):
         
         # Output layer: 52 neurons → num_actions
         self.output_layer = nn.Linear(52, num_actions)
+        
+        # Apply Kaiming initialization for ReLU networks
+        self.apply(init_weights)
     
     def forward(
         self,

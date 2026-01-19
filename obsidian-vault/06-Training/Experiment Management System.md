@@ -224,6 +224,39 @@ experiments/
 
 **Note**: Each run saves only initial and final models (no intermediate checkpoints). If interrupted, a run restarts from the beginning. With ~1 hour per run, this is acceptable.
 
+## Reproducibility
+
+### Random Seed Management
+
+The experiment system ensures reproducibility through deterministic random seed handling:
+
+1. **Seed Generation**: When an experiment is initialized, 21 unique seeds are generated from a base seed (42) using `numpy.random.seed(base_seed)`. This ensures the same seeds are generated each time an experiment is initialized with the same base seed.
+
+2. **Seed Application**: Each run has a unique seed stored in its configuration. The `train.py` script applies this seed to all random number generators:
+   - Python's `random` module
+   - NumPy's `np.random`
+   - PyTorch's `torch.manual_seed`
+   - CUDA seeds (if GPU is available)
+
+3. **Seed Storage**: Seeds are saved in:
+   - `experiment_metadata.json`: All 21 seeds for the experiment
+   - `run_metadata.json`: Individual run's seed
+   - `model_initial.pt` and `model_final.pt`: Seed used for training
+
+### Network Initialization
+
+Networks use Kaiming/He initialization, which is the recommended practice for ReLU networks:
+- Prevents vanishing/exploding gradients
+- Ensures proper signal propagation
+- Initialized deterministically when random seed is set
+
+### Environment Reproducibility
+
+The Cuttle environment's `reset()` method accepts a seed parameter, ensuring deterministic:
+- Card shuffling
+- Deck draws
+- Any randomized game mechanics
+
 ## Statistical Methods
 
 ### Descriptive Statistics
