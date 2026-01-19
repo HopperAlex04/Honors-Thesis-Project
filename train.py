@@ -1,18 +1,20 @@
 """
 Unified training script for DQN agent in Cuttle card game.
 
-This script trains a DQN agent through self-play with simplified checkpointing
-and validation. All hint-features have been removed - training uses only raw
-game state (zones, stack, effect_shown as boolean arrays).
+This script trains a DQN agent through self-play with validation against
+baseline opponents. Training runs from start to finish without checkpointing -
+if interrupted, the run must be restarted.
+
+For running multiple experiments, use the experiment management system:
+    python scripts/experiment_manager.py init --name "experiment_name"
+    python scripts/run_full_experiment.py
 """
 
 import os
 import sys
 import json
-import signal
 import time
 from pathlib import Path
-from typing import Optional
 
 # Limit CPU threads to 4 cores (must be set before importing torch)
 os.environ["OMP_NUM_THREADS"] = "4"
@@ -31,21 +33,6 @@ from cuttle.environment import CuttleEnvironment
 from cuttle.networks import NeuralNetwork, EmbeddingBasedNetwork, MultiEncoderNetwork
 from cuttle import training as Training
 
-# Global flag for graceful shutdown
-training_interrupted = False
-
-
-def signal_handler(signum, frame):
-    """Handle interrupt signal (Ctrl+C) gracefully."""
-    global training_interrupted
-    print("\n\nTraining interruption requested. Will finish current round and save state...")
-    training_interrupted = True
-
-
-# Register signal handler for graceful shutdown
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
-
 # Load hyperparameters from config file
 CONFIG_FILE = Path(__file__).parent / "hyperparams_config.json"
 if CONFIG_FILE.exists():
@@ -56,7 +43,7 @@ else:
     # Fallback to defaults if config file doesn't exist
     print(f"Warning: Config file not found at {CONFIG_FILE}, using defaults")
     config = {
-        "embedding_size": 16,  # Kept for backward compatibility, no longer used
+        "embedding_size": 16,
         "batch_size": 64,
         "gamma": 0.90,
         "eps_start": 0.90,
@@ -77,7 +64,7 @@ else:
             "quick_test_rounds": 3,
             "quick_test_eps_per_round": 100,
             "validation_episodes_ratio": 0.5,
-            "validation_opponent": "randomized"  # Options: "randomized", "gapmaximizer", "both"
+            "validation_opponent": "randomized"
         },
         "early_stopping": {
             "enabled": True,
@@ -89,12 +76,12 @@ else:
         }
     }
 
-# Create environment (no feature flags needed)
+# Create environment
 env = CuttleEnvironment()
 actions = env.actions
 
 # Load hyperparameters from config
-EMBEDDING_SIZE = config["embedding_size"]  # Kept for backward compatibility
+EMBEDDING_SIZE = config["embedding_size"]
 BATCH_SIZE = config["batch_size"]
 GAMMA = config["gamma"]
 EPS_START = config["eps_start"]
@@ -113,6 +100,10 @@ REPLAY_BUFFER_SIZE = config.get("replay_buffer_size", 100000)
 network_type = config.get("network_type", "boolean")
 embedding_dim = config.get("embedding_dim", 32)
 
+print(f"\n{'='*60}")
+print(f"Network Type: {network_type}")
+print(f"{'='*60}")
+
 if network_type == "embedding":
     model = EmbeddingBasedNetwork(env.observation_space, embedding_dim=embedding_dim, num_actions=actions)
 elif network_type == "multi_encoder":
@@ -120,6 +111,7 @@ elif network_type == "multi_encoder":
 else:
     # Default: boolean network (current NeuralNetwork)
     model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
+
 trainee = Players.Agent(
     "PlayerAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR, REPLAY_BUFFER_SIZE
 )
@@ -130,112 +122,6 @@ models_dir = Path("./models")
 models_dir.mkdir(parents=True, exist_ok=True)
 print(f"Models directory ready: {models_dir}")
 
-# Training state file for resuming
-STATE_FILE = models_dir / "training_state.json"
-
-# Checkpoint prefix
-CHECKPOINT_PREFIX = "checkpoint"
-
-
-def save_training_state(current_round: int, total_rounds: int, steps_done: int = 0, total_time: float = 0.0) -> None:
-    """Save current training state to resume later."""
-    state = {
-        "current_round": current_round,
-        "total_rounds": total_rounds,
-        "last_checkpoint": current_round,
-        "steps_done": steps_done,
-        "total_time": total_time,
-    }
-    try:
-        with open(STATE_FILE, 'w') as f:
-            json.dump(state, f, indent=2)
-        print(f"Training state saved: Round {current_round}/{total_rounds}, Steps: {steps_done}, Time: {total_time:.2f}s")
-    except Exception as e:
-        print(f"Warning: Could not save training state: {e}")
-
-
-def load_training_state() -> Optional[dict]:
-    """Load training state if it exists."""
-    if STATE_FILE.exists():
-        try:
-            with open(STATE_FILE, 'r') as f:
-                state = json.load(f)
-            print(f"Found existing training state: Round {state['current_round']}/{state['total_rounds']}")
-            return state
-        except Exception as e:
-            print(f"Warning: Could not load training state: {e}")
-            return None
-    return None
-
-
-def clear_training_state() -> None:
-    """Clear training state file (called when training completes)."""
-    if STATE_FILE.exists():
-        try:
-            STATE_FILE.unlink()
-            print("Training state cleared (training completed)")
-        except Exception as e:
-            print(f"Warning: Could not clear training state: {e}")
-
-
-def check_interrupt_and_save(current_round: int, total_rounds: int, agent=None, steps_done: int = 0, total_time: float = 0.0) -> bool:
-    """Check for interruption and save state immediately if interrupted."""
-    if training_interrupted:
-        print(f"\nTraining interrupted during round {current_round}")
-        save_training_state(current_round, total_rounds, steps_done, total_time)
-        if agent is not None:
-            # Save full checkpoint with model, optimizer, and steps
-            interrupt_checkpoint = models_dir / f"{CHECKPOINT_PREFIX}{current_round}_interrupted.pt"
-            try:
-                checkpoint = {
-                    'model_state_dict': agent.model.state_dict(),
-                    'optimizer_state_dict': agent.get_optimizer_state(),
-                    'steps_done': steps_done,
-                }
-                torch.save(checkpoint, interrupt_checkpoint)
-                print(f"Saved interrupt checkpoint: {interrupt_checkpoint}")
-            except Exception as e:
-                print(f"Warning: Could not save interrupt checkpoint: {e}")
-        print("State saved. Run again to resume.")
-        return True
-    return False
-
-
-# Check for existing training state to resume
-saved_state = load_training_state()
-start_round = 0
-steps_done = 0
-total_time = 0.0
-if saved_state:
-    response = input(f"Resume training from round {saved_state['current_round']}? (yes/no): ").strip().lower()
-    if response in ['yes', 'y']:
-        start_round = saved_state['current_round']
-        steps_done = saved_state.get('steps_done', 0)
-        total_time = saved_state.get('total_time', 0.0)
-        print(f"Resuming training from round {start_round}, steps {steps_done}, total time: {total_time:.2f}s")
-    else:
-        print("Starting fresh training")
-        clear_training_state()
-
-# Save initial checkpoint only if starting fresh
-if start_round == 0:
-    try:
-        checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{0}.pt"
-        if not checkpoint_path.exists():
-            checkpoint = {
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': trainee.get_optimizer_state(),
-                'steps_done': 0,
-                'target_update_counter': 0,
-            }
-            torch.save(checkpoint, checkpoint_path)
-            print(f"Saved initial checkpoint: {checkpoint_path}")
-        else:
-            print(f"Initial checkpoint already exists: {checkpoint_path}")
-    except Exception as e:
-        print(f"Error saving initial checkpoint: {e}")
-        raise
-
 # Validation opponents
 validation_config = config.get("training", {}).get("validation_opponent", "randomized")
 validation_opponents = []
@@ -245,7 +131,6 @@ if validation_config == "gapmaximizer" or validation_config == "both":
     validation_opponents.append(("GapMaximizer", Players.ScoreGapMaximizer("GapMaximizer")))
 
 if not validation_opponents:
-    # Default to randomized if invalid config
     validation_opponents = [("Randomized", Players.Randomized("Randomized"))]
 
 # Early stopping configuration
@@ -274,95 +159,53 @@ print(f"Validation: {validation_episodes_total} total episodes ({validation_epis
 print(f"Validation opponents: {[name for name, _ in validation_opponents]}")
 
 print(f"\n{'='*60}")
-print(f"TRAINING: Raw Game State Only (No Hint-Features)")
-print(f"Starting training: Rounds {start_round} to {rounds-1}")
+print(f"TRAINING: {rounds} rounds, {eps_per_round} episodes per round")
+print(f"Total training episodes: {rounds * eps_per_round}")
 print(f"{'='*60}\n")
 
-# Track win rates for display
+# Track win rates and timing
 win_rate_history = {name: [] for name, _ in validation_opponents}
+steps_done = 0
+total_time = 0.0
+training_start_time = time.time()
 
-for x in range(start_round, rounds):
-    # Check for interruption before starting round
-    if check_interrupt_and_save(x, rounds, trainee, steps_done, total_time):
-        sys.exit(0)
-    
+# Save initial model
+initial_model_path = models_dir / "model_initial.pt"
+torch.save({
+    'model_state_dict': model.state_dict(),
+    'network_type': network_type,
+    'config': config,
+}, initial_model_path)
+print(f"Saved initial model: {initial_model_path}")
+
+for round_num in range(rounds):
     round_start_time = time.time()
     
     print(f"\n{'='*60}")
-    print(f"Round {x+1}/{rounds} (steps: {steps_done})")
+    print(f"Round {round_num + 1}/{rounds} (steps: {steps_done})")
     print(f"{'='*60}")
-    checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{x}.pt"
     
-    # Check if checkpoint exists before loading
-    if not checkpoint_path.exists():
-        print(f"Error: Checkpoint {checkpoint_path} not found. Skipping round {x}.")
-        continue
-    
-    # Load previous checkpoint and update trainee's model
-    try:
-        prev_checkpoint = torch.load(checkpoint_path, weights_only=False)
-        
-        if isinstance(prev_checkpoint, dict) and 'model_state_dict' in prev_checkpoint:
-            trainee.model.load_state_dict(prev_checkpoint['model_state_dict'])
-            trainee.policy.load_state_dict(prev_checkpoint['model_state_dict'])
-            trainee.target.load_state_dict(prev_checkpoint['model_state_dict'])
-            trainee.target.eval()
-            if 'optimizer_state_dict' in prev_checkpoint:
-                trainee.set_optimizer_state(prev_checkpoint['optimizer_state_dict'])
-            if 'steps_done' in prev_checkpoint:
-                steps_done = prev_checkpoint['steps_done']
-            if 'target_update_counter' in prev_checkpoint:
-                trainee.update_target_counter = prev_checkpoint['target_update_counter']
-        else:
-            # Old format: full model object
-            trainee.model.load_state_dict(prev_checkpoint.state_dict())
-            trainee.policy.load_state_dict(prev_checkpoint.state_dict())
-            trainee.target.load_state_dict(prev_checkpoint.state_dict())
-            trainee.target.eval()
-        
-        # Proactive learning rate scheduling: decay LR every N rounds
-        if x > 0 and x % LR_DECAY_INTERVAL == 0:
-            current_lr = trainee.optimizer.param_groups[0]['lr']
-            new_lr = current_lr * LR_DECAY_RATE
-            for param_group in trainee.optimizer.param_groups:
-                param_group['lr'] = new_lr
-            print(f"Proactive LR decay: {current_lr:.2e} -> {new_lr:.2e} (round {x} is multiple of {LR_DECAY_INTERVAL})")
-    except Exception as e:
-        print(f"Error loading checkpoint {checkpoint_path}: {e}")
-        print(f"Skipping round {x}.")
-        continue
+    # Proactive learning rate scheduling: decay LR every N rounds
+    if round_num > 0 and round_num % LR_DECAY_INTERVAL == 0:
+        current_lr = trainee.optimizer.param_groups[0]['lr']
+        new_lr = current_lr * LR_DECAY_RATE
+        for param_group in trainee.optimizer.param_groups:
+            param_group['lr'] = new_lr
+        print(f"LR decay: {current_lr:.2e} -> {new_lr:.2e}")
     
     # Self-play training
     try:
         _, _, steps_done = Training.selfPlayTraining(
             trainee, trainee, eps_per_round,
-            model_id=f"round_{x}_selfplay",
+            model_id=f"round_{round_num}_selfplay",
             initial_steps=steps_done,
-            round_number=x,
+            round_number=round_num,
             initial_total_time=total_time,
             early_stopping_config=early_stopping_config
         )
     except Exception as e:
-        print(f"Error during self-play training in round {x}: {e}")
-        continue
-    
-    # Check for interruption after self-play
-    if check_interrupt_and_save(x, rounds, trainee, steps_done, total_time):
-        sys.exit(0)
-    
-    # Save checkpoint for next round (always save latest)
-    new_checkpoint_path = models_dir / f"{CHECKPOINT_PREFIX}{x + 1}.pt"
-    try:
-        checkpoint = {
-            'model_state_dict': trainee.model.state_dict(),
-            'optimizer_state_dict': trainee.get_optimizer_state(),
-            'steps_done': steps_done,
-            'target_update_counter': trainee.update_target_counter,
-        }
-        torch.save(checkpoint, new_checkpoint_path)
-        print(f"Saved checkpoint: {new_checkpoint_path}")
-    except Exception as e:
-        print(f"Error saving checkpoint {new_checkpoint_path}: {e}")
+        print(f"Error during self-play training in round {round_num}: {e}")
+        raise
     
     # Validation against opponents
     current_total_time = total_time + (time.time() - round_start_time)
@@ -370,37 +213,49 @@ for x in range(start_round, rounds):
         try:
             trainee_wins, opponent_wins = Training.validate_both_positions(
                 trainee, opponent, validation_episodes_per_position,
-                model_id_prefix=f"round_{x}_vs_{opponent_name.lower()}",
-                round_number=x,
+                model_id_prefix=f"round_{round_num}_vs_{opponent_name.lower()}",
+                round_number=round_num,
                 initial_total_time=current_total_time
             )
             win_rate = trainee_wins / validation_episodes_total if validation_episodes_total > 0 else 0.0
             win_rate_history[opponent_name].append(win_rate)
-            print(f"Round {x}: Validation vs {opponent_name} - trainee: {trainee_wins}, opponent: {opponent_wins} (win rate: {win_rate:.1%})")
+            print(f"Round {round_num}: Validation vs {opponent_name} - trainee: {trainee_wins}, opponent: {opponent_wins} (win rate: {win_rate:.1%})")
         except Exception as e:
-            print(f"Error during validation vs {opponent_name} in round {x}: {e}")
+            print(f"Error during validation vs {opponent_name} in round {round_num}: {e}")
+            raise
     
-    # Check for interruption after validation
-    if check_interrupt_and_save(x, rounds, trainee, steps_done, total_time):
-        sys.exit(0)
-    
-    # Update total time after round completes
+    # Update total time
     round_elapsed_time = time.time() - round_start_time
     total_time += round_elapsed_time
-    
-    # Save state after completing round
-    save_training_state(x + 1, rounds, steps_done, total_time)
+    print(f"Round {round_num + 1} completed in {round_elapsed_time:.1f}s (total: {total_time:.1f}s)")
 
-# Training completed successfully
+# Training completed - save final model
+final_model_path = models_dir / "model_final.pt"
+torch.save({
+    'model_state_dict': model.state_dict(),
+    'optimizer_state_dict': trainee.get_optimizer_state(),
+    'network_type': network_type,
+    'config': config,
+    'steps_done': steps_done,
+    'total_time': total_time,
+    'win_rate_history': win_rate_history,
+}, final_model_path)
+
+total_elapsed = time.time() - training_start_time
+
 print(f"\n{'='*60}")
-print("Training completed successfully!")
+print("TRAINING COMPLETED SUCCESSFULLY")
 print(f"{'='*60}")
+print(f"Network type: {network_type}")
+print(f"Total rounds: {rounds}")
+print(f"Total episodes: {rounds * eps_per_round}")
+print(f"Total steps: {steps_done}")
+print(f"Total time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} minutes)")
+print(f"\nFinal model saved: {final_model_path}")
 
-# Print final summary
 print("\nFinal Win Rate Summary:")
 for opponent_name, history in win_rate_history.items():
     if history:
         print(f"  vs {opponent_name}: {history[-1]:.1%} (peak: {max(history):.1%})")
-print()
 
-clear_training_state()
+print()

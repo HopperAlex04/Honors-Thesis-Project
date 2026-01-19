@@ -3,4 +3,6 @@ gymnasium
 torch
 matplotlib
 seaborn
+scipy
+pandas
 pytest

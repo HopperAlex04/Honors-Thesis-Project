@@ -65,7 +65,12 @@ Welcome to the knowledge base for the Cuttle card game Deep Q-Network (DQN) rein
 - [[Training Metrics]] - Loss, Q-values, win rates
 - [[Validation]] - Evaluating model performance
 - [[Training Schedule and Rounds]] - Configuring rounds and episodes per round
-- [[Statistical Significance and Multiple Runs]] - Running multiple experiments for statistical significance
+- [[Training Time Estimates]] - Planning computational time
+
+### Experiment Management
+- [[Statistical Significance and Multiple Runs]] - Why multiple runs are needed
+- [[Experiment Management System]] - **Automated system for running full experiments**
+- [[Input Representation Experiments]] - Experimental design
 
 ## 🔗 Quick Links
 
@@ -88,4 +93,4 @@ Welcome to the knowledge base for the Cuttle card game Deep Q-Network (DQN) rein
 - This is a living document - update as you learn!
 
 ---
-*Last updated: 2026-01-16*
+*Last updated: 2026-01-19*

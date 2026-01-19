@@ -2,6 +2,33 @@
 
 Utility scripts for the Cuttle project.
 
+## Experiment Management (Full Experiment)
+
+For running the full input representation comparison experiment (3 network types × 7 runs = 21 total runs), see **[EXPERIMENT_MANAGEMENT.md](EXPERIMENT_MANAGEMENT.md)** for detailed documentation.
+
+### Quick Start
+
+```bash
+# Initialize experiment
+python scripts/experiment_manager.py init --name "input_rep_v1"
+
+# Run all training sessions
+python scripts/run_full_experiment.py --parallel 3
+
+# Analyze results
+python scripts/aggregate_experiment_results.py --graphs
+```
+
+### Experiment Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `experiment_manager.py` | Initialize, track, and manage experiments |
+| `run_full_experiment.py` | Execute training runs (sequential or parallel) |
+| `aggregate_experiment_results.py` | Analyze and visualize results |
+
+---
+
 ## cleanup.py
 
 Master cleanup script that runs all cleanup utilities. This is the recommended way to clean up generated files.

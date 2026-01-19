@@ -180,6 +180,42 @@ See [[Statistical Significance and Multiple Runs]] for:
 - Data management strategy
 - Statistical analysis methods
 
+## Running the Full Experiment
+
+A complete experiment management system has been implemented to automate running all 21 training runs (3 network types × 7 runs each).
+
+### Quick Start
+
+```bash
+# 1. Initialize experiment
+python scripts/experiment_manager.py init --name "input_rep_v1"
+
+# 2. Run all experiments (with parallel execution)
+python scripts/run_full_experiment.py --parallel 3
+
+# 3. Analyze and visualize results
+python scripts/aggregate_experiment_results.py --graphs --export latex
+```
+
+### System Components
+
+| Script | Purpose |
+|--------|---------|
+| `experiment_manager.py` | Initialize, track status, manage runs |
+| `run_full_experiment.py` | Execute training runs |
+| `aggregate_experiment_results.py` | Analyze and visualize |
+
+### What the System Does
+
+1. **Creates organized directory structure** with separate folders per run
+2. **Generates unique seeds** for reproducibility
+3. **Tracks run status** (pending, running, completed, failed)
+4. **Calculates statistics** (mean, std, 95% CI)
+5. **Performs statistical tests** (t-tests, ANOVA, effect sizes)
+6. **Generates thesis-quality visualizations**
+
+See [[Experiment Management System]] for complete documentation.
+
 ## Related Concepts
 
 - [[Network Architectures]] - Detailed architecture descriptions
@@ -187,7 +223,8 @@ See [[Statistical Significance and Multiple Runs]] for:
 - [[Neural Network Basics]] - Fundamental concepts
 - [[Deep Q-Network]] - DQN algorithm
 - [[Reward Engineering]] - Reward structure
-- [[Statistical Significance and Multiple Runs]] - Running multiple experiments
+- [[Statistical Significance and Multiple Runs]] - Why multiple runs are needed
+- [[Experiment Management System]] - How to run the full experiment
 
 ---
 *Experimental design for input representation comparison*

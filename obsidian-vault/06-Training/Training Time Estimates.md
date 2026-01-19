@@ -291,8 +291,26 @@ If you can run 3 network types in parallel:
 - **All three networks**: ~21-42 GB
 - **Total for all runs**: ~147-294 GB (21 runs total)
 
+## Running the Full Experiment
+
+The [[Experiment Management System]] automates running all 21 training runs. Based on these time estimates:
+
+| Execution Mode | Estimated Total Time |
+|----------------|---------------------|
+| Sequential (1 at a time) | 21-32 hours |
+| Parallel (3 at a time) | 7-11 hours |
+| Parallel (7 at a time) | 3-5 hours |
+
+**Recommendation**: Use `--parallel 3` for a good balance of speed and system stability.
+
+```bash
+# Run with 3 parallel workers
+python scripts/run_full_experiment.py --parallel 3
+```
+
 ## Related Concepts
 
+- [[Experiment Management System]] - Automated experiment execution
 - [[Training Schedule and Rounds]] - Round configuration
 - [[Statistical Significance and Multiple Runs]] - Multiple runs needed
 - [[Hyperparameters]] - Configuration affecting training time
