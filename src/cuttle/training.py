@@ -26,7 +26,8 @@ SLOW_TURN_THRESHOLD = 0.1  # Log turns taking longer than this (in seconds)
 MAX_COUNTER_DEPTH = 4  # Maximum depth for counter exchanges (stack indices 0-4)
 STACK_TOP_SEVEN = 7  # Stack value indicating Seven card resolution needed
 STACK_TOP_FOUR = 4  # Stack value indicating Four card resolution needed
-LOG_DIRECTORY = Path("./action_logs")
+ACTION_LOG_DIRECTORY = Path("./action_logs")  # Per-turn action data for strategy analysis
+METRICS_LOG_DIRECTORY = Path("./metrics_logs")  # Per-episode metrics for graphing
 
 # Reward constants
 REWARD_WIN = 1.0  # Reward for winning an episode
@@ -66,67 +67,29 @@ def setup_logger(
     return logger
 
 
-def extract_training_type(model_id: Optional[str]) -> Optional[str]:
-    """
-    Extract training type from model_id to organize logs into subdirectories.
-    
-    Args:
-        model_id: Model identifier (e.g., "hand_only_round_0_selfplay", "opponent_field_only_round_1_vs_randomized")
-        
-    Returns:
-        Training type string (e.g., "hand_only", "opponent_field_only") or None if not recognized
-    """
-    if not model_id:
-        return None
-    
-    # Known training types
-    training_types = [
-        "hand_only",
-        "opponent_field_only",
-        "no_features",
-        "both_features",  # Legacy name, kept for backward compatibility
-        "all_features",
-        "scores"
-    ]
-    
-    # Check if model_id starts with any known training type
-    for training_type in training_types:
-        if model_id.startswith(training_type):
-            return training_type
-    
-    return None
-
-
 def setup_action_logger(log_dir: Path, model_id: Optional[str] = None) -> Optional[logging.Logger]:
     """
     Set up action logging for strategy analysis.
     
-    Logs are organized into subdirectories by training type for easy access:
-    - action_logs/hand_only/
-    - action_logs/opponent_field_only/
-    - action_logs/no_features/
-    - action_logs/both_features/
+    Action logs contain per-turn data including:
+    - Action taken and its type
+    - State before/after action
+    - Score changes
+    - Valid actions available
     
     Args:
-        log_dir: Base directory for log files
-        model_id: Optional model identifier (e.g., "hand_only_round_0_selfplay")
+        log_dir: Directory for action log files
+        model_id: Optional model identifier (e.g., "round_0_selfplay")
         
     Returns:
         Configured logger or None if logging disabled
     """
-    # Extract training type and create subdirectory
-    training_type = extract_training_type(model_id)
-    if training_type:
-        subdir = log_dir / training_type
-    else:
-        subdir = log_dir
-    
-    subdir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
     
     if model_id:
-        log_file = subdir / f"actions_{model_id}.jsonl"
+        log_file = log_dir / f"actions_{model_id}.jsonl"
     else:
-        log_file = subdir / f"actions.jsonl"
+        log_file = log_dir / "actions.jsonl"
     logger = setup_logger("action_logger", log_file)
     print(f"Action logging enabled: {log_file}")
     return logger
@@ -136,32 +99,26 @@ def setup_metrics_logger(log_dir: Path, model_id: Optional[str] = None) -> Optio
     """
     Set up metrics logging for training statistics.
     
-    Logs are organized into subdirectories by training type for easy access:
-    - action_logs/hand_only/
-    - action_logs/opponent_field_only/
-    - action_logs/no_features/
-    - action_logs/both_features/
+    Metrics logs contain per-episode data including:
+    - Win/loss/draw counts and rates
+    - Training loss
+    - Epsilon values
+    - Memory size
+    - Episode turns
     
     Args:
-        log_dir: Base directory for log files
-        model_id: Optional model identifier (e.g., "hand_only_round_0_selfplay")
+        log_dir: Directory for metrics log files
+        model_id: Optional model identifier (e.g., "round_0_selfplay")
         
     Returns:
         Configured logger or None if logging disabled
     """
-    # Extract training type and create subdirectory
-    training_type = extract_training_type(model_id)
-    if training_type:
-        subdir = log_dir / training_type
-    else:
-        subdir = log_dir
-    
-    subdir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
     
     if model_id:
-        metrics_file = subdir / f"metrics_{model_id}.jsonl"
+        metrics_file = log_dir / f"metrics_{model_id}.jsonl"
     else:
-        metrics_file = subdir / f"metrics.jsonl"
+        metrics_file = log_dir / "metrics.jsonl"
     logger = setup_logger("metrics_logger", metrics_file)
     print(f"Metrics logging enabled: {metrics_file}")
     return logger
@@ -826,9 +783,9 @@ def selfPlayTraining(
     p2_wins = 0
     draws = 0
     
-    # Setup loggers with model identifier
-    action_logger = setup_action_logger(LOG_DIRECTORY, model_id) if log_actions else None
-    metrics_logger = setup_metrics_logger(LOG_DIRECTORY, model_id) if log_metrics else None
+    # Setup loggers with model identifier (separate directories for actions and metrics)
+    action_logger = setup_action_logger(ACTION_LOG_DIRECTORY, model_id) if log_actions else None
+    metrics_logger = setup_metrics_logger(METRICS_LOG_DIRECTORY, model_id) if log_metrics else None
     
     # Early stopping setup
     loss_history = []

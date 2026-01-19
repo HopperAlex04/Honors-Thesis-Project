@@ -251,6 +251,7 @@ class ExperimentManager:
         run_path.mkdir(parents=True, exist_ok=True)
         (run_path / "models").mkdir(exist_ok=True)
         (run_path / "action_logs").mkdir(exist_ok=True)
+        (run_path / "metrics_logs").mkdir(exist_ok=True)
         
         # Create run-specific config
         base_config_path = self.experiment_path / "base_hyperparams_config.json"
@@ -565,24 +566,30 @@ def cmd_run(args: argparse.Namespace) -> int:
         
         shutil.copy(config_file, original_config)
         
-        # Create models and action_logs symlinks/directories for this run
+        # Create models, action_logs, and metrics_logs symlinks/directories for this run
         models_dir = project_root / "models"
         action_logs_dir = project_root / "action_logs"
+        metrics_logs_dir = project_root / "metrics_logs"
         
         # Backup existing directories
         if models_dir.exists() and not models_dir.is_symlink():
             shutil.move(models_dir, project_root / "models.bak")
         if action_logs_dir.exists() and not action_logs_dir.is_symlink():
             shutil.move(action_logs_dir, project_root / "action_logs.bak")
+        if metrics_logs_dir.exists() and not metrics_logs_dir.is_symlink():
+            shutil.move(metrics_logs_dir, project_root / "metrics_logs.bak")
         
         # Create symlinks to run directories
         if models_dir.is_symlink():
             models_dir.unlink()
         if action_logs_dir.is_symlink():
             action_logs_dir.unlink()
+        if metrics_logs_dir.is_symlink():
+            metrics_logs_dir.unlink()
         
         models_dir.symlink_to(run_path / "models")
         action_logs_dir.symlink_to(run_path / "action_logs")
+        metrics_logs_dir.symlink_to(run_path / "metrics_logs")
         
         try:
             # Run training
@@ -616,11 +623,15 @@ def cmd_run(args: argparse.Namespace) -> int:
                 models_dir.unlink()
             if action_logs_dir.is_symlink():
                 action_logs_dir.unlink()
+            if metrics_logs_dir.is_symlink():
+                metrics_logs_dir.unlink()
             
             if (project_root / "models.bak").exists():
                 shutil.move(project_root / "models.bak", models_dir)
             if (project_root / "action_logs.bak").exists():
                 shutil.move(project_root / "action_logs.bak", action_logs_dir)
+            if (project_root / "metrics_logs.bak").exists():
+                shutil.move(project_root / "metrics_logs.bak", metrics_logs_dir)
         
         return 0
         
@@ -634,28 +645,27 @@ def collect_run_metrics(run_path: Path) -> Dict[str, Any]:
     """Collect final metrics from a completed run."""
     metrics = {}
     
-    # Find metrics files
+    # Find metrics files (check metrics_logs first, fall back to action_logs for legacy)
+    metrics_logs = run_path / "metrics_logs"
     action_logs = run_path / "action_logs"
-    if not action_logs.exists():
+    
+    log_dir = metrics_logs if metrics_logs.exists() else action_logs
+    if not log_dir.exists():
         return metrics
     
     # Look for validation metrics (vs_randomized or vs_gapmaximizer)
-    for subdir in action_logs.iterdir():
-        if not subdir.is_dir():
-            continue
+    # Files are directly in the log directory, not in subdirectories
+    validation_files = sorted(log_dir.glob("metrics_*_vs_*.jsonl"))
+    if validation_files:
+        last_file = validation_files[-1]
         
-        # Find the last round's validation metrics
-        validation_files = sorted(subdir.glob("metrics_*_vs_*.jsonl"))
-        if validation_files:
-            last_file = validation_files[-1]
-            
-            # Read last line to get final metrics
-            with open(last_file, 'r') as f:
-                lines = f.readlines()
-                if lines:
-                    last_metrics = json.loads(lines[-1])
-                    metrics["final_win_rate"] = last_metrics.get("p1_win_rate", 0)
-                    metrics["final_episode"] = last_metrics.get("episode", 0)
+        # Read last line to get final metrics
+        with open(last_file, 'r') as f:
+            lines = f.readlines()
+            if lines:
+                last_metrics = json.loads(lines[-1])
+                metrics["final_win_rate"] = last_metrics.get("p1_win_rate", 0)
+                metrics["final_episode"] = last_metrics.get("episode", 0)
     
     # Get metrics from final model if available
     models_dir = run_path / "models"
