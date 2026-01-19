@@ -1,0 +1,9 @@
+{
+  "run_id": "boolean_run_01",
+  "network_type": "boolean",
+  "run_number": 1,
+  "seed": 15796,
+  "experiment_name": "experiment_20260119_122503_test_epsilon_fix",
+  "created_at": "2026-01-19T12:25:08.839311",
+  "git_commit": "5f392246b7cd"
+}

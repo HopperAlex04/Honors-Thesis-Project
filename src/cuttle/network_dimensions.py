@@ -15,7 +15,7 @@ import math
 def count_parameters_boolean_network(
     input_dim: int,
     num_actions: int,
-    hidden_layers: Tuple[int, ...] = (512, 256)
+    hidden_layers: Tuple[int, ...] = (52,)
 ) -> int:
     """
     Count parameters in boolean network architecture.
@@ -23,7 +23,7 @@ def count_parameters_boolean_network(
     Args:
         input_dim: Input dimension (typically 468)
         num_actions: Number of actions
-        hidden_layers: Tuple of hidden layer sizes
+        hidden_layers: Tuple of hidden layer sizes (default: (52,) for game-based design)
         
     Returns:
         Total parameter count

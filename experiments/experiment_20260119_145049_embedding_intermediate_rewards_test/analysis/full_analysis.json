@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-01-19T15:09:46.458909",
+  "aggregated_results": {
+    "boolean": {
+      "n_runs": 0,
+      "error": "No completed runs",
+      "final_win_rates": [],
+      "round_win_rates": []
+    },
+    "embedding": {
+      "n_runs": 1,
+      "final_win_rates": [
+        0.672
+      ],
+      "mean": 0.672,
+      "std": 0.0,
+      "se": 0.0,
+      "ci_95_lower": 0.672,
+      "ci_95_upper": 0.672,
+      "min": 0.672,
+      "max": 0.672,
+      "median": 0.672,
+      "round_win_rates": []
+    },
+    "multi_encoder": {
+      "n_runs": 0,
+      "error": "No completed runs",
+      "final_win_rates": [],
+      "round_win_rates": []
+    }
+  },
+  "statistical_tests": {
+    "pairwise_ttests": {},
+    "anova": null
+  }
+}

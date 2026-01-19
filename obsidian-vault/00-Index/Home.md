@@ -72,6 +72,12 @@ Welcome to the knowledge base for the Cuttle card game Deep Q-Network (DQN) rein
 - [[Experiment Management System]] - **Automated system for running full experiments**
 - [[Input Representation Experiments]] - Experimental design
 
+### Thesis & Research
+- [[Research Considerations]] - Framing, limitations, and research context
+  - The "No Expert Data" problem (comparison to Chess/Go)
+  - Absolute vs relative performance
+  - Reviewer expectations and honest framing
+
 ## 🔗 Quick Links
 
 ### Core Concepts

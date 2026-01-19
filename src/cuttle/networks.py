@@ -82,15 +82,14 @@ class NeuralNetwork(nn.Module):
             # Calculate input dimension from observation space
             input_length = self._calculate_input_dimension(observation_space)
             
-            # Default network: two hidden layers with ReLU activations
-            # Conservative architecture: 256 → 128 → num_actions
+            # Game-based architecture: 52-neuron hidden layer (one per card)
+            # This matches the design of embedding and multi-encoder networks
+            # for fair comparison in input representation experiments.
             # NOTE: No activation on output layer - Q-values should be unbounded
             self.linear_relu_stack = nn.Sequential(
-                nn.Linear(input_length, 512),
+                nn.Linear(input_length, 52),  # Game-based: one neuron per card
                 nn.ReLU(),
-                nn.Linear(512, 256),
-                nn.ReLU(),
-                nn.Linear(256, num_actions)
+                nn.Linear(52, num_actions)
                 # No activation function - Q-values need to be unbounded to represent
                 # proper expected future rewards (can be > 1.0 with intermediate rewards)
             )
