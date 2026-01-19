@@ -37,12 +37,12 @@ Rewards at episode end (game outcome):
 
 - **Win**: `r = +1.0` (positive, encourages winning)
 - **Loss**: `r = -1.0` (negative, discourages losing)
-- **Draw**: `r = -0.5` (negative but less than loss, discourages draws)
+- **Draw**: `r = 0.0` (neutral, neither good nor bad)
 
 In this project:
 - Win: `REWARD_WIN = 1.0`
 - Loss: `REWARD_LOSS = -1.0`
-- Draw: `REWARD_DRAW = -0.5` (penalize passive play)
+- Draw: `REWARD_DRAW = 0.0` (neutral - neither good nor bad)
 
 ### Intermediate Rewards
 
@@ -177,10 +177,11 @@ From `training.py` constants:
 ```python
 REWARD_WIN = 1.0              # Terminal: Win
 REWARD_LOSS = -1.0            # Terminal: Loss
-REWARD_DRAW = -0.5            # Terminal: Draw (penalize passive play)
+REWARD_DRAW = 0.0             # Terminal: Draw (neutral)
 REWARD_INTERMEDIATE = 0.0     # Base for intermediate steps
 SCORE_REWARD_SCALE = 0.01     # Scale for score changes
 GAP_REWARD_SCALE = 0.005      # Scale for gap changes (half of score scale)
+USE_INTERMEDIATE_REWARDS = True  # Must be enabled for score/gap rewards
 ```
 
 ### Design Rationale
@@ -188,7 +189,7 @@ GAP_REWARD_SCALE = 0.005      # Scale for gap changes (half of score scale)
 1. **Terminal rewards**: Clear signal for game outcome
    - Win: Positive (encourage)
    - Loss: Negative (discourage)
-   - Draw: Negative but less (discourage passive play)
+   - Draw: Neutral (neither encourage nor discourage)
 
 2. **Score-based rewards**: Guide intermediate learning
    - Small scale (0.01) to prevent Q-value explosion
@@ -214,6 +215,62 @@ else:
     reward += SCORE_REWARD_SCALE * score_change
     reward += GAP_REWARD_SCALE * gap_change
 ```
+
+## Experimental Findings: Sparse vs Intermediate Rewards
+
+### The Sparse Rewards Problem (January 2026)
+
+**Experiment**: Training with `USE_INTERMEDIATE_REWARDS = False` (sparse rewards only)
+
+**Configuration**:
+- 20 rounds × 250 episodes = 5,000 total training episodes
+- Epsilon decay fixed to reach minimum by Round 1
+- Terminal rewards only: Win (+1.0), Loss (-1.0), Draw (0.0)
+- No score-based or gap-based intermediate rewards
+
+**Results** (after 7 rounds of training):
+
+| Round | vs Random (1st/2nd) | vs GapMaximizer (1st/2nd) |
+|-------|---------------------|---------------------------|
+| 0     | 18% / 23%          | 3% / 5%                   |
+| 2     | 23% / 27%          | 2% / 11%                  |
+| 4     | 21% / 21%          | 3% / 11%                  |
+| 6     | 18% / 18%          | 3% / 10%                  |
+
+**Observations**:
+1. **No learning progression** - Win rates remained flat at ~20% vs random
+2. **Loss decreased normally** - Network was fitting (loss: 0.21 → 0.16)
+3. **Agent performed worse than random** - Expected ~50% vs random opponent
+
+**Diagnosis**: The agent learned to minimize TD error but couldn't attribute wins/losses to specific actions. With only terminal rewards, the credit assignment problem was too severe - the agent had no signal about which intermediate actions contributed to the outcome.
+
+### Solution: Enable Intermediate Rewards
+
+**Change**: Set `USE_INTERMEDIATE_REWARDS = True`
+
+**Effect**: Now intermediate steps receive:
+```python
+reward = REWARD_INTERMEDIATE + (score_change * SCORE_REWARD_SCALE) + (gap_change * GAP_REWARD_SCALE)
+```
+
+**Why this helps**:
+1. **Credit assignment** - Agent gets immediate feedback when scoring points
+2. **Denser signal** - More learning signal per episode (not just at end)
+3. **Guides exploration** - Actions that increase score are reinforced immediately
+
+**Preserved Evidence**: The failed experiment is preserved at:
+```
+experiments/FAILED_experiment_20260119_no_intermediate_rewards/
+```
+
+This demonstrates the importance of intermediate rewards for complex games like Cuttle where:
+- Episodes can be long (many turns)
+- Many actions don't directly cause win/loss
+- Credit assignment is difficult with sparse rewards alone
+
+### Key Lesson
+
+For games with long episodes and complex action sequences, **sparse terminal rewards alone are insufficient**. Intermediate rewards (score-based, gap-based) provide the gradient signal needed for effective learning, even though they add design complexity.
 
 ## Common Pitfalls
 

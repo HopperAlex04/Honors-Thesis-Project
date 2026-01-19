@@ -35,7 +35,7 @@ REWARD_DRAW = 0.0  # Reward for drawing an episode (neutral - neither good nor b
 REWARD_INTERMEDIATE = 0.0  # Base reward for intermediate steps (non-terminal states)
 SCORE_REWARD_SCALE = 0.01  # Scale factor for score-based rewards (reduced from 0.1 to prevent Q-value explosion)
 GAP_REWARD_SCALE = 0.005  # Scale factor for score gap rewards (half of score reward scale to prioritize scoring over gap)
-USE_INTERMEDIATE_REWARDS = False  # Flag to enable/disable intermediate rewards (score-based and gap-based)
+USE_INTERMEDIATE_REWARDS = True  # Flag to enable/disable intermediate rewards (score-based and gap-based)
 
 
 def setup_logger(

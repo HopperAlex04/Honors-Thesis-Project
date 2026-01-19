@@ -97,8 +97,7 @@ class TestUpdateReplayMemory(unittest.TestCase):
     def test_update_replay_memory_intermediate_reward_positive_score_change(self):
         """Test intermediate reward with positive score change.
         
-        Note: USE_INTERMEDIATE_REWARDS is False by default, so score_change
-        is ignored and only the base REWARD_INTERMEDIATE (0.0) is used.
+        With USE_INTERMEDIATE_REWARDS=True, score_change contributes to the reward.
         """
         states = [self.env.get_obs()]
         actions = [0]
@@ -112,17 +111,16 @@ class TestUpdateReplayMemory(unittest.TestCase):
         
         self.assertEqual(len(self.agent.memory), 1)
         transition = self.agent.memory.memory[0]
-        # With USE_INTERMEDIATE_REWARDS=False, score_change is ignored
-        # Expected reward is just REWARD_INTERMEDIATE (0.0)
-        expected_reward = Training.REWARD_INTERMEDIATE
+        # With USE_INTERMEDIATE_REWARDS=True, score_change is applied
+        # Expected reward is REWARD_INTERMEDIATE (0.0) + (5 * 0.01) = 0.05
+        expected_reward = Training.REWARD_INTERMEDIATE + (score_change * Training.SCORE_REWARD_SCALE)
         self.assertAlmostEqual(transition.reward.item(), expected_reward, places=5)
         self.assertIsNotNone(transition.next_state)
     
     def test_update_replay_memory_intermediate_reward_negative_score_change(self):
         """Test intermediate reward with negative score change (e.g., scuttled).
         
-        Note: USE_INTERMEDIATE_REWARDS is False by default, so score_change
-        is ignored and only the base REWARD_INTERMEDIATE (0.0) is used.
+        With USE_INTERMEDIATE_REWARDS=True, negative score_change contributes negatively.
         """
         states = [self.env.get_obs()]
         actions = [0]
@@ -136,17 +134,16 @@ class TestUpdateReplayMemory(unittest.TestCase):
         
         self.assertEqual(len(self.agent.memory), 1)
         transition = self.agent.memory.memory[0]
-        # With USE_INTERMEDIATE_REWARDS=False, score_change is ignored
-        # Expected reward is just REWARD_INTERMEDIATE (0.0)
-        expected_reward = Training.REWARD_INTERMEDIATE
+        # With USE_INTERMEDIATE_REWARDS=True, score_change is applied
+        # Expected reward is REWARD_INTERMEDIATE (0.0) + (-3 * 0.01) = -0.03
+        expected_reward = Training.REWARD_INTERMEDIATE + (score_change * Training.SCORE_REWARD_SCALE)
         self.assertAlmostEqual(transition.reward.item(), expected_reward, places=5)
         self.assertIsNotNone(transition.next_state)
     
     def test_update_replay_memory_intermediate_multiple_states_with_score_change(self):
         """Test intermediate reward with multiple states and score change.
         
-        Note: USE_INTERMEDIATE_REWARDS is False by default, so score_change
-        is ignored and only the base REWARD_INTERMEDIATE (0.0) is used.
+        With USE_INTERMEDIATE_REWARDS=True, score_change contributes to the reward.
         """
         states = [
             self.env.get_obs(),
@@ -163,8 +160,9 @@ class TestUpdateReplayMemory(unittest.TestCase):
         )
         
         self.assertEqual(len(self.agent.memory), 3)
-        # With USE_INTERMEDIATE_REWARDS=False, score_change is ignored
-        expected_reward = Training.REWARD_INTERMEDIATE
+        # With USE_INTERMEDIATE_REWARDS=True, score_change is applied
+        # Expected reward is REWARD_INTERMEDIATE (0.0) + (4 * 0.01) = 0.04
+        expected_reward = Training.REWARD_INTERMEDIATE + (score_change * Training.SCORE_REWARD_SCALE)
         
         # All states should get the same reward (score change applies to entire turn)
         for i in range(3):
