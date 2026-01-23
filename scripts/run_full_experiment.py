@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Run Full Experiment - Execute all 21 training runs.
+Run Full Experiment - Execute all training runs (15 total: 3 types × 5 runs).
 
-This script automates running all training runs for the input representation
+This script automates running all training runs for the architecture comparison
 experiment. It can run sequentially or in parallel.
 
 Usage:
     python scripts/run_full_experiment.py                  # Run all pending, sequential
     python scripts/run_full_experiment.py --parallel 3     # Run up to 3 in parallel
-    python scripts/run_full_experiment.py --type boolean   # Run only boolean network runs
+    python scripts/run_full_experiment.py --type linear    # Run only linear network runs
     python scripts/run_full_experiment.py --dry-run        # Show what would be run
 """
 
@@ -110,9 +110,10 @@ def run_single_training(
         shutil.copytree(project_root / "src", work_dir / "src", dirs_exist_ok=True)
         shutil.copy(config_file, work_dir / "hyperparams_config.json")
         
-        # Create models and action_logs directories in workspace
+        # Create models and log directories in workspace
         (work_dir / "models").mkdir(exist_ok=True)
         (work_dir / "action_logs").mkdir(exist_ok=True)
+        (work_dir / "metrics_logs").mkdir(exist_ok=True)
         
         # Set up environment
         env = os.environ.copy()
@@ -132,6 +133,8 @@ def run_single_training(
             shutil.copytree(work_dir / "models", run_path / "models", dirs_exist_ok=True)
         if (work_dir / "action_logs").exists():
             shutil.copytree(work_dir / "action_logs", run_path / "action_logs", dirs_exist_ok=True)
+        if (work_dir / "metrics_logs").exists():
+            shutil.copytree(work_dir / "metrics_logs", run_path / "metrics_logs", dirs_exist_ok=True)
         
         # Clean up workspace
         shutil.rmtree(work_dir, ignore_errors=True)

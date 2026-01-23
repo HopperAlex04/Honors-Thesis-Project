@@ -128,6 +128,40 @@ See [[Network Architectures]] for detailed architecture descriptions.
 - **Disadvantages**: More complex, potentially overfitting
 - **Expected**: Better credit assignment, zone-specific patterns
 
+## Key Finding: Representation Determines Learnability
+
+A critical finding from initial experiments is that **input representation can determine whether a problem is learnable at all**, not merely how efficiently it is learned.
+
+### Experimental Evidence
+
+| Network | Input Representation | Final Win Rate | Learning Observed? |
+|---------|---------------------|----------------|-------------------|
+| Boolean | Raw concatenation (468 bools) | ~15% | No improvement over training |
+| Embedding | Learned card embeddings + pooling | ~77% | Clear improvement (51% → 77%) |
+
+Both networks used:
+- Same 52-neuron hidden layer
+- Same training algorithm (DQN)
+- Same hyperparameters
+- Same number of episodes (5,000)
+- Same reward structure
+
+The **only difference** was input representation.
+
+### Interpretation
+
+1. **The boolean network's loss decreased** — gradient descent was working
+2. **But performance didn't improve** — it converged to a useless policy
+3. **The representation created an unlearnable problem** for that architecture
+
+This suggests the boolean representation lacks the **inductive bias** necessary for the network to discover useful features within the given training budget and architecture constraints.
+
+### Implications for Thesis
+
+> "Input representation is not merely a performance optimization, but can be a prerequisite for learning. The boolean network, despite successful gradient descent (decreasing loss), failed to develop effective play, suggesting that the raw concatenated representation creates an effectively unlearnable problem for a network of this capacity."
+
+This strengthens the thesis argument: **representation choice is a fundamental design decision** that can make or break a learning system.
+
 ## Analysis Plan
 
 ### Quantitative Metrics

@@ -1,0 +1,33 @@
+{
+  "experiment_name": "experiment_20260123_075942_arch_testing_v1",
+  "display_name": "arch_testing_v1",
+  "description": "",
+  "created_at": "2026-01-23T07:59:42.563791",
+  "git_commit": "b06076dcd299",
+  "network_types": [
+    "linear",
+    "large_hidden",
+    "game_based"
+  ],
+  "runs_per_type": 5,
+  "total_runs": 15,
+  "status": "initialized",
+  "seeds": [
+    15796,
+    861,
+    76821,
+    54887,
+    6266,
+    82387,
+    37195,
+    87499,
+    44132,
+    60264,
+    16024,
+    41091,
+    67222,
+    64821,
+    770
+  ],
+  "base_config": "base_hyperparams_config.json"
+}

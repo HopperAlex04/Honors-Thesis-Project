@@ -1,0 +1,33 @@
+{
+  "experiment_name": "experiment_20260123_152712_embedding_architecture_comparison",
+  "display_name": "embedding_architecture_comparison",
+  "description": "Architecture comparison experiment using learned card embeddings for preprocessing. Compares three architectures (linear, large_hidden, game_based) all using the same embedding-based input representation. Previous experiments showed embeddings achieve 62% win rate vs 18% for boolean inputs, making this a fair comparison of architectures with a representation that actually learns.",
+  "created_at": "2026-01-23T15:27:12.193720",
+  "git_commit": "b06076dcd299",
+  "network_types": [
+    "linear",
+    "large_hidden",
+    "game_based"
+  ],
+  "runs_per_type": 5,
+  "total_runs": 15,
+  "status": "initialized",
+  "seeds": [
+    15796,
+    861,
+    76821,
+    54887,
+    6266,
+    82387,
+    37195,
+    87499,
+    44132,
+    60264,
+    16024,
+    41091,
+    67222,
+    64821,
+    770
+  ],
+  "base_config": "base_hyperparams_config.json"
+}

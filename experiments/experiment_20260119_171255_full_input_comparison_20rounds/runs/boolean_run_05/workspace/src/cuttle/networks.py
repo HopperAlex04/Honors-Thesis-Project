@@ -45,26 +45,15 @@ class NeuralNetwork(nn.Module):
     Processes game observations (dictionary of zones and game state)
     and outputs Q-values for all possible actions.
     
-    The network supports multiple architectures:
-    1. Linear: Input → Output (no hidden layers, hidden_layers=[])
-    2. Single hidden layer: Input → hidden_dim → Output (hidden_layers=[hidden_dim])
-    3. Multi-layer: Input → hidden_layers[0] → ... → hidden_layers[-1] → Output
-    
-    Backward compatibility: If hidden_layers=None (default), uses [52] for game-based design.
-    
     The network:
     1. Concatenates boolean zone arrays (hand, field, deck, scrap, stack, effect_shown)
-    2. Passes through configured layers to output Q-values
+    2. Passes through a linear layer to output Q-values
     
     Args:
         observation_space: Dictionary representing the observation space structure
-        embedding_size: Deprecated - kept for backward compatibility, no longer used
+        embedding_size: Size of embedding vectors for discrete values
         num_actions: Number of possible actions in the environment
         custom_network: Optional custom network to replace default architecture
-        hidden_layers: Optional list of hidden layer sizes. None = linear, list = multi-layer.
-                      Default None uses backward-compatible default [52] for game-based design.
-        hidden_dim: Backward compatibility parameter. If provided and hidden_layers is None,
-                   converts to hidden_layers=[hidden_dim]
     """
     
     def __init__(
@@ -72,9 +61,7 @@ class NeuralNetwork(nn.Module):
         observation_space: Dict[str, Any],
         embedding_size: int,  # Kept for backward compatibility, no longer used (no embeddings)
         num_actions: int,
-        custom_network: Optional[nn.Sequential] = None,
-        hidden_layers: Optional[List[int]] = None,  # None = backward-compat [52], [] = linear, list = multi-layer
-        hidden_dim: Optional[int] = None  # Backward compatibility: converts to [hidden_dim]
+        custom_network: Optional[nn.Sequential] = None
     ) -> None:
         """
         Initialize the neural network.
@@ -84,10 +71,6 @@ class NeuralNetwork(nn.Module):
             embedding_size: Deprecated - kept for backward compatibility, no longer used
             num_actions: Total number of possible actions
             custom_network: Optional custom network architecture
-            hidden_layers: List of hidden layer sizes. None (default) = backward-compatible [52],
-                          [] = linear (no hidden layers), list = multi-layer architecture
-            hidden_dim: Backward compatibility parameter. If provided and hidden_layers is None,
-                       converts to hidden_layers=[hidden_dim]
         """
         super().__init__()
         
@@ -99,43 +82,17 @@ class NeuralNetwork(nn.Module):
             # Calculate input dimension from observation space
             input_length = self._calculate_input_dimension(observation_space)
             
-            # Handle backward compatibility and parameter resolution
-            if hidden_layers is None:
-                # Default case: use backward-compatible [52] or hidden_dim if provided
-                if hidden_dim is not None:
-                    hidden_layers = [hidden_dim]
-                else:
-                    hidden_layers = [52]  # Backward-compatible default
-            
-            # Build network architecture based on hidden_layers parameter
-            if hidden_layers is None:
-                # Linear architecture: input → output (no hidden layers)
-                self.linear_relu_stack = nn.Sequential(
-                    nn.Linear(input_length, num_actions)
-                    # No activation function - Q-values need to be unbounded
-                )
-            elif len(hidden_layers) == 0:
-                # Empty list also means linear
-                self.linear_relu_stack = nn.Sequential(
-                    nn.Linear(input_length, num_actions)
-                )
-            else:
-                # Multi-layer architecture: input → hidden_layers[0] → ... → hidden_layers[-1] → output
-                layers = []
-                prev_dim = input_length
-                
-                # Build hidden layers with ReLU activations
-                # Note: Batch normalization removed - can cause issues with single observations in RL
-                # Stability achieved through proper initialization and gradient clipping instead
-                for hidden_dim in hidden_layers:
-                    layers.append(nn.Linear(prev_dim, hidden_dim))
-                    layers.append(nn.ReLU())
-                    prev_dim = hidden_dim
-                
-                # Output layer (no activation, no batch norm - Q-values need to be unbounded)
-                layers.append(nn.Linear(prev_dim, num_actions))
-                
-                self.linear_relu_stack = nn.Sequential(*layers)
+            # Game-based architecture: 52-neuron hidden layer (one per card)
+            # This matches the design of embedding and multi-encoder networks
+            # for fair comparison in input representation experiments.
+            # NOTE: No activation on output layer - Q-values should be unbounded
+            self.linear_relu_stack = nn.Sequential(
+                nn.Linear(input_length, 52),  # Game-based: one neuron per card
+                nn.ReLU(),
+                nn.Linear(52, num_actions)
+                # No activation function - Q-values need to be unbounded to represent
+                # proper expected future rewards (can be > 1.0 with intermediate rewards)
+            )
             
             # Apply Kaiming initialization for ReLU networks
             self.apply(init_weights)
@@ -531,199 +488,6 @@ class EmbeddingBasedNetwork(nn.Module):
             raise ValueError("Missing 'Field' in 'Current Zones'")
         if "Revealed" not in obs["Current Zones"]:
             raise ValueError("Missing 'Revealed' in 'Current Zones'")
-
-
-class EmbeddingBasedNeuralNetwork(nn.Module):
-    """
-    Hybrid network: Embedding preprocessing + configurable hidden layers.
-    
-    Uses learned card embeddings for preprocessing (proven to work well),
-    then applies configurable hidden layer architecture (linear, large_hidden, game_based).
-    
-    This allows fair architecture comparison while using a representation that actually learns.
-    
-    Architecture: Embeddings → Zone aggregation → [configurable hidden layers] → num_actions
-    
-    Args:
-        observation_space: Dictionary representing the observation space structure
-        num_actions: Number of possible actions
-        embedding_dim: Dimension of card embeddings (default: 52)
-        zone_encoded_dim: Dimension of each zone encoding after aggregation (default: 52)
-        hidden_layers: List of hidden layer sizes. None = linear, [] = linear, list = multi-layer
-    """
-    
-    def __init__(
-        self,
-        observation_space: Dict[str, Any],
-        num_actions: int = 3157,
-        embedding_dim: int = 52,
-        zone_encoded_dim: int = 52,
-        hidden_layers: Optional[List[int]] = None
-    ) -> None:
-        """
-        Initialize the embedding-based network with configurable architecture.
-        
-        Args:
-            observation_space: Dictionary representing observation structure
-            num_actions: Total number of possible actions
-            embedding_dim: Dimension of card embeddings
-            zone_encoded_dim: Dimension of each zone encoding after aggregation
-            hidden_layers: List of hidden layer sizes. None or [] = linear (no hidden layers)
-        """
-        super().__init__()
-        
-        self.num_actions = num_actions
-        self.embedding_dim = embedding_dim
-        self.zone_encoded_dim = zone_encoded_dim
-        
-        # Card embedding layer: 52 cards → embedding_dim
-        self.card_embedding = nn.Embedding(52, embedding_dim)
-        
-        # Zone aggregation: Use max pooling to aggregate cards in each zone
-        self.zone_aggregator = nn.Sequential(
-            nn.Linear(embedding_dim, zone_encoded_dim),
-            nn.ReLU()
-        )
-        
-        # Number of zones: 9
-        num_zones = 9
-        fusion_dim = num_zones * zone_encoded_dim  # Default: 9 * 52 = 468
-        
-        # Build configurable hidden layers
-        if hidden_layers is None or len(hidden_layers) == 0:
-            # Linear: fusion → output (no hidden layers)
-            self.hidden_layers = nn.Sequential(
-                # No hidden layers - direct to output
-            )
-            self.output_layer = nn.Linear(fusion_dim, num_actions)
-        else:
-            # Multi-layer: fusion → hidden_layers[0] → ... → hidden_layers[-1] → output
-            layers = []
-            prev_dim = fusion_dim
-            
-            # Build hidden layers with ReLU (batch norm removed for RL compatibility with single observations)
-            for hidden_dim in hidden_layers:
-                layers.append(nn.Linear(prev_dim, hidden_dim))
-                layers.append(nn.ReLU())
-                prev_dim = hidden_dim
-            
-            self.hidden_layers = nn.Sequential(*layers)
-            self.output_layer = nn.Linear(prev_dim, num_actions)
-        
-        # Apply Kaiming initialization
-        self.apply(init_weights)
-    
-    def forward(
-        self,
-        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
-    ) -> torch.Tensor:
-        """
-        Forward pass through the network.
-        
-        Args:
-            observation: Single observation dict, list of observations, or tuple of observations
-            
-        Returns:
-            Q-values tensor of shape [batch_size, num_actions] or [num_actions]
-        """
-        # Preprocess using embeddings
-        preprocessed = self._preprocess_observation(observation)
-        
-        # Pass through hidden layers (if any)
-        if len(self.hidden_layers) > 0:
-            hidden = self.hidden_layers(preprocessed)
-        else:
-            hidden = preprocessed
-        
-        # Output layer
-        q_values = self.output_layer(hidden)
-        return q_values
-    
-    def _preprocess_observation(
-        self,
-        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
-    ) -> torch.Tensor:
-        """
-        Preprocess observation(s) using embeddings and zone aggregation.
-        (Same as EmbeddingBasedNetwork)
-        """
-        if isinstance(observation, dict):
-            return self._preprocess_single(observation)
-        elif isinstance(observation, (list, tuple)):
-            return self._preprocess_batch(list(observation))
-        else:
-            raise TypeError(
-                f"Expected dict, list, or tuple of dicts, got {type(observation)}"
-            )
-    
-    def _preprocess_single(self, obs: Dict[str, Any]) -> torch.Tensor:
-        """Preprocess a single observation using embeddings."""
-        # Validate observation structure
-        required_keys = [
-            "Current Zones",
-            "Off-Player Field",
-            "Off-Player Revealed",
-            "Deck",
-            "Scrap",
-            "Stack",
-            "Effect-Shown",
-        ]
-        for key in required_keys:
-            if key not in obs:
-                raise ValueError(f"Missing required observation key: {key}")
-        
-        # Get all zones
-        zones = [
-            obs["Current Zones"]["Hand"],
-            obs["Current Zones"]["Field"],
-            obs["Current Zones"]["Revealed"],
-            obs["Off-Player Field"],
-            obs["Off-Player Revealed"],
-            obs["Deck"],
-            obs["Scrap"],
-            obs["Stack"],
-            obs["Effect-Shown"],
-        ]
-        
-        device = next(self.parameters()).device
-        zone_encodings = []
-        
-        for zone in zones:
-            # Get indices of present cards in this zone
-            card_indices = np.where(zone)[0]
-            
-            if len(card_indices) == 0:
-                # Empty zone: use zero embedding
-                zone_embedding = torch.zeros(self.embedding_dim, device=device)
-            else:
-                # Embed cards and aggregate using max pooling
-                card_indices_tensor = torch.from_numpy(card_indices).long().to(device)
-                card_embeddings = self.card_embedding(card_indices_tensor)  # [num_cards, embedding_dim]
-                # Max pooling across cards in zone
-                zone_embedding = torch.max(card_embeddings, dim=0)[0]  # [embedding_dim]
-            
-            # Process through zone aggregator
-            zone_encoding = self.zone_aggregator(zone_embedding)  # [zone_encoded_dim]
-            zone_encodings.append(zone_encoding)
-        
-        # Concatenate all zone encodings
-        fusion = torch.cat(zone_encodings, dim=0)  # [fusion_dim]
-        return fusion
-    
-    def _preprocess_batch(
-        self,
-        observations: Union[List[Dict[str, Any]], Tuple[Dict[str, Any], ...]]
-    ) -> torch.Tensor:
-        """Preprocess a batch of observations."""
-        if isinstance(observations, tuple):
-            observations = list(observations)
-        if not observations:
-            device = next(self.parameters()).device
-            fusion_dim = 9 * self.zone_encoded_dim
-            return torch.empty(0, fusion_dim, device=device)
-        
-        processed = [self._preprocess_single(obs) for obs in observations]
-        return torch.stack(processed)
 
 
 class MultiEncoderNetwork(nn.Module):

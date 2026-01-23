@@ -1,0 +1,9 @@
+{
+  "run_id": "embedding_run_07",
+  "network_type": "embedding",
+  "run_number": 7,
+  "seed": 64821,
+  "experiment_name": "experiment_20260120_185535_full_input_comparison_20rounds_v2",
+  "created_at": "2026-01-22T16:01:13.911974",
+  "git_commit": "b06076dcd299"
+}

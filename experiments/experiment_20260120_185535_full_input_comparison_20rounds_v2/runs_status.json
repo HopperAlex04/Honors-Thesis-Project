@@ -1,0 +1,340 @@
+{
+  "boolean_run_01": {
+    "run_id": "boolean_run_01",
+    "network_type": "boolean",
+    "run_number": 1,
+    "seed": 15796,
+    "status": "completed",
+    "created_at": "2026-01-21T08:35:26.616112",
+    "started_at": "2026-01-21T08:35:26.616541",
+    "completed_at": "2026-01-21T10:17:51.733922",
+    "duration_seconds": 6145.117381,
+    "final_metrics": {
+      "final_win_rate": 0.164,
+      "final_episode": 124,
+      "total_time": 6138.219824552536,
+      "steps_done": 92213
+    },
+    "error_message": null
+  },
+  "boolean_run_02": {
+    "run_id": "boolean_run_02",
+    "network_type": "boolean",
+    "run_number": 2,
+    "seed": 861,
+    "status": "completed",
+    "created_at": "2026-01-21T10:17:51.736327",
+    "started_at": "2026-01-21T10:17:51.736738",
+    "completed_at": "2026-01-21T12:00:33.408708",
+    "duration_seconds": 6161.67197,
+    "final_metrics": {
+      "final_win_rate": 0.172,
+      "final_episode": 124,
+      "total_time": 6159.248785734177,
+      "steps_done": 92117
+    },
+    "error_message": null
+  },
+  "boolean_run_03": {
+    "run_id": "boolean_run_03",
+    "network_type": "boolean",
+    "run_number": 3,
+    "seed": 76821,
+    "status": "completed",
+    "created_at": "2026-01-21T12:00:33.410760",
+    "started_at": "2026-01-21T12:00:33.411156",
+    "completed_at": "2026-01-21T13:48:01.721826",
+    "duration_seconds": 6448.31067,
+    "final_metrics": {
+      "final_win_rate": 0.208,
+      "final_episode": 124,
+      "total_time": 6445.87819480896,
+      "steps_done": 98992
+    },
+    "error_message": null
+  },
+  "boolean_run_04": {
+    "run_id": "boolean_run_04",
+    "network_type": "boolean",
+    "run_number": 4,
+    "seed": 54887,
+    "status": "completed",
+    "created_at": "2026-01-21T13:48:01.723968",
+    "started_at": "2026-01-21T13:48:01.724365",
+    "completed_at": "2026-01-21T15:28:00.067806",
+    "duration_seconds": 5998.343441,
+    "final_metrics": {
+      "final_win_rate": 0.212,
+      "final_episode": 124,
+      "total_time": 5995.8721380233765,
+      "steps_done": 88475
+    },
+    "error_message": null
+  },
+  "boolean_run_05": {
+    "run_id": "boolean_run_05",
+    "network_type": "boolean",
+    "run_number": 5,
+    "seed": 6266,
+    "status": "completed",
+    "created_at": "2026-01-21T15:28:00.069851",
+    "started_at": "2026-01-21T15:28:00.070227",
+    "completed_at": "2026-01-21T17:01:49.890770",
+    "duration_seconds": 5629.820543,
+    "final_metrics": {
+      "final_win_rate": 0.228,
+      "final_episode": 124,
+      "total_time": 5627.367705345154,
+      "steps_done": 79202
+    },
+    "error_message": null
+  },
+  "boolean_run_06": {
+    "run_id": "boolean_run_06",
+    "network_type": "boolean",
+    "run_number": 6,
+    "seed": 82387,
+    "status": "completed",
+    "created_at": "2026-01-21T17:01:49.892791",
+    "started_at": "2026-01-21T17:01:49.893165",
+    "completed_at": "2026-01-21T18:50:49.178644",
+    "duration_seconds": 6539.285479,
+    "final_metrics": {
+      "final_win_rate": 0.124,
+      "final_episode": 124,
+      "total_time": 6536.208005905151,
+      "steps_done": 97484
+    },
+    "error_message": null
+  },
+  "boolean_run_07": {
+    "run_id": "boolean_run_07",
+    "network_type": "boolean",
+    "run_number": 7,
+    "seed": 37195,
+    "status": "completed",
+    "created_at": "2026-01-21T18:50:49.180783",
+    "started_at": "2026-01-21T18:50:49.181180",
+    "completed_at": "2026-01-21T20:36:55.325677",
+    "duration_seconds": 6366.144497,
+    "final_metrics": {
+      "final_win_rate": 0.152,
+      "final_episode": 124,
+      "total_time": 6363.256325483322,
+      "steps_done": 95593
+    },
+    "error_message": null
+  },
+  "embedding_run_01": {
+    "run_id": "embedding_run_01",
+    "network_type": "embedding",
+    "run_number": 1,
+    "seed": 87499,
+    "status": "completed",
+    "created_at": "2026-01-20T18:57:37.182349",
+    "started_at": "2026-01-20T18:57:37.182795",
+    "completed_at": "2026-01-20T20:08:00.407770",
+    "duration_seconds": 4223.224975,
+    "final_metrics": {
+      "final_win_rate": 0.704,
+      "final_episode": 124,
+      "total_time": 4219.719169378281,
+      "steps_done": 34191
+    },
+    "error_message": null
+  },
+  "embedding_run_02": {
+    "run_id": "embedding_run_02",
+    "network_type": "embedding",
+    "run_number": 2,
+    "seed": 44132,
+    "status": "completed",
+    "created_at": "2026-01-22T09:47:32.456321",
+    "started_at": "2026-01-22T09:47:32.456770",
+    "completed_at": "2026-01-22T11:04:04.613767",
+    "duration_seconds": 4592.156997,
+    "final_metrics": {
+      "final_win_rate": 0.696,
+      "final_episode": 124,
+      "total_time": 4585.026259899139,
+      "steps_done": 40956
+    },
+    "error_message": null
+  },
+  "embedding_run_03": {
+    "run_id": "embedding_run_03",
+    "network_type": "embedding",
+    "run_number": 3,
+    "seed": 60264,
+    "status": "completed",
+    "created_at": "2026-01-22T11:04:04.615896",
+    "started_at": "2026-01-22T11:04:04.616339",
+    "completed_at": "2026-01-22T12:14:26.593734",
+    "duration_seconds": 4221.977395,
+    "final_metrics": {
+      "final_win_rate": 0.7,
+      "final_episode": 124,
+      "total_time": 4219.569108724594,
+      "steps_done": 36320
+    },
+    "error_message": null
+  },
+  "embedding_run_04": {
+    "run_id": "embedding_run_04",
+    "network_type": "embedding",
+    "run_number": 4,
+    "seed": 16024,
+    "status": "completed",
+    "created_at": "2026-01-22T12:14:26.595926",
+    "started_at": "2026-01-22T12:14:26.596393",
+    "completed_at": "2026-01-22T13:32:55.583731",
+    "duration_seconds": 4708.987338,
+    "final_metrics": {
+      "final_win_rate": 0.516,
+      "final_episode": 124,
+      "total_time": 4706.615585565567,
+      "steps_done": 43509
+    },
+    "error_message": null
+  },
+  "embedding_run_05": {
+    "run_id": "embedding_run_05",
+    "network_type": "embedding",
+    "run_number": 5,
+    "seed": 41091,
+    "status": "completed",
+    "created_at": "2026-01-22T13:32:55.585905",
+    "started_at": "2026-01-22T13:32:55.586626",
+    "completed_at": "2026-01-22T14:53:10.428664",
+    "duration_seconds": 4814.842038,
+    "final_metrics": {
+      "final_win_rate": 0.416,
+      "final_episode": 124,
+      "total_time": 4812.456875324249,
+      "steps_done": 44767
+    },
+    "error_message": null
+  },
+  "embedding_run_06": {
+    "run_id": "embedding_run_06",
+    "network_type": "embedding",
+    "run_number": 6,
+    "seed": 67222,
+    "status": "completed",
+    "created_at": "2026-01-22T14:53:10.430768",
+    "started_at": "2026-01-22T14:53:10.431250",
+    "completed_at": "2026-01-22T16:01:13.911056",
+    "duration_seconds": 4083.479806,
+    "final_metrics": {
+      "final_win_rate": 0.692,
+      "final_episode": 124,
+      "total_time": 4081.011880159378,
+      "steps_done": 34247
+    },
+    "error_message": null
+  },
+  "embedding_run_07": {
+    "run_id": "embedding_run_07",
+    "network_type": "embedding",
+    "run_number": 7,
+    "seed": 64821,
+    "status": "running",
+    "created_at": "2026-01-22T16:01:13.913140",
+    "started_at": "2026-01-22T16:01:13.913564",
+    "completed_at": null,
+    "duration_seconds": null,
+    "final_metrics": null,
+    "error_message": null
+  },
+  "multi_encoder_run_01": {
+    "run_id": "multi_encoder_run_01",
+    "network_type": "multi_encoder",
+    "run_number": 1,
+    "seed": 770,
+    "status": "pending",
+    "created_at": null,
+    "started_at": null,
+    "completed_at": null,
+    "duration_seconds": null,
+    "final_metrics": null,
+    "error_message": null
+  },
+  "multi_encoder_run_02": {
+    "run_id": "multi_encoder_run_02",
+    "network_type": "multi_encoder",
+    "run_number": 2,
+    "seed": 59736,
+    "status": "pending",
+    "created_at": null,
+    "started_at": null,
+    "completed_at": null,
+    "duration_seconds": null,
+    "final_metrics": null,
+    "error_message": null
+  },
+  "multi_encoder_run_03": {
+    "run_id": "multi_encoder_run_03",
+    "network_type": "multi_encoder",
+    "run_number": 3,
+    "seed": 62956,
+    "status": "pending",
+    "created_at": null,
+    "started_at": null,
+    "completed_at": null,
+    "duration_seconds": null,
+    "final_metrics": null,
+    "error_message": null
+  },
+  "multi_encoder_run_04": {
+    "run_id": "multi_encoder_run_04",
+    "network_type": "multi_encoder",
+    "run_number": 4,
+    "seed": 64926,
+    "status": "pending",
+    "created_at": null,
+    "started_at": null,
+    "completed_at": null,
+    "duration_seconds": null,
+    "final_metrics": null,
+    "error_message": null
+  },
+  "multi_encoder_run_05": {
+    "run_id": "multi_encoder_run_05",
+    "network_type": "multi_encoder",
+    "run_number": 5,
+    "seed": 67970,
+    "status": "pending",
+    "created_at": null,
+    "started_at": null,
+    "completed_at": null,
+    "duration_seconds": null,
+    "final_metrics": null,
+    "error_message": null
+  },
+  "multi_encoder_run_06": {
+    "run_id": "multi_encoder_run_06",
+    "network_type": "multi_encoder",
+    "run_number": 6,
+    "seed": 5312,
+    "status": "pending",
+    "created_at": null,
+    "started_at": null,
+    "completed_at": null,
+    "duration_seconds": null,
+    "final_metrics": null,
+    "error_message": null
+  },
+  "multi_encoder_run_07": {
+    "run_id": "multi_encoder_run_07",
+    "network_type": "multi_encoder",
+    "run_number": 7,
+    "seed": 83105,
+    "status": "pending",
+    "created_at": null,
+    "started_at": null,
+    "completed_at": null,
+    "duration_seconds": null,
+    "final_metrics": null,
+    "error_message": null
+  }
+}

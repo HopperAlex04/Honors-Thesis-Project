@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Experiment Manager for Full Input Representation Experiments.
+Experiment Manager for Architecture Comparison Experiments.
 
-This script manages the full experimental setup for comparing 3 input types
-(Boolean, Embedding, Multi-Encoder) with 7 runs each (21 total runs).
+This script manages the full experimental setup for comparing 3 network architectures
+(Linear, Large Hidden, Game-Based) with 7 runs each (21 total runs).
 
 Features:
 - Creates organized experiment directory structure
@@ -14,9 +14,9 @@ Features:
 - Generates comparison visualizations
 
 Usage:
-    python scripts/experiment_manager.py init --name "input_representation_v1"
+    python scripts/experiment_manager.py init --name "architecture_comparison_v1"
     python scripts/experiment_manager.py status
-    python scripts/experiment_manager.py run --type boolean --run 1
+    python scripts/experiment_manager.py run --type linear --run 1
     python scripts/experiment_manager.py run-all --parallel 3
     python scripts/experiment_manager.py analyze
     python scripts/experiment_manager.py export --format csv
@@ -41,8 +41,8 @@ sys.path.insert(0, str(project_root))
 
 
 # Constants
-NETWORK_TYPES = ["boolean", "embedding", "multi_encoder"]
-RUNS_PER_TYPE = 7
+NETWORK_TYPES = ["linear", "large_hidden", "game_based"]
+RUNS_PER_TYPE = 5  # Reduced from 7 to 5 for time efficiency while maintaining statistical significance
 TOTAL_RUNS = len(NETWORK_TYPES) * RUNS_PER_TYPE
 
 EXPERIMENTS_DIR = project_root / "experiments"
@@ -760,9 +760,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             from scipy import stats as scipy_stats
             
             comparisons = [
-                ("boolean", "embedding"),
-                ("boolean", "multi_encoder"),
-                ("embedding", "multi_encoder"),
+                ("linear", "large_hidden"),
+                ("linear", "game_based"),
+                ("large_hidden", "game_based"),
             ]
             
             for t1, t2 in comparisons:

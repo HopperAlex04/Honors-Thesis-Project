@@ -1,0 +1,9 @@
+{
+  "run_id": "linear_run_01",
+  "network_type": "linear",
+  "run_number": 1,
+  "seed": 15796,
+  "experiment_name": "experiment_20260123_152712_embedding_architecture_comparison",
+  "created_at": "2026-01-23T15:27:53.995803",
+  "git_commit": "b06076dcd299"
+}

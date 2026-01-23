@@ -54,7 +54,7 @@ def set_random_seeds(seed: int) -> None:
 
 from cuttle import players as Players
 from cuttle.environment import CuttleEnvironment
-from cuttle.networks import NeuralNetwork, EmbeddingBasedNetwork, MultiEncoderNetwork, EmbeddingBasedNeuralNetwork
+from cuttle.networks import NeuralNetwork, EmbeddingBasedNetwork, MultiEncoderNetwork
 from cuttle import training as Training
 
 # Load hyperparameters from config file
@@ -129,91 +129,20 @@ else:
     print("Warning: No random seed specified. Results will not be reproducible.")
 
 # Network type selection
-network_type = config.get("network_type", "game_based")
+network_type = config.get("network_type", "boolean")
 embedding_dim = config.get("embedding_dim", 32)
 
 print(f"\n{'='*60}")
 print(f"Network Type: {network_type}")
 print(f"{'='*60}")
 
-# New architecture types
-# Check if we should use embeddings for preprocessing (recommended based on previous results)
-use_embeddings = config.get("use_embeddings", True)  # Default to True for better performance
-embedding_dim = config.get("embedding_dim", 52)
-zone_encoded_dim = config.get("zone_encoded_dim", 52)
-
-if use_embeddings:
-    # Use embeddings for preprocessing (proven to work well: 62% vs 18% win rate)
-    # Then apply different hidden layer architectures for comparison
-    if network_type == "linear":
-        # Embedding preprocessing → no hidden layers → output
-        model = EmbeddingBasedNeuralNetwork(
-            env.observation_space, 
-            num_actions=actions,
-            embedding_dim=embedding_dim,
-            zone_encoded_dim=zone_encoded_dim,
-            hidden_layers=[]  # Linear: no hidden layers
-        )
-        print("Using embeddings with linear architecture (no hidden layers)")
-    elif network_type == "large_hidden":
-        # Embedding preprocessing → 1024 neurons → output
-        model = EmbeddingBasedNeuralNetwork(
-            env.observation_space,
-            num_actions=actions,
-            embedding_dim=embedding_dim,
-            zone_encoded_dim=zone_encoded_dim,
-            hidden_layers=[1024]  # Large hidden layer
-        )
-        print("Using embeddings with large hidden layer (1024 neurons)")
-    elif network_type == "game_based":
-        # Embedding preprocessing → game-based hierarchical layers → output
-        game_based_scale = config.get("game_based_scale", 2)  # Default to 2 for stability
-        game_based_hidden_layers = config.get("game_based_hidden_layers", None)
-        
-        if game_based_hidden_layers is not None:
-            hidden_layers = game_based_hidden_layers
-        else:
-            hidden_layers = [52 * game_based_scale, 13 * game_based_scale, 15 * game_based_scale]
-        
-        model = EmbeddingBasedNeuralNetwork(
-            env.observation_space,
-            num_actions=actions,
-            embedding_dim=embedding_dim,
-            zone_encoded_dim=zone_encoded_dim,
-            hidden_layers=hidden_layers
-        )
-        print(f"Using embeddings with game-based architecture: {hidden_layers} (scale={game_based_scale})")
+if network_type == "embedding":
+    model = EmbeddingBasedNetwork(env.observation_space, embedding_dim=embedding_dim, num_actions=actions)
+elif network_type == "multi_encoder":
+    model = MultiEncoderNetwork(env.observation_space, num_actions=actions)
 else:
-    # Original boolean-based architectures (for comparison)
-    if network_type == "linear":
-        # Raw-linear: no hidden layers
-        model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None, hidden_layers=[])
-    elif network_type == "large_hidden":
-        # Large hidden layer: single 1024-neuron layer
-        model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None, hidden_layers=[1024])
-    elif network_type == "game_based":
-        # Game-based: hierarchical structure [cards, ranks, action_types]
-        game_based_scale = config.get("game_based_scale", 2)
-        game_based_hidden_layers = config.get("game_based_hidden_layers", None)
-        
-        if game_based_hidden_layers is not None:
-            hidden_layers = game_based_hidden_layers
-        else:
-            hidden_layers = [52 * game_based_scale, 13 * game_based_scale, 15 * game_based_scale]
-        
-        print(f"Game-based hidden layers: {hidden_layers} (scale={game_based_scale})")
-        model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None, hidden_layers=hidden_layers)
-    # Backward compatibility with old network types
-    elif network_type == "embedding":
-        model = EmbeddingBasedNetwork(env.observation_space, embedding_dim=embedding_dim, num_actions=actions)
-    elif network_type == "multi_encoder":
-        model = MultiEncoderNetwork(env.observation_space, num_actions=actions)
-    elif network_type == "boolean":
-        # Old boolean network: default game-based [52] for backward compatibility
-        model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None, hidden_layers=[52])
-    else:
-        # Default: game-based network
-        model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None, hidden_layers=[52, 13, 15])
+    # Default: boolean network (current NeuralNetwork)
+    model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None)
 
 trainee = Players.Agent(
     "PlayerAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR, REPLAY_BUFFER_SIZE

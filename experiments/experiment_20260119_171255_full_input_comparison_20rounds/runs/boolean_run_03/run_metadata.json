@@ -1,0 +1,9 @@
+{
+  "run_id": "boolean_run_03",
+  "network_type": "boolean",
+  "run_number": 3,
+  "seed": 76821,
+  "experiment_name": "experiment_20260119_171255_full_input_comparison_20rounds",
+  "created_at": "2026-01-20T15:16:18.204835",
+  "git_commit": "b06076dcd299"
+}
