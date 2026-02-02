@@ -5,9 +5,8 @@ This script trains a DQN agent through self-play with validation against
 baseline opponents. Training runs from start to finish without checkpointing -
 if interrupted, the run must be restarted.
 
-For running multiple experiments, use the experiment management system:
-    python scripts/experiment_manager.py init --name "experiment_name"
-    python scripts/run_full_experiment.py
+Usage:
+    python train.py
 """
 
 import os
@@ -156,15 +155,15 @@ if use_embeddings:
         )
         print("Using embeddings with linear architecture (no hidden layers)")
     elif network_type == "large_hidden":
-        # Embedding preprocessing → 1024 neurons → output
+        # Embedding preprocessing → 512 neurons → output
         model = EmbeddingBasedNeuralNetwork(
             env.observation_space,
             num_actions=actions,
             embedding_dim=embedding_dim,
             zone_encoded_dim=zone_encoded_dim,
-            hidden_layers=[1024]  # Large hidden layer
+            hidden_layers=[512]  # Large hidden layer
         )
-        print("Using embeddings with large hidden layer (1024 neurons)")
+        print("Using embeddings with large hidden layer (512 neurons)")
     elif network_type == "game_based":
         # Embedding preprocessing → game-based hierarchical layers → output
         game_based_scale = config.get("game_based_scale", 2)  # Default to 2 for stability
@@ -189,8 +188,8 @@ else:
         # Raw-linear: no hidden layers
         model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None, hidden_layers=[])
     elif network_type == "large_hidden":
-        # Large hidden layer: single 1024-neuron layer
-        model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None, hidden_layers=[1024])
+        # Large hidden layer: single 512-neuron layer
+        model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None, hidden_layers=[512])
     elif network_type == "game_based":
         # Game-based: hierarchical structure [cards, ranks, action_types]
         game_based_scale = config.get("game_based_scale", 2)

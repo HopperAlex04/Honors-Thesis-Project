@@ -1,9 +1,0 @@
-{
-  "run_id": "large_hidden_run_01",
-  "network_type": "large_hidden",
-  "run_number": 1,
-  "seed": 82387,
-  "experiment_name": "experiment_20260123_075942_arch_testing_v1",
-  "created_at": "2026-01-23T08:00:04.173312",
-  "git_commit": "b06076dcd299"
-}

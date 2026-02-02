@@ -4,21 +4,21 @@
     "type": "split",
     "children": [
       {
-        "id": "e57bb28a9ab9e596",
+        "id": "b19fdfedaadd5544",
         "type": "tabs",
         "children": [
           {
-            "id": "1220331f850c9099",
+            "id": "bfbfee8f08979acd",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "07-Thesis/Research Considerations.md",
+                "file": "07-Thesis/Literature Review Outline.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Research Considerations"
+              "title": "Literature Review Outline"
             }
           }
         ]
@@ -183,11 +183,14 @@
       "bases:Create new base": false
     }
   },
-  "active": "1220331f850c9099",
+  "active": "bfbfee8f08979acd",
   "lastOpenFiles": [
+    "07-Thesis/Literature Review Outline 1.md",
+    "07-Thesis/Literature Review Outline.md",
+    "2026-01-31.md",
+    "07-Thesis/Research Considerations.md",
     "07-Thesis/Methods Section Outline.md",
     "04-Neural-Networks/Dimension Strategies Summary.md",
-    "07-Thesis/Research Considerations.md",
     "07-Thesis",
     "04-Neural-Networks/Dimension Selection.md",
     "00-Index/Home.md",

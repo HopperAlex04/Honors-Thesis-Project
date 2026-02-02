@@ -15,7 +15,8 @@ p2log.txt
 *.pth
 models/*
 models
-
+experiments/
+obsidian-vault/.obsidian/workspace.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

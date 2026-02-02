@@ -1,9 +1,0 @@
-{
-  "run_id": "embedding_run_01",
-  "network_type": "embedding",
-  "run_number": 1,
-  "seed": 87499,
-  "experiment_name": "experiment_20260119_142650_embedding_sparse_rewards_test",
-  "created_at": "2026-01-19T14:27:11.715352",
-  "git_commit": "cceaaa2b3554"
-}

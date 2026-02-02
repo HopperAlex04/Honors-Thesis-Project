@@ -2,7 +2,7 @@
 title: Methods Section Outline
 tags: [thesis, methods, outline, research-methodology]
 created: 2026-01-19
-related: [Research Considerations, Input Representation Experiments, Statistical Significance and Multiple Runs, Reward Engineering]
+related: [Research Considerations, Input Representation Experiments, Statistical Significance and Multiple Runs, Reward Engineering, Experiment Management System, Game-Based Architecture]
 ---
 
 # Methods Section Outline
@@ -83,6 +83,51 @@ This document provides a structured outline for the Methods section of the thesi
 **Sources**:
 - Goodfellow, I., Bengio, Y., & Courville, A. (2016). *Deep Learning*. MIT Press. Chapter 6: Feedforward Networks. [Architecture design principles]
 - He, K., et al. (2015). "Delving Deep into Rectifiers." *ICCV*. [Weight initialization]
+
+### 2.4 Architecture Scaling Experiment
+
+**Content**: Parameter-matched scaling of game-based architecture
+
+**Motivation**: To ensure fair comparison between network architectures, the game-based architecture was scaled to match the parameter count of the large_hidden baseline (1,865,129 parameters). This addresses the confound that performance differences might be due to parameter count rather than architectural design.
+
+**Experimental Design**:
+1. **Baseline**: Large_hidden architecture with single 512-neuron hidden layer (1,865,129 parameters)
+2. **Scaling Strategy**: Game-based architecture with hierarchical layers `[52k, 13k, 15k]` where k is the scale factor
+3. **Scale Range**: Tested scales k = 1 to k = 25, corresponding to parameter counts from 81,259 to 2,347,267
+4. **Target Scale**: Scale k = 21 achieves 1,899,919 parameters (1.02× baseline), the first scale to match or exceed baseline parameter count
+
+**Screening Methodology**:
+- **Single-run screening**: One run per scale per input type to quickly identify promising scales
+- **Total runs**: 52 runs (2 baseline + 50 scaling runs)
+  - Baseline: 1 boolean run + 1 embedding run
+  - Scaling: 25 scales × 2 input types × 1 run = 50 runs
+- **Execution order**: Runs organized by scale (k), then by input type (boolean, then embedding)
+- **Baseline loading**: Baseline win rates loaded from completed architecture comparison experiment to avoid redundant computation
+  - Boolean baseline: 77.6% (from previous experiment)
+  - Embedding baseline: 47.2% (from previous experiment)
+
+**Follow-Up Decision Rules** (applied after screening):
+1. **If a scale achieves win rate within X% of the large_hidden baseline** (e.g., within 10 percentage points, or ≥90% of baseline): Run a smaller-scale follow-up with 5–7 independent runs for statistical significance testing.
+2. **If no scale meets the performance threshold**: Run the largest scale (parameter-matched to large_hidden) with 5–7 runs to provide a parameter-matched comparison, even if absolute performance is below target.
+3. **Rationale**: Screening with single runs efficiently narrows the search space before committing compute to full statistical evaluation. Compute budget is finite; we prioritize multi-run evaluation for scales that show promise, or for the largest scale as a controlled comparison if none do.
+
+**Reversed Layer Order Experiment**:
+- **Layer order**: `[15k, 13k, 52k]` (narrow→wide), reversed from original `[52k, 13k, 15k]` (wide→narrow)
+- **Scaling direction**: Descending from large_hidden match (k≈11) down to k=1
+- **Same decision rules** as above; both architectures screened and follow-up determined by same criteria
+
+**Analysis Approach**:
+- Compare win rate of each scale against corresponding baseline (separate comparison for boolean and embedding inputs)
+- Identify scales that match or exceed baseline performance
+- Note: Single-run results have high variance; screening identifies candidate scales for full evaluation
+- **Full experiment**: After screening, selected target scale(s) evaluated with 5+ independent runs for statistical significance, per decision rules above
+
+**Justification**: Parameter-matched comparison ensures architectural differences are not confounded by capacity differences. Screening with single runs efficiently narrows the search space before committing computational resources to full statistical evaluation.
+
+**Sources**:
+- Raghu, M., et al. (2017). "On the Expressive Power of Deep Neural Networks." *ICML*. [Parameter count and expressivity]
+- Frankle, J., & Carbin, M. (2019). "The Lottery Ticket Hypothesis: Finding Sparse, Trainable Neural Networks." *ICLR*. [Architecture scaling and capacity]
+- Kaplan, J., et al. (2020). "Scaling Laws for Neural Language Models." *arXiv:2001.08361*. [Scaling relationships in neural networks]
 
 ---
 
@@ -289,6 +334,8 @@ This document provides a structured outline for the Methods section of the thesi
 - [[Reward Engineering]] - Reward structure rationale
 - [[Self-Play]] - Training methodology
 - [[Hyperparameters]] - Configuration details
+- [[Experiment Management System]] - Automated experiment execution
+- [[Game-Based Architecture]] - Architecture design rationale
 
 ---
 *Thesis Methods section outline with supporting literature*
