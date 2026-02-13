@@ -2,8 +2,9 @@
 Unified training script for DQN agent in Cuttle card game.
 
 This script trains a DQN agent through self-play with validation against
-baseline opponents. Training runs from start to finish without checkpointing -
-if interrupted, the run must be restarted.
+baseline opponents. Round checkpointing is enabled: each round saves
+model_round_N.pt, and the best round by validation (vs GapMaximizer if present)
+is saved as model_best.pt with best_round.json for later use.
 
 Usage:
     python train.py
@@ -271,6 +272,17 @@ steps_done = 0
 total_time = 0.0
 training_start_time = time.time()
 
+# Best-model tracking (by validation win rate; prefer GapMaximizer if present)
+best_metric_opponent = None
+for name, _ in validation_opponents:
+    if "gapmaximizer" in name.lower():
+        best_metric_opponent = name
+        break
+if best_metric_opponent is None and validation_opponents:
+    best_metric_opponent = validation_opponents[0][0]
+best_win_rate = -1.0
+best_round = -1
+
 # Save initial model
 initial_model_path = models_dir / "model_initial.pt"
 torch.save({
@@ -331,6 +343,50 @@ for round_num in range(rounds):
     round_elapsed_time = time.time() - round_start_time
     total_time += round_elapsed_time
     print(f"Round {round_num + 1} completed in {round_elapsed_time:.1f}s (total: {total_time:.1f}s)")
+    
+    # Round checkpoint: save this round's model for later use
+    round_checkpoint_path = models_dir / f"model_round_{round_num}.pt"
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': trainee.get_optimizer_state(),
+        'network_type': network_type,
+        'random_seed': RANDOM_SEED,
+        'config': config,
+        'round': round_num,
+        'steps_done': steps_done,
+        'total_time': total_time,
+        'win_rate_history': dict(win_rate_history),
+    }, round_checkpoint_path)
+    print(f"Saved round checkpoint: {round_checkpoint_path}")
+    
+    # Best-model tracking: update best if this round is best by validation (prefer GapMaximizer)
+    if best_metric_opponent and win_rate_history.get(best_metric_opponent):
+        current_win_rate = win_rate_history[best_metric_opponent][-1]
+        if current_win_rate >= best_win_rate:
+            best_win_rate = current_win_rate
+            best_round = round_num
+            best_model_path = models_dir / "model_best.pt"
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': trainee.get_optimizer_state(),
+                'network_type': network_type,
+                'random_seed': RANDOM_SEED,
+                'config': config,
+                'round': round_num,
+                'steps_done': steps_done,
+                'total_time': total_time,
+                'win_rate_history': dict(win_rate_history),
+                'best_round': best_round,
+                'best_win_rate': best_win_rate,
+                'best_metric_opponent': best_metric_opponent,
+            }, best_model_path)
+            with open(models_dir / "best_round.json", "w") as f:
+                json.dump({
+                    "best_round": best_round,
+                    "best_win_rate": best_win_rate,
+                    "best_metric_opponent": best_metric_opponent,
+                }, f, indent=2)
+            print(f"New best model (round {round_num}, vs {best_metric_opponent}: {best_win_rate:.1%}): {best_model_path}")
 
 # Training completed - save final model
 final_model_path = models_dir / "model_final.pt"
@@ -362,5 +418,8 @@ print("\nFinal Win Rate Summary:")
 for opponent_name, history in win_rate_history.items():
     if history:
         print(f"  vs {opponent_name}: {history[-1]:.1%} (peak: {max(history):.1%})")
+if best_metric_opponent and best_round >= 0:
+    print(f"\nBest checkpoint: round {best_round} (vs {best_metric_opponent}: {best_win_rate:.1%})")
+    print(f"  Use models/model_best.pt or models/model_round_{best_round}.pt for best validation model.")
 
 print()

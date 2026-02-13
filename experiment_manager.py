@@ -207,6 +207,12 @@ def create_run_config(experiment_path: Path, run_info: Dict) -> Path:
             # Fallback to scale
             config["game_based_scale"] = run_info["scale"]
     
+    # Per-run training rounds override (e.g. for short comparison experiments)
+    if "rounds" in run_info and run_info["rounds"] is not None:
+        if "training" not in config:
+            config["training"] = {}
+        config["training"]["rounds"] = run_info["rounds"]
+    
     # Save run config
     with open(run_path / "hyperparams_config.json", "w") as f:
         json.dump(config, f, indent=2)
@@ -500,9 +506,10 @@ def run_experiment(
                     runs_by_scale[scale] = []
                 runs_by_scale[scale].append(rid)
         
-        # Sort scales
-        sorted_scales = sorted(runs_by_scale.keys())
-        
+        # Sort scales (descending if experiment specifies scale_order: descending)
+        reverse = metadata.get("scale_order") == "descending"
+        sorted_scales = sorted(runs_by_scale.keys(), reverse=reverse)
+
         print(f"\nScaling experiment detected")
         print(f"Experiment: {experiment_path.name}")
         print(f"Total runs: {len(run_ids)}")
@@ -677,7 +684,12 @@ def run_experiment(
         print_status(experiment_path)
         return
     
-    # Standard experiment: run sequentially
+    # Standard experiment: run sequentially (use run_order from metadata if present)
+    run_order = metadata.get("run_order")
+    if run_order:
+        # Only run IDs that are in run_order and pending; preserve order
+        run_ids = [rid for rid in run_order if rid in run_ids]
+        print(f"Run order: {' -> '.join(run_ids)}")
     print(f"\nExecuting {len(run_ids)} runs sequentially...")
     print(f"Experiment: {experiment_path.name}")
     

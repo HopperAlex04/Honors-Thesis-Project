@@ -82,6 +82,39 @@ The key questions are:
 - Slower feedback on training issues
 - More work lost if training fails
 
+## Reduction of Rounds (Why We Use Fewer Rounds)
+
+### Decision
+
+After analyzing previous experiments (architecture comparison and game-based scaling screening), we **reduced the number of rounds** used for screening and often for full runs. The default or recommended configuration moved from **20 rounds** to **10 rounds** (or similar) where appropriate.
+
+### Why the Reduction Was Made
+
+1. **Peak performance occurs mid-training, not at the final round.**  
+   Validation win rate vs GapMaximizer typically **peaks between rounds 5 and 15**, then often **declines** by round 19. Examples:
+   - **large_hidden_embedding:** Peak at round 7 (63.2%), final round 19 = 52.8%.
+   - **linear_embedding:** Peak at round 15 (60.8%), final 58.4%.
+   - **game_based_embedding (scale 11):** Peak at round 10 (60.8%), final 49.6%.
+
+2. **Win rate plateaus by round 5–10.**  
+   For runs that learn, performance reaches ~95% of its “final” level by round 5–10. Rounds 11–19 add little improvement and, in many runs, coincide with a **decline** in validation win rate (overfitting, instability, or epsilon/exploration effects).
+
+3. **Extra rounds waste time and can worsen reported results.**  
+   Running 20 rounds doubles training time compared to 10 rounds, while the second half often does not improve—and sometimes hurts—the validation metric we care about. Reporting “round 19” can understate the best performance achieved.
+
+4. **Screening experiments need speed, not maximum length.**  
+   For scaling and architecture screening, the goal is to compare configs and find promising scales. Capturing performance by round 10 is sufficient; running to 20 rounds is unnecessary and costly.
+
+### Implications
+
+- **Screening:** Use **10 rounds** (or at most 12). Total episodes: 2,500–3,000 per run instead of 5,000. Roughly **50% less time per run** with no evidence of losing useful signal and some evidence of avoiding post-peak degradation.
+- **Final evaluation:** Prefer **best checkpoint by validation win rate** (best round) rather than always reporting the last round. Consider **early stopping** when validation win rate has not improved (or has dropped) for several rounds.
+- **Full training (thesis):** If keeping a longer schedule, pair it with best-checkpoint selection or early stopping so that “final” results reflect the best validation performance, not the last round.
+
+Detailed analysis and tables: see `docs/ROUNDS_ANALYSIS.md` in the project repo.
+
+---
+
 ## Number of Rounds
 
 ### Total Training Episodes
@@ -332,7 +365,7 @@ Current early stopping:
 
 ## Recommended Configuration for Thesis
 
-### Full Training
+### Full Training (Long Schedule)
 
 ```json
 {
@@ -348,7 +381,23 @@ Current early stopping:
 }
 ```
 
-**Total**: 5,000 episodes, 20 validation checkpoints
+**Total**: 5,000 episodes, 20 validation checkpoints. Prefer **best checkpoint by validation win rate** over “final round” when reporting (see [[#Reduction of Rounds (Why We Use Fewer Rounds)]]).
+
+### Screening / Shorter Runs (Recommended for Scaling and Architecture Screening)
+
+```json
+{
+  "training": {
+    "rounds": 10,
+    "eps_per_round": 250,
+    "quick_test_mode": false,
+    "validation_episodes_ratio": 0.5,
+    "validation_opponent": "both"
+  }
+}
+```
+
+**Total**: 2,500 episodes, 10 validation checkpoints. Based on rounds analysis: performance typically plateaus or peaks by round 10; extra rounds often degrade validation win rate and double run time. See [[#Reduction of Rounds (Why We Use Fewer Rounds)]].
 
 ### Quick Testing
 
@@ -372,6 +421,10 @@ Current early stopping:
 - [[Self-Play]] - Training methodology
 - [[Statistical Significance and Multiple Runs]] - Running multiple experiments
 - [[Early Stopping]] - Stopping training early if needed
+
+## References
+
+- **Rounds analysis** (why we reduced rounds): `docs/ROUNDS_ANALYSIS.md` in the project repository. Summarizes plateau/peak-by-round and post-peak decline from architecture comparison and scaling experiments.
 
 ---
 *Guidelines for configuring training rounds and schedule*

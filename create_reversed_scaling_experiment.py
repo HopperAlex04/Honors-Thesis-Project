@@ -5,12 +5,12 @@ Create an experiment with reversed (flipped) game_based layer order: [15k, 13k, 
 Unlike the original [52k, 13k, 15k] (wide→narrow), the reversed order is narrow→wide,
 with the 52-card representation at the end before the output layer.
 
-Scales start at the parameter count that matches large_hidden (~1.87M) and work DOWN
-for both boolean and embedding inputs. This tests whether the reversed order can
-achieve comparable performance with fewer parameters, or perform better at the
-same parameter budget.
+Scales start at max k and work DOWN to k=1 for both boolean and embedding inputs.
+This tests whether the reversed order can achieve comparable performance with
+fewer parameters, or perform better at the same parameter budget.
 
-Parameter match: flipped [15k, 13k, 52k] matches large_hidden at k≈10-11.
+Default max_scale=25 (mirrors original scaling experiment); flipped [15k, 13k, 52k]
+matches large_hidden at k≈10-11.
 """
 
 import json
@@ -85,28 +85,16 @@ def count_params_embedding(hidden_layers: List[int]) -> int:
     return params
 
 
-def find_reversed_scales_descending() -> List[Dict]:
+def find_reversed_scales_descending(max_scale: int = 25) -> List[Dict]:
     """
-    Find scales to test: start at large_hidden match, work DOWN.
+    Find scales to test: start at max_scale, work DOWN to 1.
     Returns scales in descending order (highest first).
     """
     large_hidden_params = count_params_embedding([512])
 
-    # Find k where flipped first meets or exceeds large_hidden
-    match_scale = None
-    for k in range(1, 20):
-        layers = flipped_hidden_layers(k)
-        params = count_params_embedding(layers)
-        if params >= large_hidden_params:
-            match_scale = k
-            break
-
-    if match_scale is None:
-        match_scale = 11  # Fallback: k=11 is ~2M params
-
-    # Build scales from match_scale down to 1
+    # Build scales from max_scale down to 1
     scales_to_test = []
-    for k in range(match_scale, 0, -1):
+    for k in range(max_scale, 0, -1):
         layers = flipped_hidden_layers(k)
         params_emb = count_params_embedding(layers)
         params_bool = count_params_boolean(layers)
@@ -128,9 +116,10 @@ def find_reversed_scales_descending() -> List[Dict]:
 def create_reversed_scaling_experiment(
     name: str = "game_based_reversed_scaling",
     description: str = "",
-    baseline_experiment: Optional[str] = None
+    baseline_experiment: Optional[str] = None,
+    max_scale: int = 25
 ) -> Path:
-    """Create an experiment with reversed layer order [15k, 13k, 52k], scaling down from match."""
+    """Create an experiment with reversed layer order [15k, 13k, 52k], scaling from max_scale down to 1."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     experiment_name = f"experiment_{timestamp}_{name}"
     experiment_path = experiments_dir / experiment_name
@@ -138,7 +127,7 @@ def create_reversed_scaling_experiment(
 
     (experiment_path / "runs").mkdir(exist_ok=True)
 
-    scales = find_reversed_scales_descending()
+    scales = find_reversed_scales_descending(max_scale=max_scale)
     large_hidden_params = count_params_embedding([512])
 
     runs_per_config = 1
@@ -151,7 +140,7 @@ def create_reversed_scaling_experiment(
         "experiment_name": experiment_name,
         "display_name": name,
         "description": description or (
-            "Reversed game_based layer order [15k, 13k, 52k] scaling down from large_hidden match. "
+            "Reversed game_based layer order [15k, 13k, 52k] scaling from max k down to 1. "
             "Tests narrow→wide architecture vs original wide→narrow."
         ),
         "created_at": datetime.now().isoformat(),
@@ -160,6 +149,8 @@ def create_reversed_scaling_experiment(
         "layer_order": "reversed",
         "hidden_layers_formula": "[15*k, 13*k, 52*k]",
         "scaling_direction": "descending",
+        "scale_order": "descending",
+        "max_scale": max_scale,
         "baseline_experiment": baseline_experiment,
         "baseline": {
             "reference": "large_hidden",
@@ -237,7 +228,7 @@ def create_reversed_scaling_experiment(
     print(f"Location: {experiment_path}\n")
     print(f"Layer order: [15k, 13k, 52k] (narrow → wide, reversed from original)")
     print(f"Reference: large_hidden ([512]) = {large_hidden_params:,} params")
-    print(f"Scaling: DESCENDING from match point (k={scales[0]['scale']}) down to k=1\n")
+    print(f"Scaling: DESCENDING from max k={max_scale} down to k=1\n")
     print(f"Scales to test: {len(scales)}")
     print("-" * 70)
     for s in scales:
@@ -266,11 +257,14 @@ if __name__ == "__main__":
                         help="Experiment description")
     parser.add_argument("--baseline-experiment", "-b", default=None,
                         help="Name of experiment to load baseline win rate from")
+    parser.add_argument("--max-scale", "-m", type=int, default=25,
+                        help="Maximum scale k; scales run from k=max_scale down to 1 (default: 25)")
 
     args = parser.parse_args()
 
     create_reversed_scaling_experiment(
         args.name,
         args.description,
-        args.baseline_experiment
+        args.baseline_experiment,
+        args.max_scale
     )
