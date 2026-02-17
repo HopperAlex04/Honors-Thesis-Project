@@ -7,8 +7,9 @@ import math
 import random
 from abc import ABC, abstractmethod
 from collections import deque, namedtuple
-from typing import List, Optional
+from typing import List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 
 
@@ -353,7 +354,13 @@ class Agent(Player):
         eps_decay: int,
         tau: float,
         lr: float,
-        replay_buffer_size: int = 100000
+        replay_buffer_size: int = 100000,
+        use_prioritized_replay: bool = False,
+        per_alpha: float = 0.6,
+        per_beta: float = 0.4,
+        per_beta_end: float = 1.0,
+        per_beta_increment: Optional[float] = None,
+        per_epsilon: float = 1e-6,
     ):
         """
         Initialize a DQN agent.
@@ -369,6 +376,12 @@ class Agent(Player):
             tau: Soft update parameter (currently unused, reserved for future use)
             lr: Learning rate for optimizer
             replay_buffer_size: Size of replay memory buffer (default: 100000)
+            use_prioritized_replay: If True, use Prioritized Experience Replay (PER).
+            per_alpha: PER priority exponent (0 = uniform, 1 = full priority). Default 0.6.
+            per_beta: PER importance-sampling exponent (start). Default 0.4.
+            per_beta_end: PER importance-sampling exponent (end). Default 1.0.
+            per_beta_increment: PER beta increment per sample (None = no annealing).
+            per_epsilon: Small constant added to priorities to avoid zero. Default 1e-6.
         """
         super().__init__(name)
         
@@ -397,10 +410,20 @@ class Agent(Player):
         self.target_update_frequency = 0  # Hard update target network every N steps (0 = use soft updates with tau)
         self.exploration_boost = 0  # Temporary boost to exploration (subtracted from steps_done)
 
-        # Replay Memory
-        # Configurable buffer size - smaller buffers age out old experiences faster,
-        # which can help with self-play non-stationarity (old experiences become less relevant)
-        self.memory = ReplayMemory(replay_buffer_size)
+        # Prioritized Experience Replay (toggleable)
+        self.use_prioritized_replay = use_prioritized_replay
+        if use_prioritized_replay:
+            self.memory = PrioritizedReplayMemory(
+                capacity=replay_buffer_size,
+                alpha=per_alpha,
+                beta=per_beta,
+                beta_end=per_beta_end,
+                beta_increment=per_beta_increment,
+                epsilon=per_epsilon,
+            )
+        else:
+            # Replay Memory (uniform or mix_old_new sampling)
+            self.memory = ReplayMemory(replay_buffer_size)
 
         # Using Adam optimization with weight decay to prevent catastrophic forgetting
         self.optimizer = torch.optim.Adam(
@@ -518,18 +541,16 @@ class Agent(Player):
             return None
 
         # Sample a batch of transitions from replay memory
-        transitions = self.memory.sample(self.batch_size)
+        if self.use_prioritized_replay:
+            transitions, batch_indices, is_weights = self.memory.sample(self.batch_size)
+        else:
+            transitions = self.memory.sample(self.batch_size)
+            batch_indices = None
+            is_weights = None
+
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
-
-        # The zip function: zip(iterator1, iterator2...) returns a zip object, which is an iterator of the form [(iterator1[0], iterator2[0]...]),...]
-
-        # zip(*iterable) will use all of the elements of that iterable as arguements. zip(*transitions) is the collection of all the transitions such that
-        #   (assuming array structure) each row corresponds to all of that part of the transition. ex. zip(*transitions)[0] would be all of the states, in order.
-
-        # Transition(*zip(*transitions)) is the final step, which makes this collection able to be accesed as so: batch.field, where field is one of the namedTuple's names
-        # defined as Transition(transition, (state, action, next_state, reward))
         batch = Transition(*zip(*transitions))
 
         # Separate final and non-final states
@@ -589,10 +610,23 @@ class Agent(Player):
         # Instead, let the network learn freely and only clip targets.
         # The Huber loss will naturally handle outliers without causing divergence.
 
-        # Compute Huber loss (Smooth L1 Loss)
-        # Huber loss is robust to outliers, so we don't need to clip current Q-values
-        loss = self.criterion(state_action_values, expected_state_action_values)
-        
+        # Compute loss (element-wise for PER so we can weight and get TD errors)
+        if self.use_prioritized_replay:
+            device = next(self.policy.parameters()).device
+            element_losses = torch.nn.functional.smooth_l1_loss(
+                state_action_values, expected_state_action_values, reduction="none"
+            )  # [batch_size, 1]
+            weights = torch.from_numpy(is_weights).to(device=device, dtype=element_losses.dtype)
+            weights = weights.unsqueeze(1)  # [batch_size, 1]
+            loss = (weights * element_losses).mean()
+            # TD errors for priority update (before backward)
+            with torch.no_grad():
+                td_errors = (
+                    expected_state_action_values - state_action_values
+                ).abs().squeeze(1).cpu().numpy()
+        else:
+            loss = self.criterion(state_action_values, expected_state_action_values)
+
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
@@ -622,6 +656,10 @@ class Agent(Player):
                 target_param.data.copy_(
                     self.tau * policy_param.data + (1.0 - self.tau) * target_param.data
                 )
+
+        # Update PER priorities after optimization (so next sample reflects new errors)
+        if self.use_prioritized_replay and batch_indices is not None:
+            self.memory.update_priorities(batch_indices, td_errors)
         
         return loss.item()
 
@@ -722,3 +760,104 @@ class ReplayMemory:
             memory_state: List of transitions from get_state()
         """
         self.memory = deque(memory_state, maxlen=self.memory.maxlen)
+
+
+class PrioritizedReplayMemory:
+    """
+    Prioritized Experience Replay (PER) buffer.
+    Samples transitions with probability proportional to priority^alpha,
+    and uses importance-sampling weights (beta) in the loss to correct bias.
+    """
+
+    def __init__(
+        self,
+        capacity: int,
+        alpha: float = 0.6,
+        beta: float = 0.4,
+        beta_end: float = 1.0,
+        beta_increment: Optional[float] = None,
+        epsilon: float = 1e-6,
+    ):
+        """
+        Args:
+            capacity: Maximum number of transitions.
+            alpha: Priority exponent (0 = uniform, 1 = full priority). Typical 0.6.
+            beta: Importance-sampling exponent start. Typical 0.4.
+            beta_end: Importance-sampling exponent end (annealing). Typical 1.0.
+            beta_increment: Increase beta by this much per sample (None = no annealing).
+            epsilon: Small constant added to priorities so none are zero.
+        """
+        self.capacity = capacity
+        self.alpha = alpha
+        self.beta = beta
+        self.beta_end = beta_end
+        self.beta_increment = beta_increment if beta_increment is not None else (beta_end - beta) / 1e6
+        self.epsilon = epsilon
+        self._memory: List[Transition] = []
+        self._priorities = np.zeros(capacity, dtype=np.float64)
+        self._position = 0
+        self._size = 0
+
+    def push(self, state, action, next_state, reward):
+        """Store a transition with priority = max(priorities) or 1.0 so new transitions get sampled."""
+        transition = Transition(state, action, next_state, reward)
+        if self._size < self.capacity:
+            self._memory.append(transition)
+            self._size += 1
+            max_prio = self._priorities[: self._size].max() if self._size > 0 else 1.0
+        else:
+            self._memory[self._position] = transition
+            max_prio = self._priorities.max()
+        self._priorities[self._position] = max_prio if max_prio > 0 else 1.0
+        self._position = (self._position + 1) % self.capacity
+
+    def sample(self, batch_size: int) -> Tuple[List[Transition], List[int], np.ndarray]:
+        """
+        Sample a batch by priority (proportional to priority^alpha).
+        Returns (transitions, indices, importance_sampling_weights).
+        """
+        n = len(self._memory)
+        if n < batch_size:
+            raise ValueError(f"Not enough transitions: {n} < {batch_size}")
+
+        priorities = self._priorities[:n] + self.epsilon
+        probs = np.power(priorities, self.alpha)
+        probs /= probs.sum()
+        indices = np.random.choice(n, size=batch_size, replace=True, p=probs)
+
+        # Importance sampling weights: w_i = (1/(N*P(i)))^beta, normalized so max = 1
+        N = n
+        weights = np.power(1.0 / (N * probs[indices]), self.beta)
+        weights /= weights.max()
+
+        transitions = [self._memory[i] for i in indices]
+        if self.beta_increment is not None and self.beta < self.beta_end:
+            self.beta = min(self.beta_end, self.beta + self.beta_increment)
+
+        return transitions, indices.tolist(), weights.astype(np.float32)
+
+    def update_priorities(self, indices: List[int], td_errors: np.ndarray) -> None:
+        """Update priorities for sampled indices using |TD error|."""
+        for idx, err in zip(indices, td_errors):
+            self._priorities[idx] = float(np.abs(err)) + self.epsilon
+
+    def __len__(self) -> int:
+        return self._size
+
+    def get_state(self) -> Tuple[List[Transition], np.ndarray, int, int, float]:
+        """State for checkpointing: (transitions, priorities, position, size, beta)."""
+        return (
+            list(self._memory),
+            self._priorities.copy(),
+            self._position,
+            self._size,
+            self.beta,
+        )
+
+    def set_state(self, state: Tuple[List[Transition], np.ndarray, int, int, float]) -> None:
+        """Restore from checkpoint."""
+        self._memory = state[0][:]
+        self._priorities = state[1].copy()
+        self._position = state[2]
+        self._size = state[3]
+        self.beta = state[4]

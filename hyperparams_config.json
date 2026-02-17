@@ -33,6 +33,11 @@
   "gradient_clip_norm": 5.0,
   "q_value_clip": 15.0,
   "replay_buffer_size": 30000,
+  "use_prioritized_replay": false,
+  "per_alpha": 0.6,
+  "per_beta": 0.4,
+  "per_beta_end": 1.0,
+  "per_epsilon": 1e-6,
   "training": {
     "rounds": 10,
     "eps_per_round": 250,

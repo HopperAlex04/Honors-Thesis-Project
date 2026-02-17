@@ -119,6 +119,13 @@ LR_DECAY_INTERVAL = config.get("lr_decay_interval", 2)
 GRADIENT_CLIP_NORM = config.get("gradient_clip_norm", 5.0)
 Q_VALUE_CLIP = config.get("q_value_clip", 15.0)
 REPLAY_BUFFER_SIZE = config.get("replay_buffer_size", 100000)
+USE_PRIORITIZED_REPLAY = config.get("use_prioritized_replay", False)
+PER_ALPHA = config.get("per_alpha", 0.6)
+PER_BETA = config.get("per_beta", 0.4)
+PER_BETA_END = config.get("per_beta_end", 1.0)
+PER_EPSILON = config.get("per_epsilon", 1e-6)
+if USE_PRIORITIZED_REPLAY:
+    print("Prioritized Experience Replay (PER) enabled (alpha=%.2f, beta=%.2f->%.2f)" % (PER_ALPHA, PER_BETA, PER_BETA_END))
 
 # Random seed for reproducibility
 RANDOM_SEED = config.get("random_seed", None)
@@ -216,7 +223,12 @@ else:
         model = NeuralNetwork(env.observation_space, EMBEDDING_SIZE, actions, None, hidden_layers=[52, 13, 15])
 
 trainee = Players.Agent(
-    "PlayerAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR, REPLAY_BUFFER_SIZE
+    "PlayerAgent", model, BATCH_SIZE, GAMMA, EPS_START, EPS_END, EPS_DECAY, TAU, LR, REPLAY_BUFFER_SIZE,
+    use_prioritized_replay=USE_PRIORITIZED_REPLAY,
+    per_alpha=PER_ALPHA,
+    per_beta=PER_BETA,
+    per_beta_end=PER_BETA_END,
+    per_epsilon=PER_EPSILON,
 )
 trainee.set_target_update_frequency(TARGET_UPDATE_FREQUENCY)
 
@@ -263,6 +275,16 @@ print(f"Validation opponents: {[name for name, _ in validation_opponents]}")
 
 reward_mode = training_config.get("reward_mode", "binary")
 print(f"Reward mode: {reward_mode}")
+
+# Train vs GapMaximizer instead of self-play (100% episodes vs GapMaximizer)
+train_vs_gapmaximizer = training_config.get("train_vs_gapmaximizer", False)
+trainee_first_only = training_config.get("trainee_first_only", False)
+skip_validation = training_config.get("skip_validation", False)
+gapmaximizer_opponent = Players.ScoreGapMaximizer("GapMaximizer") if train_vs_gapmaximizer else None
+if train_vs_gapmaximizer:
+    print(f"Training: vs GapMaximizer (trainee first only: {trainee_first_only})")
+if skip_validation:
+    print("Validation: skipped")
 
 print(f"\n{'='*60}")
 print(f"TRAINING: {rounds} rounds, {eps_per_round} episodes per round")
@@ -311,38 +333,64 @@ for round_num in range(rounds):
             param_group['lr'] = new_lr
         print(f"LR decay: {current_lr:.2e} -> {new_lr:.2e}")
     
-    # Self-play training
+    # Training: self-play or vs GapMaximizer
     try:
-        _, _, steps_done = Training.selfPlayTraining(
-            trainee, trainee, eps_per_round,
-            model_id=f"round_{round_num}_selfplay",
-            initial_steps=steps_done,
-            round_number=round_num,
-            initial_total_time=total_time,
-            early_stopping_config=early_stopping_config,
-            reward_mode=reward_mode
-        )
-    except Exception as e:
-        print(f"Error during self-play training in round {round_num}: {e}")
-        raise
-    
-    # Validation against opponents
-    current_total_time = total_time + (time.time() - round_start_time)
-    for opponent_name, opponent in validation_opponents:
-        try:
-            trainee_wins, opponent_wins = Training.validate_both_positions(
-                trainee, opponent, validation_episodes_per_position,
-                model_id_prefix=f"round_{round_num}_vs_{opponent_name.lower()}",
+        if train_vs_gapmaximizer and gapmaximizer_opponent is not None:
+            # trainee_first_only: trainee always P1. Else: alternate position each round.
+            trainee_is_p1 = trainee_first_only or (round_num % 2 == 0)
+            if trainee_is_p1:
+                _, _, steps_done = Training.selfPlayTraining(
+                    trainee, gapmaximizer_opponent, eps_per_round,
+                    model_id=f"round_{round_num}_vs_gapmaximizer",
+                    initial_steps=steps_done,
+                    round_number=round_num,
+                    initial_total_time=total_time,
+                    early_stopping_config=early_stopping_config,
+                    reward_mode=reward_mode
+                )
+            else:
+                # Trainee as P2 this round
+                _, _, steps_done = Training.selfPlayTraining(
+                    gapmaximizer_opponent, trainee, eps_per_round,
+                    model_id=f"round_{round_num}_vs_gapmaximizer",
+                    initial_steps=steps_done,
+                    round_number=round_num,
+                    initial_total_time=total_time,
+                    early_stopping_config=early_stopping_config,
+                    reward_mode=reward_mode
+                )
+        else:
+            _, _, steps_done = Training.selfPlayTraining(
+                trainee, trainee, eps_per_round,
+                model_id=f"round_{round_num}_selfplay",
+                initial_steps=steps_done,
                 round_number=round_num,
-                initial_total_time=current_total_time
+                initial_total_time=total_time,
+                early_stopping_config=early_stopping_config,
+                reward_mode=reward_mode
             )
-            win_rate = trainee_wins / validation_episodes_total if validation_episodes_total > 0 else 0.0
-            win_rate_history[opponent_name].append(win_rate)
-            print(f"Round {round_num}: Validation vs {opponent_name} - trainee: {trainee_wins}, opponent: {opponent_wins} (win rate: {win_rate:.1%})")
-        except Exception as e:
-            print(f"Error during validation vs {opponent_name} in round {round_num}: {e}")
-            raise
-    
+    except Exception as e:
+        print(f"Error during training in round {round_num}: {e}")
+        raise
+
+    # Validation against opponents (skipped if skip_validation)
+    current_total_time = total_time + (time.time() - round_start_time)
+    if not skip_validation:
+        for opponent_name, opponent in validation_opponents:
+            try:
+                trainee_wins, opponent_wins = Training.validate_both_positions(
+                    trainee, opponent, validation_episodes_per_position,
+                    model_id_prefix=f"round_{round_num}_vs_{opponent_name.lower()}",
+                    round_number=round_num,
+                    initial_total_time=current_total_time
+                )
+                win_rate = trainee_wins / validation_episodes_total if validation_episodes_total > 0 else 0.0
+                win_rate_history[opponent_name].append(win_rate)
+                print(f"Round {round_num}: Validation vs {opponent_name} - trainee: {trainee_wins}, opponent: {opponent_wins} (win rate: {win_rate:.1%})")
+            except Exception as e:
+                print(f"Error during validation vs {opponent_name} in round {round_num}: {e}")
+                raise
+
     # Update total time
     round_elapsed_time = time.time() - round_start_time
     total_time += round_elapsed_time
@@ -419,9 +467,12 @@ print(f"Total time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} minutes)")
 print(f"\nFinal model saved: {final_model_path}")
 
 print("\nFinal Win Rate Summary:")
-for opponent_name, history in win_rate_history.items():
-    if history:
-        print(f"  vs {opponent_name}: {history[-1]:.1%} (peak: {max(history):.1%})")
+if skip_validation:
+    print("  (Validation was skipped)")
+else:
+    for opponent_name, history in win_rate_history.items():
+        if history:
+            print(f"  vs {opponent_name}: {history[-1]:.1%} (peak: {max(history):.1%})")
 if best_metric_opponent and best_round >= 0:
     print(f"\nBest checkpoint: round {best_round} (vs {best_metric_opponent}: {best_win_rate:.1%})")
     print(f"  Use models/model_best.pt or models/model_round_{best_round}.pt for best validation model.")

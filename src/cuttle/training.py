@@ -456,6 +456,8 @@ def update_replay_memory(
     """
     if len(states) == 0:
         return
+    if not hasattr(player, "memory") or player.memory is None:
+        return  # Rule-based players (GapMaximizer, Randomized) have no replay memory
     
     # Terminal = next_state is None (all actions in final turn get terminal reward).
     # Reward can be binary (WIN/LOSS/DRAW) or normalized score-diff in [-1, 1].
@@ -1040,10 +1042,13 @@ def selfPlayTraining(
             p1_states = []
             p1_actions = []
         
-        # End of episode - optimize if training
+        # End of episode - optimize if training (only the Agent has optimize(); rule-based players do not)
         loss = None
         if not validating:
-            loss = p1.optimize()
+            if hasattr(p1, "optimize") and callable(getattr(p1, "optimize")):
+                loss = p1.optimize()
+            elif hasattr(p2, "optimize") and callable(getattr(p2, "optimize")):
+                loss = p2.optimize()
         
         # Track loss for early stopping
         if loss is not None and early_stopping_enabled:
