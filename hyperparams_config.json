@@ -45,7 +45,9 @@
     "validation_opponent": "both",
     "validation_opponent_comment": "Options: 'randomized', 'gapmaximizer', or 'both'",
     "curriculum_vs_gapmaximizer_ratio": 0,
-    "early_stopping_rounds_without_improvement": 3
+    "early_stopping_rounds_without_improvement": 3,
+    "reward_mode": "binary",
+    "reward_mode_comment": "binary = WIN/LOSS/DRAW; normalized_score_diff = (my_score - opp_score)/21 clamped to [-1,1]"
   },
   "early_stopping": {
     "enabled": true,

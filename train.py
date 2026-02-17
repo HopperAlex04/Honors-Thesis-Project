@@ -261,6 +261,9 @@ validation_episodes_per_position = max(1, validation_episodes_total // 2)
 print(f"Validation: {validation_episodes_total} total episodes ({validation_episodes_per_position} per position, ratio: {validation_episodes_ratio})")
 print(f"Validation opponents: {[name for name, _ in validation_opponents]}")
 
+reward_mode = training_config.get("reward_mode", "binary")
+print(f"Reward mode: {reward_mode}")
+
 print(f"\n{'='*60}")
 print(f"TRAINING: {rounds} rounds, {eps_per_round} episodes per round")
 print(f"Total training episodes: {rounds * eps_per_round}")
@@ -316,7 +319,8 @@ for round_num in range(rounds):
             initial_steps=steps_done,
             round_number=round_num,
             initial_total_time=total_time,
-            early_stopping_config=early_stopping_config
+            early_stopping_config=early_stopping_config,
+            reward_mode=reward_mode
         )
     except Exception as e:
         print(f"Error during self-play training in round {round_num}: {e}")

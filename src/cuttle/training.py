@@ -37,6 +37,43 @@ REWARD_INTERMEDIATE = 0.0  # Base reward for intermediate steps (non-terminal st
 SCORE_REWARD_SCALE = 0.01  # Scale factor for score-based rewards (reduced from 0.1 to prevent Q-value explosion)
 GAP_REWARD_SCALE = 0.005  # Scale factor for score gap rewards (half of score reward scale to prioritize scoring over gap)
 USE_INTERMEDIATE_REWARDS = True  # Flag to enable/disable intermediate rewards (score-based and gap-based)
+SCORE_DIFF_NORMALIZER = 21  # Cuttle winning threshold; used to normalize score-diff rewards to [-1, 1]
+
+
+def _get_both_scores(env: CuttleEnvironment, current_player_is_p1: bool) -> Tuple[int, int]:
+    """
+    Get both players' scores. Caller must be in correct perspective.
+    Restores original perspective before returning.
+
+    Args:
+        env: Cuttle environment
+        current_player_is_p1: True if env is in P1's perspective, False if P2's
+
+    Returns:
+        (p1_score, p2_score)
+    """
+    if current_player_is_p1:
+        p1_score, _ = env.scoreState()
+        env.passControl()
+        p2_score, _ = env.scoreState()
+        env.passControl()
+    else:
+        p2_score, _ = env.scoreState()
+        env.passControl()
+        p1_score, _ = env.scoreState()
+        env.passControl()
+    return p1_score, p2_score
+
+
+def _normalized_score_diff_reward(my_score: int, opp_score: int) -> float:
+    """
+    Compute reward as normalized score difference, clamped to [-1, 1].
+    Scores above 21 are treated as 21 (winning threshold) for reward purposes.
+    """
+    my_capped = min(my_score, SCORE_DIFF_NORMALIZER)
+    opp_capped = min(opp_score, SCORE_DIFF_NORMALIZER)
+    diff = my_capped - opp_capped
+    return max(-1.0, min(1.0, diff / SCORE_DIFF_NORMALIZER))
 
 
 def setup_logger(
@@ -420,12 +457,9 @@ def update_replay_memory(
     if len(states) == 0:
         return
     
-    # If this is a terminal reward (WIN/LOSS/DRAW), all actions in the final turn
-    # should get the terminal reward. This makes sense because:
-    # 1. All actions in the final turn are part of the winning/losing sequence
-    # 2. The reward will propagate backwards through the turn via Q-learning
-    # 3. This provides stronger learning signal for the entire winning sequence
-    is_terminal = (next_state is None) and (reward in [REWARD_WIN, REWARD_LOSS, REWARD_DRAW])
+    # Terminal = next_state is None (all actions in final turn get terminal reward).
+    # Reward can be binary (WIN/LOSS/DRAW) or normalized score-diff in [-1, 1].
+    is_terminal = next_state is None
     
     # Calculate score-based reward for intermediate states
     score_reward = 0.0
@@ -753,6 +787,7 @@ def selfPlayTraining(
     round_number: Optional[int] = None,
     initial_total_time: float = 0.0,
     early_stopping_config: Optional[Dict[str, Any]] = None,
+    reward_mode: str = "binary",
 ) -> Tuple[int, int, int]:
     """
     Execute self-play training between two players.
@@ -772,6 +807,7 @@ def selfPlayTraining(
         round_number: Optional round number to display in episode output
         initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
         early_stopping_config: Configuration dict for early stopping
+        reward_mode: "binary" (WIN=1, LOSS=-1, DRAW=0) or "normalized_score_diff" (reward = (my_score - opp_score) / 21, clamped to [-1, 1])
         
     Returns:
         Tuple of (p1_wins, p2_wins, final_steps) counts
@@ -854,20 +890,34 @@ def selfPlayTraining(
                 # P1 wins
                 p1_wins += 1
                 if not validating:
-                    update_replay_memory(p1, p1_states, p1_actions, REWARD_WIN)
-                    update_replay_memory(p2, p2_states, p2_actions, REWARD_LOSS)
+                    if reward_mode == "normalized_score_diff":
+                        p1_s, p2_s = _get_both_scores(env, current_player_is_p1=True)
+                        r1 = _normalized_score_diff_reward(p1_s, p2_s)
+                        r2 = _normalized_score_diff_reward(p2_s, p1_s)
+                        update_replay_memory(p1, p1_states, p1_actions, r1)
+                        update_replay_memory(p2, p2_states, p2_actions, r2)
+                    else:
+                        update_replay_memory(p1, p1_states, p1_actions, REWARD_WIN)
+                        update_replay_memory(p2, p2_states, p2_actions, REWARD_LOSS)
                 break
             
             if truncated or turns >= MAX_TURNS_PER_EPISODE:
                 draws += 1
+                p1_s, p2_s = _get_both_scores(env, current_player_is_p1=True)
                 log_episode_outcome(
-                    episode, turns, "draw", p1_score, p2_score,
+                    episode, turns, "draw", p1_s, p2_s,
                     "max_turns_reached" if turns >= MAX_TURNS_PER_EPISODE else "deck_exhausted",
                     action_logger
                 )
                 if not validating:
-                    update_replay_memory(p1, p1_states, p1_actions, REWARD_DRAW)
-                    update_replay_memory(p2, p2_states, p2_actions, REWARD_DRAW)
+                    if reward_mode == "normalized_score_diff":
+                        r1 = _normalized_score_diff_reward(p1_s, p2_s)
+                        r2 = _normalized_score_diff_reward(p2_s, p1_s)
+                        update_replay_memory(p1, p1_states, p1_actions, r1)
+                        update_replay_memory(p2, p2_states, p2_actions, r2)
+                    else:
+                        update_replay_memory(p1, p1_states, p1_actions, REWARD_DRAW)
+                        update_replay_memory(p2, p2_states, p2_actions, REWARD_DRAW)
                 break
             
             # End turn and prepare for P2
@@ -927,20 +977,34 @@ def selfPlayTraining(
                 # P2 wins
                 p2_wins += 1
                 if not validating:
-                    update_replay_memory(p1, p1_states, p1_actions, REWARD_LOSS)
-                    update_replay_memory(p2, p2_states, p2_actions, REWARD_WIN)
+                    if reward_mode == "normalized_score_diff":
+                        p1_s, p2_s = _get_both_scores(env, current_player_is_p1=False)
+                        r1 = _normalized_score_diff_reward(p1_s, p2_s)
+                        r2 = _normalized_score_diff_reward(p2_s, p1_s)
+                        update_replay_memory(p1, p1_states, p1_actions, r1)
+                        update_replay_memory(p2, p2_states, p2_actions, r2)
+                    else:
+                        update_replay_memory(p1, p1_states, p1_actions, REWARD_LOSS)
+                        update_replay_memory(p2, p2_states, p2_actions, REWARD_WIN)
                 break
             
             if truncated or turns >= MAX_TURNS_PER_EPISODE:
                 draws += 1
+                p1_s, p2_s = _get_both_scores(env, current_player_is_p1=False)
                 log_episode_outcome(
-                    episode, turns, "draw", p1_score, p2_score,
+                    episode, turns, "draw", p1_s, p2_s,
                     "max_turns_reached" if turns >= MAX_TURNS_PER_EPISODE else "deck_exhausted",
                     action_logger
                 )
                 if not validating:
-                    update_replay_memory(p1, p1_states, p1_actions, REWARD_DRAW)
-                    update_replay_memory(p2, p2_states, p2_actions, REWARD_DRAW)
+                    if reward_mode == "normalized_score_diff":
+                        r1 = _normalized_score_diff_reward(p1_s, p2_s)
+                        r2 = _normalized_score_diff_reward(p2_s, p1_s)
+                        update_replay_memory(p1, p1_states, p1_actions, r1)
+                        update_replay_memory(p2, p2_states, p2_actions, r2)
+                    else:
+                        update_replay_memory(p1, p1_states, p1_actions, REWARD_DRAW)
+                        update_replay_memory(p2, p2_states, p2_actions, REWARD_DRAW)
                 break
             
             # End turn and prepare for next iteration

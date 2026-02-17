@@ -10,6 +10,7 @@ Usage:
     python create_scale11_vs_large_hidden_experiment.py
     python create_scale11_vs_large_hidden_experiment.py --name my_comparison
     python create_scale11_vs_large_hidden_experiment.py --runs-per-arch 3
+    python create_scale11_vs_large_hidden_experiment.py --reward-mode normalized_score_diff
 """
 
 import json
@@ -87,6 +88,7 @@ def create_scale11_vs_large_hidden_experiment(
     name: str = "scale11_vs_large_hidden_10rounds",
     description: str = "",
     runs_per_arch: int = RUNS_PER_ARCHITECTURE,
+    reward_mode: str = "binary",
 ) -> Path:
     """
     Create an experiment with multiple runs per architecture (scale_11 and large_hidden),
@@ -139,13 +141,17 @@ def create_scale11_vs_large_hidden_experiment(
         run_order_alternating.append(f"scale_11_embedding_run_{i + 1:02d}")
         run_order_alternating.append(f"large_hidden_embedding_run_{i + 1:02d}")
 
+    base_desc = (
+        f"Scale-11 game_based vs large_hidden, {runs_per_arch} seeds each, 10 rounds per run. "
+        "Round checkpointing enabled: use model_best.pt or model_round_*.pt per run."
+    )
+    if reward_mode != "binary":
+        base_desc += f" Reward mode: {reward_mode}."
     metadata = {
         "experiment_name": experiment_name,
         "display_name": name,
-        "description": description or (
-            f"Scale-11 game_based vs large_hidden, {runs_per_arch} seeds each, 10 rounds per run. "
-            "Round checkpointing enabled: use model_best.pt or model_round_*.pt per run."
-        ),
+        "description": description or base_desc,
+        "reward_mode": reward_mode,
         "created_at": datetime.now().isoformat(),
         "git_commit": get_git_commit(),
         "experiment_type": "comparison",
@@ -159,6 +165,14 @@ def create_scale11_vs_large_hidden_experiment(
     base_config = project_root / "hyperparams_config.json"
     if base_config.exists():
         shutil.copy(base_config, experiment_path / "base_hyperparams_config.json")
+        if reward_mode != "binary":
+            with open(experiment_path / "base_hyperparams_config.json") as f:
+                config = json.load(f)
+            if "training" not in config:
+                config["training"] = {}
+            config["training"]["reward_mode"] = reward_mode
+            with open(experiment_path / "base_hyperparams_config.json", "w") as f:
+                json.dump(config, f, indent=2)
 
     with open(experiment_path / "experiment_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
@@ -180,6 +194,7 @@ def create_scale11_vs_large_hidden_experiment(
         info = runs[rid]
         arch = "game_based " + str(info["hidden_layers"]) if info["network_type"] == "game_based" else "large_hidden [512]"
         print(f"  {idx}. {rid} — {arch}, seed {info['seed']}, {ROUNDS_PER_RUN} rounds")
+    print(f"Reward mode: {reward_mode}")
     print(f"\nRound checkpointing: each run saves model_round_0.pt .. model_round_{ROUNDS_PER_RUN - 1}.pt")
     print(f"                    and model_best.pt (best by vs GapMaximizer) + best_round.json")
     print(f"\nRun with: python experiment_manager.py run")
@@ -200,10 +215,14 @@ if __name__ == "__main__":
                         help="Experiment description")
     parser.add_argument("--runs-per-arch", "-r", type=int, default=RUNS_PER_ARCHITECTURE,
                         help=f"Runs (seeds) per architecture (default: {RUNS_PER_ARCHITECTURE})")
+    parser.add_argument("--reward-mode", "-R", default="binary",
+                        choices=["binary", "normalized_score_diff"],
+                        help="Reward mode: binary (WIN/LOSS/DRAW) or normalized_score_diff (default: binary)")
 
     args = parser.parse_args()
     create_scale11_vs_large_hidden_experiment(
         args.name,
         args.description,
         runs_per_arch=args.runs_per_arch,
+        reward_mode=args.reward_mode,
     )
