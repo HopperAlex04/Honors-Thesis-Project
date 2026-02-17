@@ -36,16 +36,47 @@ A reinforcement learning project for training DQN agents to play the Cuttle card
 
 ## Installation
 
+**Python:** 3.11+ (see `setup.py`).
+
+### Option A: Virtual environment (recommended)
+
+A virtual environment keeps project dependencies isolated. From the project root:
+
+1. Create the venv (already done if you see a `.venv` folder):
+   ```bash
+   python3 -m venv .venv
+   ```
+
+2. Activate it:
+   ```bash
+   source .venv/bin/activate   # Linux / macOS
+   # or on Windows:  .venv\Scripts\activate
+   ```
+
+3. Install dependencies and the package:
+   ```bash
+   pip install -r requirements.txt
+   pip install -e .
+   ```
+
+4. Run commands with the venv active, or call the venv Python directly:
+   ```bash
+   .venv/bin/python train.py
+   .venv/bin/python scripts/plot_experiments.py --list
+   ```
+
+### Option B: System / user install
+
 1. Install dependencies:
-```bash
-pip install -r requirements.txt
-pip install torch
-```
+   ```bash
+   pip install -r requirements.txt
+   pip install torch
+   ```
 
 2. Install the package in editable mode:
-```bash
-pip install -e .
-```
+   ```bash
+   pip install -e .
+   ```
 
 ## Usage
 
