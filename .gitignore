@@ -10,6 +10,7 @@ p2log.txt
 *.jsonl
 *.png
 *.tar.gz
+ThesisExpStroage/
 #generated test models
 *.pt
 *.pth
