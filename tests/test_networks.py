@@ -122,9 +122,11 @@ class TestNeuralNetworkGetState(unittest.TestCase):
         stack_size = len(observation["Stack"])  # Boolean array of length 52
         effect_size = len(observation["Effect-Shown"])  # Boolean array of length 52
         
-        expected_size = (hand_size + field_size + revealed_size + off_field_size + 
-                        off_revealed_size + deck_size + scrap_size + stack_size + 
-                        effect_size)
+        # Network also concatenates position (2 floats: P1 vs P2 one-hot)
+        position_size = 2
+        expected_size = (hand_size + field_size + revealed_size + off_field_size +
+                        off_revealed_size + deck_size + scrap_size + stack_size +
+                        effect_size + position_size)
         
         self.assertEqual(state.shape[0], expected_size)
     

@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-Create an experiment that runs scale-11 game_based and large_hidden for 10 rounds each,
-with multiple seeds per architecture for statistical comparison.
-
-Each run uses round checkpointing so the best model by validation (vs GapMaximizer)
-can be used later instead of only the final model.
+Create an experiment where scale-11 and large_hidden models are trained vs GapMaximizer
+with Double DQN enabled. Reward mode is configurable. Validation skipped; trainee
+position alternates each round.
 
 Usage:
-    python create_scale11_vs_large_hidden_experiment.py
-    python create_scale11_vs_large_hidden_experiment.py --name my_comparison
-    python create_scale11_vs_large_hidden_experiment.py --runs-per-arch 3
-    python create_scale11_vs_large_hidden_experiment.py --reward-mode normalized_score_diff
+    python create_double_dqn_gapmaximizer_experiment.py
+    python create_double_dqn_gapmaximizer_experiment.py --name my_double_dqn
+    python create_double_dqn_gapmaximizer_experiment.py --runs-per-arch 3
+    python create_double_dqn_gapmaximizer_experiment.py --reward-mode normalized_score_diff
 """
 
 import json
@@ -28,8 +26,7 @@ experiments_dir = project_root / "experiments"
 
 # Scale 11 game_based (wide→narrow): [52*11, 13*11, 15*11]
 SCALE_11_HIDDEN_LAYERS = [572, 143, 165]
-ROUNDS_PER_RUN = 5
-# Number of runs (seeds) per architecture for variance / significance
+ROUNDS_PER_RUN = 10
 RUNS_PER_ARCHITECTURE = 3
 
 
@@ -84,17 +81,16 @@ def _run_template(
     }
 
 
-def create_scale11_vs_large_hidden_experiment(
-    name: str = "scale11_vs_large_hidden_10rounds",
+def create_double_dqn_gapmaximizer_experiment(
+    name: str = "double_dqn_gapmaximizer",
     description: str = "",
     runs_per_arch: int = RUNS_PER_ARCHITECTURE,
     reward_mode: str = "binary",
 ) -> Path:
     """
-    Create an experiment with multiple runs per architecture (scale_11 and large_hidden),
-    alternating order so we get early comparison across seeds.
-
-    Each run gets 10 training rounds. Round checkpointing is enabled in train.py.
+    Create an experiment: scale-11 and large_hidden vs GapMaximizer with Double DQN.
+    No self-play, no validation. Trainee position alternates each round.
+    Reward mode is configurable (binary or normalized_score_diff).
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     experiment_name = f"experiment_{timestamp}_{name}"
@@ -111,7 +107,7 @@ def create_scale11_vs_large_hidden_experiment(
 
     for i in range(runs_per_arch):
         run_num += 1
-        run_id = f"scale_11_embedding_run_{i + 1:02d}"
+        run_id = f"scale_11_vs_gapmax_run_{i + 1:02d}"
         runs[run_id] = _run_template(
             run_id=run_id,
             run_number=run_num,
@@ -124,7 +120,7 @@ def create_scale11_vs_large_hidden_experiment(
 
     for i in range(runs_per_arch):
         run_num += 1
-        run_id = f"large_hidden_embedding_run_{i + 1:02d}"
+        run_id = f"large_hidden_vs_gapmax_run_{i + 1:02d}"
         runs[run_id] = _run_template(
             run_id=run_id,
             run_number=run_num,
@@ -135,44 +131,54 @@ def create_scale11_vs_large_hidden_experiment(
             hidden_layers=[512],
         )
 
-    # Alternate order: s11_01, lh_01, s11_02, lh_02, s11_03, lh_03
-    run_order_alternating: List[str] = []
+    run_order: List[str] = []
     for i in range(runs_per_arch):
-        run_order_alternating.append(f"scale_11_embedding_run_{i + 1:02d}")
-        run_order_alternating.append(f"large_hidden_embedding_run_{i + 1:02d}")
+        run_order.append(f"scale_11_vs_gapmax_run_{i + 1:02d}")
+        run_order.append(f"large_hidden_vs_gapmax_run_{i + 1:02d}")
 
     base_desc = (
-        f"Scale-11 game_based vs large_hidden, {runs_per_arch} seeds each, 10 rounds per run. "
-        "Round checkpointing enabled: use model_best.pt or model_round_*.pt per run."
+        f"Scale-11 and large_hidden vs GapMaximizer with Double DQN (no self-play), "
+        f"{runs_per_arch} seeds each, {ROUNDS_PER_RUN} rounds. "
+        "Validation skipped. Trainee position alternates each round."
     )
     if reward_mode != "binary":
         base_desc += f" Reward mode: {reward_mode}."
+
     metadata = {
         "experiment_name": experiment_name,
         "display_name": name,
         "description": description or base_desc,
+        "experiment_type": "double_dqn_gapmaximizer",
+        "train_vs_gapmaximizer": True,
+        "skip_validation": True,
+        "trainee_first_only": False,
+        "use_double_dqn": True,
         "reward_mode": reward_mode,
         "created_at": datetime.now().isoformat(),
         "git_commit": get_git_commit(),
-        "experiment_type": "comparison",
-        "run_order": run_order_alternating,
+        "run_order": run_order,
         "rounds_per_run": ROUNDS_PER_RUN,
         "runs_per_architecture": runs_per_arch,
         "total_runs": total_runs,
         "seeds": seeds,
     }
 
-    base_config = project_root / "hyperparams_config.json"
-    if base_config.exists():
-        shutil.copy(base_config, experiment_path / "base_hyperparams_config.json")
-        if reward_mode != "binary":
-            with open(experiment_path / "base_hyperparams_config.json") as f:
-                config = json.load(f)
-            if "training" not in config:
-                config["training"] = {}
-            config["training"]["reward_mode"] = reward_mode
-            with open(experiment_path / "base_hyperparams_config.json", "w") as f:
-                json.dump(config, f, indent=2)
+    # Copy base config and set Double DQN + GapMaximizer training options
+    base_config_src = project_root / "hyperparams_config.json"
+    base_config_dst = experiment_path / "base_hyperparams_config.json"
+    if base_config_src.exists():
+        shutil.copy(base_config_src, base_config_dst)
+        with open(base_config_dst) as f:
+            config = json.load(f)
+        config["use_double_dqn"] = True
+        if "training" not in config:
+            config["training"] = {}
+        config["training"]["train_vs_gapmaximizer"] = True
+        config["training"]["skip_validation"] = True
+        config["training"]["trainee_first_only"] = False
+        config["training"]["reward_mode"] = reward_mode
+        with open(base_config_dst, "w") as f:
+            json.dump(config, f, indent=2)
 
     with open(experiment_path / "experiment_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
@@ -188,16 +194,21 @@ def create_scale11_vs_large_hidden_experiment(
     print(f"Created experiment: {experiment_name}")
     print(f"{'='*70}\n")
     print(f"Location: {experiment_path}\n")
+    print(f"Training: vs GapMaximizer (no self-play)")
+    print(f"Double DQN: enabled")
+    print(f"Validation: skipped")
+    print(f"Position: alternates each round (trainee first in even rounds, second in odd)")
+    print(f"Reward mode: {reward_mode}")
+    print(f"\nArchitectures: scale_11 (game_based), large_hidden")
     print(f"Runs per architecture: {runs_per_arch} (total {total_runs} runs)")
-    print(f"Run order (alternating):")
-    for idx, rid in enumerate(run_order_alternating, 1):
+    print(f"Run order:")
+    for idx, rid in enumerate(run_order, 1):
         info = runs[rid]
         arch = "game_based " + str(info["hidden_layers"]) if info["network_type"] == "game_based" else "large_hidden [512]"
         print(f"  {idx}. {rid} — {arch}, seed {info['seed']}, {ROUNDS_PER_RUN} rounds")
-    print(f"Reward mode: {reward_mode}")
-    print(f"\nRound checkpointing: each run saves model_round_0.pt .. model_round_{ROUNDS_PER_RUN - 1}.pt")
-    print(f"                    and model_best.pt (best by vs GapMaximizer) + best_round.json")
+    print(f"\nRound checkpointing: model_round_0.pt .. model_round_{ROUNDS_PER_RUN - 1}.pt, model_final.pt")
     print(f"\nRun with: python experiment_manager.py run")
+    print(f"\nTo use a different reward mode, re-run this script with --reward-mode binary or --reward-mode normalized_score_diff")
     print(f"{'='*70}\n")
 
     return experiment_path
@@ -207,20 +218,20 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Create scale-11 vs large_hidden experiment (multiple seeds per architecture)"
+        description="Create experiment: scale-11 and large_hidden vs GapMaximizer with Double DQN (reward mode configurable)"
     )
-    parser.add_argument("--name", "-n", default="scale11_vs_large_hidden_10rounds",
-                        help="Experiment name (default: scale11_vs_large_hidden_10rounds)")
+    parser.add_argument("--name", "-n", default="double_dqn_gapmaximizer",
+                        help="Experiment name (default: double_dqn_gapmaximizer)")
     parser.add_argument("--description", "-d", default="",
                         help="Experiment description")
     parser.add_argument("--runs-per-arch", "-r", type=int, default=RUNS_PER_ARCHITECTURE,
                         help=f"Runs (seeds) per architecture (default: {RUNS_PER_ARCHITECTURE})")
     parser.add_argument("--reward-mode", "-R", default="binary",
                         choices=["binary", "normalized_score_diff"],
-                        help="Reward mode: binary (WIN/LOSS/DRAW) or normalized_score_diff (default: binary)")
+                        help="Reward mode (default: binary)")
 
     args = parser.parse_args()
-    create_scale11_vs_large_hidden_experiment(
+    create_double_dqn_gapmaximizer_experiment(
         args.name,
         args.description,
         runs_per_arch=args.runs_per_arch,

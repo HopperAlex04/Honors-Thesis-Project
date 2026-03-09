@@ -35,6 +35,17 @@ import numpy as np
 project_root = Path(__file__).parent
 experiments_dir = project_root / "experiments"
 
+
+def get_training_python() -> str:
+    """Return Python executable for training subprocess. Prefer project venv so torch etc. are available."""
+    venv_py = project_root / ".venv" / "bin" / "python"
+    if venv_py.exists():
+        return str(venv_py)
+    venv_py3 = project_root / ".venv" / "bin" / "python3"
+    if venv_py3.exists():
+        return str(venv_py3)
+    return sys.executable
+
 # Experiment configurations
 NETWORK_TYPES = ["linear", "large_hidden", "game_based"]
 INPUT_TYPES = ["boolean", "embedding"]
@@ -213,6 +224,12 @@ def create_run_config(experiment_path: Path, run_info: Dict) -> Path:
             config["training"] = {}
         config["training"]["rounds"] = run_info["rounds"]
     
+    # PPO experiments: per-run backbone (hidden layers)
+    if config.get("algorithm") == "ppo" and run_info.get("ppo_hidden_layers") is not None:
+        if "ppo" not in config:
+            config["ppo"] = {}
+        config["ppo"]["hidden_layers"] = run_info["ppo_hidden_layers"]
+    
     # Save run config
     with open(run_path / "hyperparams_config.json", "w") as f:
         json.dump(config, f, indent=2)
@@ -228,6 +245,8 @@ def create_run_config(experiment_path: Path, run_info: Dict) -> Path:
         "created_at": datetime.now().isoformat(),
         "git_commit": get_git_commit()
     }
+    if run_info.get("ppo_hidden_layers") is not None:
+        run_metadata["ppo_hidden_layers"] = run_info["ppo_hidden_layers"]
     with open(run_path / "run_metadata.json", "w") as f:
         json.dump(run_metadata, f, indent=2)
     
@@ -273,9 +292,10 @@ def run_single_training(
         env = os.environ.copy()
         env["PYTHONPATH"] = str(work_dir / "src")
         
-        # Run training
+        # Run training (use project venv Python if present so torch/etc. are available)
+        train_python = get_training_python()
         result = subprocess.run(
-            [sys.executable, str(work_dir / "train.py")],
+            [train_python, str(work_dir / "train.py")],
             cwd=work_dir,
             env=env,
             capture_output=True,
@@ -300,6 +320,8 @@ def run_single_training(
             if result.stderr:
                 error_msg += f": {result.stderr[-500:]}"
             print(f"[{run_id}] Failed after {elapsed:.1f}s")
+            if result.stderr and result.stderr.strip():
+                print(result.stderr.strip()[-800:])  # Show last 800 chars of stderr so user sees the actual error
             return False, None, error_msg
         
         # Extract final metrics from metrics logs
@@ -319,53 +341,98 @@ def run_single_training(
 
 
 def extract_final_metrics(run_path: Path) -> Optional[Dict]:
-    """Extract final metrics from metrics logs."""
+    """Extract final metrics from metrics logs.
+    
+    Validation runs half with trainee as P1, half as P2. We must use the correct
+    win rate per file: trainee_first -> p1_win_rate, trainee_second -> p2_win_rate.
+    Final trainee win rate vs an opponent is the average over both positions.
+    Prefer GapMaximizer as the primary metric if present.
+    """
     metrics_logs_dir = run_path / "metrics_logs"
     if not metrics_logs_dir.exists():
         return None
-    
-    # Find the latest round metrics file
-    metrics_files = list(metrics_logs_dir.glob("metrics_round_*_vs_*.jsonl"))
+
+    # Find validation metrics (exclude selfplay)
+    metrics_files = [
+        f for f in metrics_logs_dir.glob("metrics_round_*_vs_*.jsonl")
+        if "selfplay" not in f.name
+    ]
     if not metrics_files:
         return None
-    
+
     # Get the highest round number
     rounds = []
     for f in metrics_files:
-        # Extract round number from filename like "metrics_round_19_vs_randomized_trainee_first.jsonl"
         parts = f.stem.split("_")
         if len(parts) >= 3 and parts[1] == "round":
             try:
                 rounds.append(int(parts[2]))
             except ValueError:
                 pass
-    
+
     if not rounds:
         return None
-    
+
     max_round = max(rounds)
-    
-    # Read the latest metrics file
     latest_files = [f for f in metrics_files if f"round_{max_round}_" in f.name]
     if not latest_files:
         return None
-    
-    # Read the last line (most recent episode)
-    latest_file = latest_files[0]
+
+    # Group by opponent: {"gapmaximizer": [...], "randomized": [...]}
+    by_opponent: dict = {}
+    for f in latest_files:
+        # metrics_round_N_vs_gapmaximizer_trainee_first.jsonl
+        stem = f.stem
+        if "_trainee_first" in stem:
+            opp = stem.split("_vs_")[1].replace("_trainee_first", "")
+            by_opponent.setdefault(opp, {})["first"] = f
+        elif "_trainee_second" in stem:
+            opp = stem.split("_vs_")[1].replace("_trainee_second", "")
+            by_opponent.setdefault(opp, {})["second"] = f
+
+    # Prefer GapMaximizer, then Randomized, then first available
+    preferred = ["gapmaximizer", "randomized"]
+    chosen_opponent = None
+    for opp in preferred:
+        if opp in by_opponent:
+            chosen_opponent = opp
+            break
+    if chosen_opponent is None and by_opponent:
+        chosen_opponent = next(iter(by_opponent.keys()))
+
+    if not chosen_opponent:
+        return None
+
+    files = by_opponent[chosen_opponent]
+    trainee_rates = []
+    final_episode = 0
+
     try:
-        with open(latest_file) as f:
-            lines = f.readlines()
-            if lines:
-                last_line = lines[-1].strip()
-                if last_line:
-                    data = json.loads(last_line)
-                    return {
-                        "final_win_rate": data.get("p1_win_rate", 0.0),
-                        "final_episode": data.get("episode", 0)
-                    }
-    except Exception:
+        for pos, path_key in [("first", "first"), ("second", "second")]:
+            if path_key not in files:
+                continue
+            with open(files[path_key]) as f:
+                lines = f.readlines()
+            if not lines:
+                continue
+            data = json.loads(lines[-1].strip())
+            # trainee_first: trainee is P1 -> use p1_win_rate
+            # trainee_second: trainee is P2 -> use p2_win_rate
+            rate = data.get("p1_win_rate" if pos == "first" else "p2_win_rate", 0.0)
+            trainee_rates.append(rate)
+            final_episode = max(final_episode, data.get("episode", 0))
+
+        if not trainee_rates:
+            return None
+
+        final_win_rate = sum(trainee_rates) / len(trainee_rates)
+        return {
+            "final_win_rate": final_win_rate,
+            "final_episode": final_episode,
+        }
+    except (json.JSONDecodeError, KeyError, OSError):
         pass
-    
+
     return None
 
 

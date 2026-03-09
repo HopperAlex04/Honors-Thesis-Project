@@ -251,6 +251,9 @@ class NeuralNetwork(nn.Module):
             obs["Effect-Shown"],  # Boolean array of length 52
         ]
         state = np.concatenate(zone_arrays, axis=0)
+        # Position (P1 vs P2 one-hot) if present; backward compat default P1
+        position = obs.get("position", np.array([1.0, 0.0], dtype=np.float32))
+        state = np.concatenate([state, np.asarray(position, dtype=np.float32)], axis=0)
         device = next(self.parameters()).device
         state_tensor = torch.from_numpy(state).float().to(device)
         
@@ -330,6 +333,197 @@ class NeuralNetwork(nn.Module):
             raise ValueError(
                 f"Effect-Shown must be a boolean array of length 52, got {type(obs['Effect-Shown'])} with length {len(obs['Effect-Shown']) if hasattr(obs['Effect-Shown'], '__len__') else 'N/A'}"
             )
+
+
+def _actor_critic_input_dim(observation_space: Dict[str, Any]) -> int:
+    """Compute input dimension from observation space (same as NeuralNetwork)."""
+    input_length = 0
+    for key, item in observation_space.items():
+        if isinstance(item, dict):
+            for nested_item in item.values():
+                if isinstance(nested_item, np.ndarray):
+                    input_length += len(nested_item)
+        elif isinstance(item, np.ndarray):
+            input_length += len(item)
+    return input_length
+
+
+class ActorCritic(nn.Module):
+    """
+    Minimal actor-critic for PPO: shared backbone, policy head (logits), value head (scalar).
+    Uses same observation preprocessing as NeuralNetwork (boolean zones + position).
+    """
+
+    def __init__(
+        self,
+        observation_space: Dict[str, Any],
+        num_actions: int,
+        hidden_layers: Optional[List[int]] = None,
+    ) -> None:
+        super().__init__()
+        self.num_actions = num_actions
+        input_length = _actor_critic_input_dim(observation_space)
+        hidden_layers = hidden_layers or [64, 64]
+        layers = []
+        prev_dim = input_length
+        for h in hidden_layers:
+            layers.append(nn.Linear(prev_dim, h))
+            layers.append(nn.ReLU())
+            prev_dim = h
+        self.backbone = nn.Sequential(*layers)
+        self.policy_head = nn.Linear(prev_dim, num_actions)
+        self.value_head = nn.Linear(prev_dim, 1)
+        self.apply(init_weights)
+
+    def _preprocess_observation(
+        self,
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]],
+    ) -> torch.Tensor:
+        if isinstance(observation, dict):
+            return self._preprocess_single(observation)
+        if isinstance(observation, (list, tuple)):
+            processed = [self._preprocess_single(obs) for obs in observation]
+            return torch.stack(processed)
+        raise TypeError(f"Expected dict, list, or tuple, got {type(observation)}")
+
+    def _preprocess_single(self, obs: Dict[str, Any]) -> torch.Tensor:
+        zone_arrays = [
+            obs["Current Zones"]["Hand"],
+            obs["Current Zones"]["Field"],
+            obs["Current Zones"]["Revealed"],
+            obs["Off-Player Field"],
+            obs["Off-Player Revealed"],
+            obs["Deck"],
+            obs["Scrap"],
+            obs["Stack"],
+            obs["Effect-Shown"],
+        ]
+        state = np.concatenate(zone_arrays, axis=0)
+        position = obs.get("position", np.array([1.0, 0.0], dtype=np.float32))
+        state = np.concatenate([state, np.asarray(position, dtype=np.float32)], axis=0)
+        device = next(self.parameters()).device
+        return torch.from_numpy(state).float().to(device)
+
+    def forward(
+        self,
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Returns (logits [..., num_actions], value [..., 1]).
+        """
+        x = self._preprocess_observation(observation)
+        if x.dim() == 1:
+            x = x.unsqueeze(0)
+        features = self.backbone(x)
+        logits = self.policy_head(features)
+        value = self.value_head(features)
+        if logits.shape[0] == 1:
+            logits = logits.squeeze(0)
+            value = value.squeeze(0)
+        return logits, value
+
+
+class EmbeddingActorCritic(nn.Module):
+    """
+    Actor-critic with embedding input (same preprocessing as EmbeddingBasedNeuralNetwork).
+    Card embeddings + zone aggregation → backbone → policy_head + value_head.
+    Use this when use_embeddings is True so PPO gets the same input representation as DQN.
+    """
+
+    def __init__(
+        self,
+        observation_space: Dict[str, Any],
+        num_actions: int,
+        embedding_dim: int = 52,
+        zone_encoded_dim: int = 52,
+        hidden_layers: Optional[List[int]] = None,
+        use_position_indicator: bool = True,
+    ) -> None:
+        super().__init__()
+        self.num_actions = num_actions
+        self.embedding_dim = embedding_dim
+        self.zone_encoded_dim = zone_encoded_dim
+        self.use_position_indicator = use_position_indicator
+        num_zones = 9
+        position_dim = 2
+        fusion_dim = num_zones * zone_encoded_dim + position_dim
+
+        self.card_embedding = nn.Embedding(52, embedding_dim)
+        self.zone_aggregator = nn.Sequential(
+            nn.Linear(embedding_dim, zone_encoded_dim),
+            nn.ReLU(),
+        )
+
+        hidden_layers = hidden_layers or [128, 128]
+        layers = []
+        prev_dim = fusion_dim
+        for h in hidden_layers:
+            layers.append(nn.Linear(prev_dim, h))
+            layers.append(nn.ReLU())
+            prev_dim = h
+        self.backbone = nn.Sequential(*layers)
+        self.policy_head = nn.Linear(prev_dim, num_actions)
+        self.value_head = nn.Linear(prev_dim, 1)
+        self.apply(init_weights)
+
+    def _preprocess_observation(
+        self,
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]],
+    ) -> torch.Tensor:
+        if isinstance(observation, dict):
+            return self._preprocess_single(observation)
+        if isinstance(observation, (list, tuple)):
+            processed = [self._preprocess_single(obs) for obs in observation]
+            return torch.stack(processed)
+        raise TypeError(f"Expected dict, list, or tuple, got {type(observation)}")
+
+    def _preprocess_single(self, obs: Dict[str, Any]) -> torch.Tensor:
+        zones = [
+            obs["Current Zones"]["Hand"],
+            obs["Current Zones"]["Field"],
+            obs["Current Zones"]["Revealed"],
+            obs["Off-Player Field"],
+            obs["Off-Player Revealed"],
+            obs["Deck"],
+            obs["Scrap"],
+            obs["Stack"],
+            obs["Effect-Shown"],
+        ]
+        device = next(self.parameters()).device
+        zone_encodings = []
+        for zone in zones:
+            card_indices = np.where(zone)[0]
+            if len(card_indices) == 0:
+                zone_embedding = torch.zeros(self.embedding_dim, device=device)
+            else:
+                card_indices_tensor = torch.from_numpy(card_indices).long().to(device)
+                card_embeddings = self.card_embedding(card_indices_tensor)
+                zone_embedding = torch.max(card_embeddings, dim=0)[0]
+            zone_encoding = self.zone_aggregator(zone_embedding)
+            zone_encodings.append(zone_encoding)
+        fusion = torch.cat(zone_encodings, dim=0)
+        if self.use_position_indicator:
+            position = obs.get("position", np.array([1.0, 0.0], dtype=np.float32))
+        else:
+            # Neutral position so policy is position-invariant (same behavior as P1 or P2)
+            position = np.array([0.5, 0.5], dtype=np.float32)
+        position_t = torch.from_numpy(np.asarray(position, dtype=np.float32)).to(device=fusion.device)
+        return torch.cat([fusion, position_t], dim=0)
+
+    def forward(
+        self,
+        observation: Union[Dict[str, Any], List[Dict[str, Any]], Tuple[Dict[str, Any], ...]],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        x = self._preprocess_observation(observation)
+        if x.dim() == 1:
+            x = x.unsqueeze(0)
+        features = self.backbone(x)
+        logits = self.policy_head(features)
+        value = self.value_head(features)
+        if logits.shape[0] == 1:
+            logits = logits.squeeze(0)
+            value = value.squeeze(0)
+        return logits, value
 
 
 class EmbeddingBasedNetwork(nn.Module):
@@ -558,7 +752,8 @@ class EmbeddingBasedNeuralNetwork(nn.Module):
         num_actions: int = 3157,
         embedding_dim: int = 52,
         zone_encoded_dim: int = 52,
-        hidden_layers: Optional[List[int]] = None
+        hidden_layers: Optional[List[int]] = None,
+        use_position_indicator: bool = True,
     ) -> None:
         """
         Initialize the embedding-based network with configurable architecture.
@@ -569,12 +764,15 @@ class EmbeddingBasedNeuralNetwork(nn.Module):
             embedding_dim: Dimension of card embeddings
             zone_encoded_dim: Dimension of each zone encoding after aggregation
             hidden_layers: List of hidden layer sizes. None or [] = linear (no hidden layers)
+            use_position_indicator: If True (default), append P1/P2 one-hot (2 dims) to fusion.
+                Set False for backward compatibility with checkpoints trained before position was added.
         """
         super().__init__()
         
         self.num_actions = num_actions
         self.embedding_dim = embedding_dim
         self.zone_encoded_dim = zone_encoded_dim
+        self.use_position_indicator = use_position_indicator
         
         # Card embedding layer: 52 cards → embedding_dim
         self.card_embedding = nn.Embedding(52, embedding_dim)
@@ -585,9 +783,10 @@ class EmbeddingBasedNeuralNetwork(nn.Module):
             nn.ReLU()
         )
         
-        # Number of zones: 9
+        # Number of zones: 9; optionally + position one-hot (2) for P1 vs P2 conditioning
         num_zones = 9
-        fusion_dim = num_zones * zone_encoded_dim  # Default: 9 * 52 = 468
+        position_dim = 2 if use_position_indicator else 0
+        fusion_dim = num_zones * zone_encoded_dim + position_dim  # 468 or 470
         
         # Build configurable hidden layers
         if hidden_layers is None or len(hidden_layers) == 0:
@@ -706,8 +905,15 @@ class EmbeddingBasedNeuralNetwork(nn.Module):
             zone_encoding = self.zone_aggregator(zone_embedding)  # [zone_encoded_dim]
             zone_encodings.append(zone_encoding)
         
-        # Concatenate all zone encodings
-        fusion = torch.cat(zone_encodings, dim=0)  # [fusion_dim]
+        # Concatenate zone encodings; optionally add position (P1 vs P2 one-hot)
+        fusion = torch.cat(zone_encodings, dim=0)  # [9 * zone_encoded_dim]
+        if self.use_position_indicator:
+            position = obs.get(
+                "position",
+                np.array([1.0, 0.0], dtype=np.float32),
+            )  # backward compat: default P1
+            position_t = torch.from_numpy(np.asarray(position, dtype=np.float32)).to(device=fusion.device)
+            fusion = torch.cat([fusion, position_t], dim=0)
         return fusion
     
     def _preprocess_batch(
@@ -719,7 +925,7 @@ class EmbeddingBasedNeuralNetwork(nn.Module):
             observations = list(observations)
         if not observations:
             device = next(self.parameters()).device
-            fusion_dim = 9 * self.zone_encoded_dim
+            fusion_dim = 9 * self.zone_encoded_dim + (2 if self.use_position_indicator else 0)
             return torch.empty(0, fusion_dim, device=device)
         
         processed = [self._preprocess_single(obs) for obs in observations]

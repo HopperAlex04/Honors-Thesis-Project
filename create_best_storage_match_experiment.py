@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 """
-Create an experiment that runs scale-11 game_based and large_hidden for 10 rounds each,
-with multiple seeds per architecture for statistical comparison.
+Create an experiment matching the DQN conditions of the best ThesisExpStorage runs
+(experiment_20260202_101706: large_hidden, self-play, 57% final / 63% peak vs GapMaximizer)
+with extended validation (500 per position, 1000 extended).
 
-Each run uses round checkpointing so the best model by validation (vs GapMaximizer)
-can be used later instead of only the final model.
+Key settings from best runs (matches commit 4fe3e2a7519f):
+- Self-play (train_vs_gapmaximizer=False)
+- Large_hidden [512] and scale_11 game_based
+- NO PER, NO Double DQN
+- Binary reward
+- use_position_indicator: false (old 468-dim fusion, no P1/P2 one-hot)
+- eps_end 0.15, eps_decay 20000
+- lr 5e-5, lr_decay_interval 5, lr_decay_rate 0.9
+- replay_buffer_size 30000
+- 10 rounds, 250 eps/round
+- validation_opponent: both
+- Extra validation: 500 per position, 1000 extended
 
 Usage:
-    python create_scale11_vs_large_hidden_experiment.py
-    python create_scale11_vs_large_hidden_experiment.py --name my_comparison
-    python create_scale11_vs_large_hidden_experiment.py --runs-per-arch 3
-    python create_scale11_vs_large_hidden_experiment.py --reward-mode normalized_score_diff
+    python create_best_storage_match_experiment.py
+    python create_best_storage_match_experiment.py --runs-per-arch 3
 """
 
 import json
@@ -22,19 +31,16 @@ from typing import List, Optional
 
 import numpy as np
 
-# Project root
 project_root = Path(__file__).parent
 experiments_dir = project_root / "experiments"
 
-# Scale 11 game_based (wide→narrow): [52*11, 13*11, 15*11]
 SCALE_11_HIDDEN_LAYERS = [572, 143, 165]
-ROUNDS_PER_RUN = 5
-# Number of runs (seeds) per architecture for variance / significance
-RUNS_PER_ARCHITECTURE = 3
+ROUNDS_PER_RUN = 20
+EPS_PER_ROUND = 250
+RUNS_PER_ARCHITECTURE = 2
 
 
 def get_git_commit() -> str:
-    """Get current git commit hash."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -50,7 +56,6 @@ def get_git_commit() -> str:
 
 
 def generate_seeds(count: int, base_seed: int = 42) -> List[int]:
-    """Generate deterministic random seeds for reproducibility."""
     np.random.seed(base_seed)
     return [int(np.random.randint(1, 100000)) for _ in range(count)]
 
@@ -64,7 +69,6 @@ def _run_template(
     scale: Optional[int] = None,
     hidden_layers: Optional[List[int]] = None,
 ) -> dict:
-    """Build a run entry for runs_status.json."""
     return {
         "run_id": run_id,
         "network_type": network_type,
@@ -84,18 +88,11 @@ def _run_template(
     }
 
 
-def create_scale11_vs_large_hidden_experiment(
-    name: str = "scale11_vs_large_hidden_10rounds",
+def create_best_storage_match_experiment(
+    name: str = "best_storage_match",
     description: str = "",
     runs_per_arch: int = RUNS_PER_ARCHITECTURE,
-    reward_mode: str = "binary",
 ) -> Path:
-    """
-    Create an experiment with multiple runs per architecture (scale_11 and large_hidden),
-    alternating order so we get early comparison across seeds.
-
-    Each run gets 10 training rounds. Round checkpointing is enabled in train.py.
-    """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     experiment_name = f"experiment_{timestamp}_{name}"
     experiment_path = experiments_dir / experiment_name
@@ -135,44 +132,69 @@ def create_scale11_vs_large_hidden_experiment(
             hidden_layers=[512],
         )
 
-    # Alternate order: s11_01, lh_01, s11_02, lh_02, s11_03, lh_03
-    run_order_alternating: List[str] = []
+    run_order: List[str] = []
     for i in range(runs_per_arch):
-        run_order_alternating.append(f"scale_11_embedding_run_{i + 1:02d}")
-        run_order_alternating.append(f"large_hidden_embedding_run_{i + 1:02d}")
+        run_order.append(f"scale_11_embedding_run_{i + 1:02d}")
+        run_order.append(f"large_hidden_embedding_run_{i + 1:02d}")
 
     base_desc = (
-        f"Scale-11 game_based vs large_hidden, {runs_per_arch} seeds each, 10 rounds per run. "
-        "Round checkpointing enabled: use model_best.pt or model_round_*.pt per run."
+        f"Match best ThesisExpStorage DQN: self-play, large_hidden + scale_11, "
+        f"no PER/Double DQN, binary reward. 10 rounds, 250 eps/round. "
+        f"Extended validation: 500 per position, 1000 extended."
     )
-    if reward_mode != "binary":
-        base_desc += f" Reward mode: {reward_mode}."
+
     metadata = {
         "experiment_name": experiment_name,
         "display_name": name,
         "description": description or base_desc,
-        "reward_mode": reward_mode,
+        "experiment_type": "best_storage_match",
+        "train_vs_gapmaximizer": False,
+        "validation_opponent": "both",
+        "use_double_dqn": False,
+        "use_prioritized_replay": False,
+        "reward_mode": "binary",
+        "rounds_per_run": ROUNDS_PER_RUN,
+        "eps_per_round": EPS_PER_ROUND,
         "created_at": datetime.now().isoformat(),
         "git_commit": get_git_commit(),
-        "experiment_type": "comparison",
-        "run_order": run_order_alternating,
-        "rounds_per_run": ROUNDS_PER_RUN,
+        "run_order": run_order,
         "runs_per_architecture": runs_per_arch,
         "total_runs": total_runs,
         "seeds": seeds,
     }
 
-    base_config = project_root / "hyperparams_config.json"
-    if base_config.exists():
-        shutil.copy(base_config, experiment_path / "base_hyperparams_config.json")
-        if reward_mode != "binary":
-            with open(experiment_path / "base_hyperparams_config.json") as f:
-                config = json.load(f)
-            if "training" not in config:
-                config["training"] = {}
-            config["training"]["reward_mode"] = reward_mode
-            with open(experiment_path / "base_hyperparams_config.json", "w") as f:
-                json.dump(config, f, indent=2)
+    base_config_src = project_root / "hyperparams_config.json"
+    base_config_dst = experiment_path / "base_hyperparams_config.json"
+    shutil.copy(base_config_src, base_config_dst)
+    with open(base_config_dst) as f:
+        config = json.load(f)
+
+    config["use_double_dqn"] = False
+    config["use_prioritized_replay"] = False
+    config["use_position_indicator"] = False  # Match old 468-dim network (no P1/P2 in obs)
+    config["embedding_dim"] = 32  # Match old ThesisExpStorage config
+    config["zone_encoded_dim"] = 52
+    config["eps_decay"] = 20000
+    config["eps_end"] = 0.15
+    config["learning_rate"] = 5e-5
+    config["lr_decay_interval"] = 5
+    config["lr_decay_rate"] = 0.9
+    config["replay_buffer_size"] = 30000
+
+    if "training" not in config:
+        config["training"] = {}
+    config["training"]["train_vs_gapmaximizer"] = False
+    config["training"]["validation_opponent"] = "both"
+    config["training"]["reward_mode"] = "binary"
+    config["training"]["rounds"] = ROUNDS_PER_RUN
+    config["training"]["eps_per_round"] = EPS_PER_ROUND
+    config["training"]["validation_episodes_per_position"] = 500
+    config["training"]["extended_validation_episodes_per_position"] = 1000
+    config["training"]["curriculum_vs_gapmaximizer_ratio"] = 0
+    config["training"]["selfplay_historical_opponent_ratio"] = 0
+
+    with open(base_config_dst, "w") as f:
+        json.dump(config, f, indent=2)
 
     with open(experiment_path / "experiment_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
@@ -188,15 +210,20 @@ def create_scale11_vs_large_hidden_experiment(
     print(f"Created experiment: {experiment_name}")
     print(f"{'='*70}\n")
     print(f"Location: {experiment_path}\n")
+    print("DQN config (matches best ThesisExpStorage commit 4fe3e2a):")
+    print("  - Self-play, validation vs both (Randomized + GapMaximizer)")
+    print("  - No PER, no Double DQN, binary reward, use_position_indicator=False (468-dim)")
+    print("  - eps_end: 0.15, eps_decay: 20000")
+    print("  - lr: 5e-5, lr_decay_interval: 5, lr_decay_rate: 0.9")
+    print(f"  - {ROUNDS_PER_RUN} rounds, {EPS_PER_ROUND} eps/round")
+    print("  - Validation: 500 per position (extended 1000 every 5 rounds)")
+    print(f"\nArchitectures: scale_11 (game_based), large_hidden [512]")
     print(f"Runs per architecture: {runs_per_arch} (total {total_runs} runs)")
-    print(f"Run order (alternating):")
-    for idx, rid in enumerate(run_order_alternating, 1):
+    print(f"Run order:")
+    for idx, rid in enumerate(run_order, 1):
         info = runs[rid]
         arch = "game_based " + str(info["hidden_layers"]) if info["network_type"] == "game_based" else "large_hidden [512]"
         print(f"  {idx}. {rid} — {arch}, seed {info['seed']}, {ROUNDS_PER_RUN} rounds")
-    print(f"Reward mode: {reward_mode}")
-    print(f"\nRound checkpointing: each run saves model_round_0.pt .. model_round_{ROUNDS_PER_RUN - 1}.pt")
-    print(f"                    and model_best.pt (best by vs GapMaximizer) + best_round.json")
     print(f"\nRun with: python experiment_manager.py run")
     print(f"{'='*70}\n")
 
@@ -207,22 +234,16 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Create scale-11 vs large_hidden experiment (multiple seeds per architecture)"
+        description="Create experiment matching best ThesisExpStorage DQN config with extended validation"
     )
-    parser.add_argument("--name", "-n", default="scale11_vs_large_hidden_10rounds",
-                        help="Experiment name (default: scale11_vs_large_hidden_10rounds)")
-    parser.add_argument("--description", "-d", default="",
-                        help="Experiment description")
+    parser.add_argument("--name", "-n", default="best_storage_match", help="Experiment name")
+    parser.add_argument("--description", "-d", default="", help="Experiment description")
     parser.add_argument("--runs-per-arch", "-r", type=int, default=RUNS_PER_ARCHITECTURE,
-                        help=f"Runs (seeds) per architecture (default: {RUNS_PER_ARCHITECTURE})")
-    parser.add_argument("--reward-mode", "-R", default="binary",
-                        choices=["binary", "normalized_score_diff"],
-                        help="Reward mode: binary (WIN/LOSS/DRAW) or normalized_score_diff (default: binary)")
+                        help=f"Runs per architecture (default: {RUNS_PER_ARCHITECTURE})")
 
     args = parser.parse_args()
-    create_scale11_vs_large_hidden_experiment(
+    create_best_storage_match_experiment(
         args.name,
         args.description,
         runs_per_arch=args.runs_per_arch,
-        reward_mode=args.reward_mode,
     )

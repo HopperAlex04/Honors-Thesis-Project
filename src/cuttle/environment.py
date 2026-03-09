@@ -122,6 +122,10 @@ class CuttleEnvironment:
         # This allows passControl to affect what will be visible to who
         # when turns or priority changes.
         self.updateRevealed()
+        # Position: 1 = P1 (first player, player_zones), 0 = P2 (dealer_zones). One-hot so the
+        # network can condition on going first vs second and reduce P1/P2 interference.
+        is_p1 = self.current_zones is self.player_zones
+        position = np.array([1.0, 0.0], dtype=np.float32) if is_p1 else np.array([0.0, 1.0], dtype=np.float32)
         obs = {
             "Current Zones": self.current_zones,
             "Off-Player Field": self.off_zones["Field"],
@@ -130,6 +134,7 @@ class CuttleEnvironment:
             "Scrap": self.scrap,
             "Stack": self.stack,
             "Effect-Shown": self.effect_shown,
+            "position": position,
         }
         
         return obs

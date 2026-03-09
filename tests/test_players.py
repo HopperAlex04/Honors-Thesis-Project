@@ -443,8 +443,11 @@ class TestAgentOptimize(unittest.TestCase):
             reward = torch.tensor([1.0])
             self.agent.memory.push(observation, action, next_obs, reward)
         
-        loss = self.agent.optimize()
-        self.assertIsNotNone(loss)
+        result = self.agent.optimize()
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, dict)
+        self.assertIn("loss", result)
+        loss = result["loss"]
         self.assertIsInstance(loss, float)
         self.assertGreaterEqual(loss, 0.0)
     
@@ -479,8 +482,8 @@ class TestAgentOptimize(unittest.TestCase):
             self.agent.memory.push(observation, action, next_obs, reward)
         
         # Optimize
-        loss = self.agent.optimize()
-        self.assertIsNotNone(loss)
+        result = self.agent.optimize()
+        self.assertIsNotNone(result)
         
         # Parameters should have changed (or at least gradients computed)
         # Check if any gradients were computed
@@ -658,6 +661,39 @@ class TestScoreGapMaximizerPlayer(unittest.TestCase):
             action = player.getAction(observation, valid_actions, self.actions, 0)
             self.assertIn(action, valid_actions)
             
+            self.env.step(action)
+
+
+class TestTempoPlayer(unittest.TestCase):
+    """Test TempoPlayer (less aggressive opponent)."""
+
+    def setUp(self):
+        self.env = CuttleEnvironment()
+        self.env.reset()
+        self.actions = self.env.actions
+
+    def test_initialization(self):
+        player = Players.TempoPlayer("Tempo")
+        self.assertEqual(player.name, "Tempo")
+        self.assertIsNotNone(player.action_registry)
+
+    def test_get_action_returns_valid_action(self):
+        player = Players.TempoPlayer("Tempo")
+        observation = self.env.get_obs()
+        valid_actions = self.env.generateActionMask()
+        if valid_actions:
+            action = player.getAction(observation, valid_actions, self.actions, 0)
+            self.assertIn(action, valid_actions)
+
+    def test_plays_game(self):
+        player = Players.TempoPlayer("Tempo", draw_bonus=0.2, prefer_draw_when_close=False)
+        for _ in range(5):
+            observation = self.env.get_obs()
+            valid_actions = self.env.generateActionMask()
+            if not valid_actions:
+                break
+            action = player.getAction(observation, valid_actions, self.actions, 0)
+            self.assertIn(action, valid_actions)
             self.env.step(action)
 
 

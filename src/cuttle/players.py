@@ -7,10 +7,11 @@ import math
 import random
 from abc import ABC, abstractmethod
 from collections import deque, namedtuple
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+from torch.distributions import Categorical
 
 
 class Player(ABC):
@@ -340,6 +341,174 @@ class ScoreGapMaximizer(Player):
         return best_action
 
 
+class TempoPlayer(Player):
+    """
+    Less aggressive opponent: maximizes score gap but values tempo and avoids
+    over-committing. Prefers scoring and drawing over risky Scuttle/Ace when
+    the gap gain is similar; penalizes using high-value cards for scuttle and
+    Acing when we have a lot on board.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        scuttle_penalty: float = 0.5,
+        ace_penalty: float = 0.5,
+        draw_bonus: float = 0.4,
+        prefer_draw_when_close: bool = True,
+        draw_tolerance: float = 0.5,
+    ):
+        super().__init__(name)
+        from cuttle.environment import CuttleEnvironment
+        temp_env = CuttleEnvironment()
+        self.action_registry = temp_env.action_registry
+        self.scuttle_penalty = scuttle_penalty  # subtract this * our_card_value for Scuttle
+        self.ace_penalty = ace_penalty          # subtract this * our_points_lost for Ace
+        self.draw_bonus = draw_bonus            # add to Draw's score so Draw is more attractive
+        self.prefer_draw_when_close = prefer_draw_when_close
+        self.draw_tolerance = draw_tolerance
+
+    def _calculate_card_value(self, card_index: int, card_dict: dict) -> int:
+        """Same as ScoreGapMaximizer: point value of a card when scored."""
+        card_info = card_dict.get(card_index, {})
+        rank = card_info.get("rank", 0)
+        if rank == 10:
+            return 0
+        if rank == 12:
+            return 20
+        if rank == 11:
+            return 5
+        return rank + 1
+
+    def _adjusted_gap_change(
+        self,
+        action_obj,
+        observation: dict,
+        gap_change: float,
+    ) -> float:
+        """Apply tempo/risk adjustments to raw gap change."""
+        from cuttle.actions import ScoreAction, ScuttleAction, AceAction, DrawAction
+
+        card_dict = self.action_registry.card_dict
+        current_field = observation["Current Zones"]["Field"]
+        opponent_field = observation["Off-Player Field"]
+
+        if isinstance(action_obj, DrawAction):
+            return gap_change + self.draw_bonus
+
+        if isinstance(action_obj, ScuttleAction):
+            our_val = self._calculate_card_value(action_obj.card, card_dict)
+            return gap_change - self.scuttle_penalty * our_val
+
+        if isinstance(action_obj, AceAction):
+            our_points_lost = 0
+            point_indicies = self.action_registry.point_indicies
+            for rank_list in point_indicies:
+                for card_idx in rank_list:
+                    if current_field[card_idx]:
+                        our_points_lost += self._calculate_card_value(card_idx, card_dict)
+            return gap_change - self.ace_penalty * our_points_lost
+
+        return gap_change
+
+    def _estimate_score_gap_change(self, action_obj, observation: dict, action_registry) -> float:
+        """Reuse ScoreGapMaximizer logic for raw gap estimate."""
+        from cuttle.actions import ScoreAction, ScuttleAction, AceAction
+
+        card_dict = action_registry.card_dict
+        current_field = observation["Current Zones"]["Field"]
+        opponent_field = observation["Off-Player Field"]
+        gap_change = 0.0
+
+        if isinstance(action_obj, ScoreAction):
+            card_value = self._calculate_card_value(action_obj.card, card_dict)
+            gap_change = card_value
+        elif isinstance(action_obj, ScuttleAction):
+            our_val = self._calculate_card_value(action_obj.card, card_dict)
+            opp_val = self._calculate_card_value(action_obj.target, card_dict)
+            gap_change = opp_val - our_val
+        elif isinstance(action_obj, AceAction):
+            our_pts, opp_pts = 0, 0
+            for rank_list in action_registry.point_indicies:
+                for card_idx in rank_list:
+                    v = self._calculate_card_value(card_idx, card_dict)
+                    if current_field[card_idx]:
+                        our_pts += v
+                    if opponent_field[card_idx]:
+                        opp_pts += v
+            gap_change = opp_pts - our_pts
+        else:
+            from cuttle.actions import (
+                DrawAction, TwoAction, ThreeAction, FiveAction,
+                SixAction, SevenAction01, NineAction,
+            )
+            if isinstance(action_obj, DrawAction):
+                gap_change = 0.1
+            elif isinstance(action_obj, TwoAction):
+                target = action_obj.target
+                v = self._calculate_card_value(target, card_dict)
+                gap_change = v * 0.5 if opponent_field[target] else 0.0
+            elif isinstance(action_obj, ThreeAction):
+                gap_change = 2.0
+            elif isinstance(action_obj, FiveAction):
+                gap_change = 0.2
+            elif isinstance(action_obj, SixAction):
+                our_royals, opp_royals = 0, 0
+                for royal_list in action_registry.royal_indicies:
+                    for card_idx in royal_list:
+                        v = self._calculate_card_value(card_idx, card_dict)
+                        if current_field[card_idx]:
+                            our_royals += v
+                        if opponent_field[card_idx]:
+                            opp_royals += v
+                gap_change = opp_royals - our_royals
+            elif isinstance(action_obj, (SevenAction01, NineAction)):
+                gap_change = 1.0
+            else:
+                gap_change = 0.0
+        return gap_change
+
+    def getAction(
+        self,
+        observation: dict,
+        valid_actions: List[int],
+        total_actions: int,
+        steps_done: int,
+        force_greedy: bool = False,
+    ) -> int:
+        if not valid_actions:
+            return 0
+
+        draw_action_id = 0  # Draw is typically action 0
+        best_action = valid_actions[0]
+        best_adjusted = float("-inf")
+        draw_adjusted = None
+
+        for action_id in valid_actions:
+            action_obj = self.action_registry.get_action(action_id)
+            if not action_obj:
+                continue
+            raw = self._estimate_score_gap_change(
+                action_obj, observation, self.action_registry
+            )
+            adjusted = self._adjusted_gap_change(action_obj, observation, raw)
+            if action_id == draw_action_id:
+                draw_adjusted = adjusted
+            if adjusted > best_adjusted:
+                best_adjusted = adjusted
+                best_action = action_id
+
+        if (
+            self.prefer_draw_when_close
+            and draw_adjusted is not None
+            and draw_action_id in valid_actions
+            and best_adjusted - draw_adjusted <= self.draw_tolerance
+            and best_action != draw_action_id
+        ):
+            return draw_action_id
+        return best_action
+
+
 class Agent(Player):
     """DQN-based agent that learns to play using deep reinforcement learning."""
     
@@ -361,6 +530,8 @@ class Agent(Player):
         per_beta_end: float = 1.0,
         per_beta_increment: Optional[float] = None,
         per_epsilon: float = 1e-6,
+        use_double_dqn: bool = False,
+        q_value_clip: float = 100.0,
     ):
         """
         Initialize a DQN agent.
@@ -382,6 +553,8 @@ class Agent(Player):
             per_beta_end: PER importance-sampling exponent (end). Default 1.0.
             per_beta_increment: PER beta increment per sample (None = no annealing).
             per_epsilon: Small constant added to priorities to avoid zero. Default 1e-6.
+            use_double_dqn: If True, use Double DQN: policy selects next action, target evaluates it.
+            q_value_clip: Clip Q-values and targets to [-q_value_clip, q_value_clip] to prevent extremes. Default 100.0.
         """
         super().__init__(name)
         
@@ -424,6 +597,12 @@ class Agent(Player):
         else:
             # Replay Memory (uniform or mix_old_new sampling)
             self.memory = ReplayMemory(replay_buffer_size)
+
+        # Double DQN: policy selects next action, target evaluates it (reduces overestimation)
+        self.use_double_dqn = use_double_dqn
+
+        # Q-value clipping: prevents pathological values; configurable via hyperparams
+        self.q_value_clip = q_value_clip
 
         # Using Adam optimization with weight decay to prevent catastrophic forgetting
         self.optimizer = torch.optim.Adam(
@@ -579,19 +758,21 @@ class Agent(Player):
         device = next(self.policy.parameters()).device
         next_state_values = torch.zeros(self.batch_size, device=device, dtype=reward_batch.dtype)
         
-        # CRITICAL FIX: Use a much larger clip value to only catch extreme outliers
-        # The previous clip of 15.0 was too aggressive. If Q-values naturally grow to 20-30
-        # due to intermediate rewards, clipping at 15 creates a permanent mismatch where
-        # the network can never match the clipped targets. Use 100.0 to only prevent
-        # truly pathological values while allowing natural Q-value growth.
-        EXTREME_CLIP = 100.0
-        
+        # Q-value clipping: configurable via q_value_clip; prevents pathological values
+        q_clip = self.q_value_clip
+
         with torch.no_grad():
             if len(non_final_next_states) > 0:
-                # Get max Q-value for next states using target network
-                next_state_q_values = self.target(non_final_next_states).max(1).values
-                # Only clip extreme outliers - allow natural Q-value growth
-                next_state_q_values = torch.clamp(next_state_q_values, -EXTREME_CLIP, EXTREME_CLIP)
+                if self.use_double_dqn:
+                    # Double DQN: policy selects best next action, target evaluates that action's Q-value
+                    next_actions = self.policy(non_final_next_states).argmax(1)  # [n_non_final]
+                    next_state_q_values = self.target(non_final_next_states).gather(
+                        1, next_actions.unsqueeze(1)
+                    ).squeeze(1)
+                else:
+                    # Standard DQN: target network for both selection and evaluation
+                    next_state_q_values = self.target(non_final_next_states).max(1).values
+                next_state_q_values = torch.clamp(next_state_q_values, -q_clip, q_clip)
                 next_state_values[non_final_mask] = next_state_q_values
         
         # Compute expected Q-values using Bellman equation: Q(s,a) = r + γ * max Q(s',a')
@@ -600,8 +781,7 @@ class Agent(Player):
         ) + reward_batch  # Shape: [batch_size]
         expected_state_action_values = expected_state_action_values.unsqueeze(1)  # Shape: [batch_size, 1]
         
-        # Use same extreme clip for targets - only prevent truly pathological values
-        expected_state_action_values = torch.clamp(expected_state_action_values, -EXTREME_CLIP, EXTREME_CLIP)
+        expected_state_action_values = torch.clamp(expected_state_action_values, -q_clip, q_clip)
         
         # CRITICAL FIX: DO NOT clip current Q-values before loss calculation
         # Clipping current Q-values creates a mismatch where the network learns values
@@ -627,15 +807,28 @@ class Agent(Player):
         else:
             loss = self.criterion(state_action_values, expected_state_action_values)
 
+        # Diagnostics for logging (before backward to keep graph)
+        with torch.no_grad():
+            q_mean = state_action_values.mean().item()
+            q_std = state_action_values.std().item()
+            q_min = state_action_values.min().item()
+            q_max = state_action_values.max().item()
+            target_mean = expected_state_action_values.mean().item()
+            td_errors = expected_state_action_values - state_action_values
+            td_mean = td_errors.mean().item()
+            td_abs_mean = td_errors.abs().mean().item()
+
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
-        
-        # Gradient clipping to prevent exploding gradients
-        # Reduced to 5.0 for more stability and to prevent large weight updates that cause loss divergence
-        # Tighter gradient clipping helps prevent the policy network from diverging from target network
-        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 5.0)
-        
+
+        # Gradient clipping; returns total norm before clipping (for logging)
+        grad_clip_norm = 5.0
+        total_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.policy.parameters(), grad_clip_norm
+        )
+        grad_clipped = total_grad_norm > grad_clip_norm
+
         self.optimizer.step()
         
         # Update target network
@@ -659,9 +852,252 @@ class Agent(Player):
 
         # Update PER priorities after optimization (so next sample reflects new errors)
         if self.use_prioritized_replay and batch_indices is not None:
-            self.memory.update_priorities(batch_indices, td_errors)
-        
-        return loss.item()
+            td_errors_np = td_errors.abs().squeeze().cpu().numpy()
+            self.memory.update_priorities(batch_indices, td_errors_np)
+
+        return {
+            "loss": loss.item(),
+            "dqn_q_mean": q_mean,
+            "dqn_q_std": q_std,
+            "dqn_q_min": q_min,
+            "dqn_q_max": q_max,
+            "dqn_target_mean": target_mean,
+            "dqn_td_mean": td_mean,
+            "dqn_td_abs_mean": td_abs_mean,
+            "dqn_grad_norm": total_grad_norm.item(),
+            "dqn_grad_clipped": grad_clipped,
+        }
+
+
+class PPOAgent(Player):
+    """
+    Bare-minimum PPO agent: collects (s, a, log_prob, value, reward) per step,
+    then runs clipped surrogate + value loss at end of episode.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        model: torch.nn.Module,  # ActorCritic
+        lr: float = 3e-4,
+        gamma: float = 0.99,
+        clip_eps: float = 0.2,
+        ppo_epochs: int = 4,
+        value_coef: float = 0.5,
+        entropy_coef: float = 0.01,
+    ):
+        super().__init__(name)
+        self.model = model
+        self.lr = lr
+        self.gamma = gamma
+        self.clip_eps = clip_eps
+        self.ppo_epochs = ppo_epochs
+        self.value_coef = value_coef
+        self.entropy_coef = entropy_coef
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        # Per-turn lists filled by getAction; consumed by store_ppo_trajectory
+        self.current_turn_log_probs: List[torch.Tensor] = []
+        self.current_turn_values: List[torch.Tensor] = []
+        self.current_turn_valid_actions: List[List[int]] = []  # valid action indices per step (for masking in optimize)
+        # Trajectory: list of (states, actions, log_probs, values, reward, valid_actions_per_step)
+        self._trajectory: List[Tuple[List[Dict], List[int], List[torch.Tensor], List[torch.Tensor], float, List[List[int]]]] = []
+        self.last_log_prob: Optional[torch.Tensor] = None
+        self.last_value: Optional[torch.Tensor] = None
+
+    def _clear_turn_aux(self) -> None:
+        self.current_turn_log_probs.clear()
+        self.current_turn_values.clear()
+        self.current_turn_valid_actions.clear()
+        self.last_log_prob = None
+        self.last_value = None
+
+    def getAction(
+        self,
+        observation: dict,
+        valid_actions: List[int],
+        total_actions: int,
+        steps_done: int,
+        force_greedy: bool = False,
+    ) -> int:
+        with torch.no_grad():
+            logits, value = self.model(observation)
+            if logits.dim() == 1:
+                logits = logits.unsqueeze(0)
+                value = value.unsqueeze(0)
+            # Mask invalid actions
+            mask = torch.full((1, total_actions), float("-inf"), device=logits.device, dtype=logits.dtype)
+            for a in valid_actions:
+                mask[0, a] = 0
+            logits = logits + mask
+            dist = Categorical(logits=logits)
+            action = dist.sample() if not force_greedy else logits.argmax(dim=1)
+            action = action.item()
+            log_prob = dist.log_prob(torch.tensor([action], device=logits.device)).squeeze(0)
+            val = value.squeeze(0)
+        self.last_log_prob = log_prob.detach()
+        self.last_value = val.detach()
+        self.current_turn_log_probs.append(log_prob.detach())
+        self.current_turn_values.append(val.detach())
+        self.current_turn_valid_actions.append(list(valid_actions))
+        return action
+
+    def store_ppo_trajectory(
+        self,
+        states: List[dict],
+        actions: List[int],
+        reward: float,
+        log_probs: Optional[List[torch.Tensor]] = None,
+        values: Optional[List[torch.Tensor]] = None,
+        valid_actions_per_step: Optional[List[List[int]]] = None,
+    ) -> None:
+        log_probs = log_probs if log_probs is not None else self.current_turn_log_probs
+        values = values if values is not None else self.current_turn_values
+        valid_list = valid_actions_per_step if valid_actions_per_step is not None else self.current_turn_valid_actions
+        if len(states) != len(actions) or len(states) != len(log_probs) or len(states) != len(values) or len(states) != len(valid_list):
+            return
+        # Store copies so clearing current_turn_* at start of next turn doesn't empty these
+        self._trajectory.append((
+            list(states),
+            list(actions),
+            list(log_probs),
+            list(values),
+            reward,
+            [list(v) for v in valid_list],
+        ))
+
+    def optimize(self) -> Optional[float]:
+        if not self._trajectory:
+            return None
+        # Chunk boundaries and rewards (for overwriting returns so each turn gets a single return)
+        chunk_info = []  # (start_idx, length, reward) per chunk
+
+        # Flatten trajectory. Reward: only the last step of each chunk gets that chunk's
+        # reward (avoids compounding). We then overwrite returns so all steps in a chunk
+        # get the same return (terminal for final turn, intermediate for other turns).
+        all_states, all_actions, all_log_probs, all_values, all_rewards, all_valid_actions = [], [], [], [], [], []
+        for chunk_idx, chunk in enumerate(self._trajectory):
+            states, actions, log_probs, values, reward = chunk[:5]
+            valid_per_step = chunk[5] if len(chunk) > 5 else [[]] * len(states)  # backward compat
+            start = len(all_states)
+            for i in range(len(states)):
+                all_states.append(states[i])
+                all_actions.append(actions[i])
+                all_log_probs.append(log_probs[i])
+                all_values.append(values[i])
+                all_valid_actions.append(valid_per_step[i] if i < len(valid_per_step) else [])
+                if i < len(states) - 1:
+                    all_rewards.append(0.0)
+                else:
+                    all_rewards.append(reward)
+            chunk_info.append((start, len(states), reward))
+        self._trajectory.clear()
+        self._clear_turn_aux()
+
+        # Compute returns (Monte Carlo, no GAE)
+        returns = []
+        R = 0.0
+        for r in reversed(all_rewards):
+            R = r + self.gamma * R
+            returns.append(R)
+        returns = list(reversed(returns))
+
+        # Overwrite: all steps in each chunk get that chunk's return (dense intermediate
+        # rewards + terminal on final turn). Final turn gets terminal_reward; other
+        # chunks get their intermediate reward (score/gap from training loop).
+        for start, length, reward in chunk_info:
+            for i in range(start, min(start + length, len(returns))):
+                returns[i] = reward
+
+        device = next(self.model.parameters()).device
+        returns_t = torch.tensor(returns, device=device, dtype=torch.float32)
+
+        # Stack for batch
+        old_log_probs = torch.stack([lp.to(device) for lp in all_log_probs])
+        old_values = torch.stack([v.to(device) for v in all_values])
+        actions_t = torch.tensor(all_actions, device=device, dtype=torch.long)
+
+        # Advantages (simple: return - value)
+        advantages_raw = returns_t - old_values.squeeze(-1)
+        std = advantages_raw.std()
+        if std > 1e-8 and advantages_raw.numel() > 1:
+            advantages = (advantages_raw - advantages_raw.mean()) / (std + 1e-8)
+        else:
+            advantages = advantages_raw - advantages_raw.mean()
+
+        total_loss_avg = 0.0
+        n_batches = 0
+        last_policy_loss = 0.0
+        last_value_loss = 0.0
+        last_entropy = 0.0
+        last_ratio = None
+        num_actions = self.model.num_actions
+        for _ in range(self.ppo_epochs):
+            logits, values = self.model(all_states)
+            if logits.dim() == 1:
+                logits = logits.unsqueeze(0)
+            if values.dim() == 1:
+                values = values.unsqueeze(1)
+            # Apply same invalid-action mask as at collection so π_new and π_old are comparable
+            mask = torch.full_like(logits, float("-inf"), device=logits.device, dtype=logits.dtype)
+            for i, valid in enumerate(all_valid_actions):
+                if valid:
+                    for a in valid:
+                        mask[i, a] = 0
+                else:
+                    mask[i, :] = 0  # no mask if we didn't store valid (backward compat)
+            logits = logits + mask
+            dist = Categorical(logits=logits)
+            new_log_probs = dist.log_prob(actions_t)
+            entropy = dist.entropy().mean()
+            ratio = torch.exp(new_log_probs - old_log_probs)
+            surr1 = ratio * advantages
+            surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * advantages
+            policy_loss = -torch.min(surr1, surr2).mean()
+            value_loss = torch.nn.functional.mse_loss(values.squeeze(-1), returns_t)
+            loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy
+            self.optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
+            self.optimizer.step()
+            total_loss_avg += loss.item()
+            n_batches += 1
+            last_policy_loss = policy_loss.item()
+            last_value_loss = value_loss.item()
+            last_entropy = entropy.item()
+            last_ratio = ratio.detach()
+
+        avg_loss = total_loss_avg / max(n_batches, 1)
+        # Build metrics dict for logging (all scalars for JSON)
+        clip_fraction = (
+            (last_ratio < 1.0 - self.clip_eps).logical_or(last_ratio > 1.0 + self.clip_eps)
+            .float().mean().item()
+        ) if last_ratio is not None else 0.0
+        # Ratio stats for debugging (ratio = π_new(a|s) / π_old(a|s); should stay near 1.0)
+        ratio_mean = last_ratio.mean().item() if last_ratio is not None else 0.0
+        ratio_min = last_ratio.min().item() if last_ratio is not None else 0.0
+        ratio_max = last_ratio.max().item() if last_ratio is not None else 0.0
+        ratio_std = last_ratio.std().item() if last_ratio is not None and last_ratio.numel() > 1 else 0.0
+        return {
+            "loss": avg_loss,
+            "ppo_policy_loss": last_policy_loss,
+            "ppo_value_loss": last_value_loss,
+            "ppo_entropy": last_entropy,
+            "ppo_n_steps": len(all_states),
+            "ppo_n_chunks": len(chunk_info),
+            "ppo_advantage_mean": advantages_raw.mean().item(),
+            "ppo_advantage_std": advantages_raw.std().item(),
+            "ppo_ratio_mean": ratio_mean,
+            "ppo_ratio_min": ratio_min,
+            "ppo_ratio_max": ratio_max,
+            "ppo_ratio_std": ratio_std,
+            "ppo_clip_fraction": clip_fraction,
+        }
+
+    def get_optimizer_state(self) -> dict:
+        return self.optimizer.state_dict()
+
+    def set_optimizer_state(self, state_dict: dict) -> None:
+        self.optimizer.load_state_dict(state_dict)
 
 
 # Named tuple for storing transitions in replay memory

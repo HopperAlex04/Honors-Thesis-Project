@@ -5,7 +5,7 @@ This package provides:
 - Game environment (CuttleEnvironment)
 - Action system (ActionRegistry and action classes)
 - Neural network models (NeuralNetwork)
-- Player implementations (Agent, Randomized, HeuristicHighCard, ScoreGapMaximizer)
+- Player implementations (Agent, Randomized, HeuristicHighCard, ScoreGapMaximizer, TempoPlayer)
 - Training utilities (selfPlayTraining)
 """
 
@@ -17,6 +17,7 @@ from .players import (
     Randomized,
     HeuristicHighCard,
     ScoreGapMaximizer,
+    TempoPlayer,
     Agent,
     ReplayMemory,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "Randomized",
     "HeuristicHighCard",
     "ScoreGapMaximizer",
+    "TempoPlayer",
     "Agent",
     "ReplayMemory",
     "selfPlayTraining",

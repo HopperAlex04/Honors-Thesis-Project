@@ -1,0 +1,23 @@
+{
+  "ppo": {
+    "run": "/run/media/alexh/HDDPrim/ThesisStuff/Honors-Thesis-Project/experiments/experiment_20260219_084225_ppo/runs/ppo_large_hidden_run_01",
+    "episodes_per_position": 500,
+    "total_games": 1000,
+    "trainee_wins": 578,
+    "opponent_wins": 422,
+    "win_rate": 0.578,
+    "wins_as_p1": 316,
+    "wins_as_p2": 262
+  },
+  "dqn": {
+    "run": "/run/media/alexh/HDDPrim/ThesisStuff/Honors-Thesis-Project/experiments/experiment_20260222_142807_best_storage_match/runs/large_hidden_embedding_run_02",
+    "checkpoint": "/run/media/alexh/HDDPrim/ThesisStuff/Honors-Thesis-Project/experiments/experiment_20260222_142807_best_storage_match/runs/large_hidden_embedding_run_02/models/model_best.pt",
+    "episodes_per_position": 500,
+    "total_games": 1000,
+    "trainee_wins": 625,
+    "opponent_wins": 375,
+    "win_rate": 0.625,
+    "wins_as_p1": 317,
+    "wins_as_p2": 308
+  }
+}

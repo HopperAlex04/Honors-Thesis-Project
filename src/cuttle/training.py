@@ -161,6 +161,26 @@ def setup_metrics_logger(log_dir: Path, model_id: Optional[str] = None) -> Optio
     return logger
 
 
+def _copy_observation(obs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Deep-copy an observation dict so stored states are not mutated by the env.
+    get_obs() returns dicts whose values reference the env's internal arrays;
+    those arrays are mutated as the game continues, so we must copy when storing
+    for PPO/DQN to avoid wrong (s, a) pairs when computing log_probs later.
+    """
+    if not obs:
+        return obs
+    out = {}
+    for k, v in obs.items():
+        if k == "Current Zones" and isinstance(v, dict):
+            out[k] = {zk: np.copy(zv) for zk, zv in v.items() if isinstance(zv, np.ndarray)}
+        elif isinstance(v, np.ndarray):
+            out[k] = np.copy(v)
+        else:
+            out[k] = v
+    return out
+
+
 def extract_state_features(state: Dict[str, Any]) -> Dict[str, int]:
     """
     Extract key features from game state for logging.
@@ -299,12 +319,12 @@ def handle_counter_exchange(
         )
         env.step(response)
         
-        # Record action to appropriate list
+        # Record action to appropriate list (copy obs so env mutation doesn't corrupt stored state)
         if on_original_side:
-            player_states.append(observation)
+            player_states.append(_copy_observation(observation))
             player_actions.append(response)
         else:
-            other_states.append(observation)
+            other_states.append(_copy_observation(observation))
             other_actions.append(response)
         
         env.updateStack(response, depth)
@@ -360,7 +380,7 @@ def handle_stack_resolution(
         # Seven is resolved by current player
         valid_actions = env.generateActionMask()
         observation = env.get_obs()
-        current_states.append(observation)
+        current_states.append(_copy_observation(observation))
         # Capture state features BEFORE action (avoids aliasing)
         state_features_before = extract_state_features(observation)
         score_before, _ = env.scoreState()
@@ -391,7 +411,7 @@ def handle_stack_resolution(
         # Four is resolved by other player (after passControl)
         env.passControl()
         observation = env.get_obs()
-        other_states.append(observation)
+        other_states.append(_copy_observation(observation))
         valid_actions = env.generateActionMask()
         # Capture state features BEFORE action (avoids aliasing)
         state_features_before = extract_state_features(observation)
@@ -456,26 +476,24 @@ def update_replay_memory(
     """
     if len(states) == 0:
         return
-    if not hasattr(player, "memory") or player.memory is None:
-        return  # Rule-based players (GapMaximizer, Randomized) have no replay memory
-    
     # Terminal = next_state is None (all actions in final turn get terminal reward).
-    # Reward can be binary (WIN/LOSS/DRAW) or normalized score-diff in [-1, 1].
     is_terminal = next_state is None
-    
-    # Calculate score-based reward for intermediate states
+    # Calculate score-based and gap-based rewards for intermediate states (used by both DQN and PPO)
     score_reward = 0.0
     if USE_INTERMEDIATE_REWARDS and score_change is not None and not is_terminal:
-        # Add score-based reward: positive for scoring points, scaled to not overwhelm terminal rewards
         score_reward = score_change * SCORE_REWARD_SCALE
-    
-    # Calculate gap-based reward for intermediate states
     gap_reward = 0.0
     if USE_INTERMEDIATE_REWARDS and gap_change is not None and not is_terminal:
-        # Add gap-based reward: positive for improving relative position (closing gap when behind,
-        # or increasing gap when ahead), scaled smaller than score rewards to prioritize scoring
         gap_reward = gap_change * GAP_REWARD_SCALE
-    
+    total_reward = reward + score_reward + gap_reward
+    # PPO: store trajectory with same shaped reward as DQN (dense intermediate rewards)
+    if hasattr(player, "store_ppo_trajectory") and callable(getattr(player, "store_ppo_trajectory")):
+        player.store_ppo_trajectory(states, actions, total_reward)
+        return
+    if not hasattr(player, "memory") or player.memory is None:
+        return  # Rule-based players (GapMaximizer, Randomized) have no replay memory
+
+    # is_terminal, score_reward, gap_reward, total_reward already computed above
     if is_terminal:
         # All states in the final turn get the terminal reward
         # Maintain proper state chain: each state points to the next, final state has next_state=None
@@ -490,8 +508,7 @@ def update_replay_memory(
                 next_state_tensor = states[i + 1]
             player.memory.push(states[i], action_tensor, next_state_tensor, reward_tensor)
     else:
-        # Non-terminal: store all states with base reward + score-based reward + gap-based reward
-        total_reward = reward + score_reward + gap_reward
+        # Non-terminal: store all states with total_reward (base + score + gap, computed above)
         for i in range(len(states)):
             action_tensor = torch.tensor([actions[i]])
             reward_tensor = torch.tensor([total_reward])
@@ -553,12 +570,13 @@ def log_episode_metrics(
     p1_score: int,
     p2_score: int,
     validating: bool,
-    loss: Optional[float],
+    loss: Optional[Any],
     metrics_logger: Optional[logging.Logger],
+    last_ppo_metrics: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Log episode-level training metrics.
-    
+
     Args:
         episode: Episode number
         p1: Player 1 instance
@@ -571,13 +589,16 @@ def log_episode_metrics(
         p1_score: Player 1's final score
         p2_score: Player 2's final score
         validating: Whether in validation mode
-        loss: Training loss (if available)
+        loss: Training loss (float or, for PPO, dict with "loss" and ppo_* metrics)
         metrics_logger: Logger instance
+        last_ppo_metrics: Last PPO metrics dict (so every line has same keys; merged after loss).
     """
     if metrics_logger is None:
         return
-    
+
+    last_ppo_metrics = last_ppo_metrics or {}
     total_episodes = episode + 1
+    loss_val = loss.get("loss", loss) if isinstance(loss, dict) else loss
     episode_stats = {
         "episode": episode,
         "p1_name": p1.name,
@@ -593,8 +614,17 @@ def log_episode_metrics(
         "total_steps": steps,
         "episode_turns": turns,
         "validating": validating,
-        "loss": loss,
+        "loss": loss_val,
     }
+    # Merge last known PPO metrics so every episode line has the same keys (for plotting)
+    for k, v in last_ppo_metrics.items():
+        if k != "loss" and (v is None or isinstance(v, (int, float, bool))):
+            episode_stats[k] = v
+    # Overwrite with current PPO metrics when we just ran optimize()
+    if isinstance(loss, dict):
+        for k, v in loss.items():
+            if k != "loss" and (v is None or isinstance(v, (int, float, bool))):
+                episode_stats[k] = v
     
     # Add agent-specific metrics
     if isinstance(p1, Players.Agent):
@@ -650,9 +680,16 @@ def execute_player_turn(
     """
     turn_start_time = time.time()
     
-    # Get initial observation
+    # Clear PPO per-turn lists so this turn's (log_prob, value, valid_actions) match (state, action)
+    if hasattr(player, "current_turn_log_probs"):
+        player.current_turn_log_probs.clear()
+        player.current_turn_values.clear()
+        if hasattr(player, "current_turn_valid_actions"):
+            player.current_turn_valid_actions.clear()
+
+    # Get initial observation (copy so env mutation doesn't corrupt stored state for PPO)
     observation = env.get_obs()
-    player_states.append(observation)
+    player_states.append(_copy_observation(observation))
     
     # Capture state features IMMEDIATELY (before any actions modify the state)
     # This avoids aliasing issues where shallow copies point to modified arrays
@@ -736,10 +773,16 @@ def check_loss_divergence(
     """
     Check if loss is diverging (consistently rising) to enable early stopping.
     
+    Uses a scale-aware threshold: when recent mean loss is small (e.g. DQN ~0.08),
+    a fixed slope threshold of 0.5 would never trigger. We use
+    slope > divergence_threshold * max(recent_mean, 0.01) so the threshold scales
+    with the typical loss magnitude.
+    
     Args:
         loss_history: List of recent loss values
         window_size: Number of recent episodes to consider
-        divergence_threshold: Minimum average slope to consider as divergence
+        divergence_threshold: Minimum relative slope (e.g. 0.5 = slope must exceed
+            50% of recent mean loss per episode to trigger)
         min_episodes: Minimum episodes before early stopping can trigger
         
     Returns:
@@ -747,34 +790,37 @@ def check_loss_divergence(
     """
     if len(loss_history) < min_episodes:
         return False
-    
+
     # Get recent window of losses
     recent_losses = loss_history[-window_size:]
-    
+
     # Check for NaN or infinite values (definite divergence)
     if any(not math.isfinite(l) for l in recent_losses):
         return True
-    
+
     # Calculate linear trend (slope)
     x = list(range(len(recent_losses)))
     if len(x) < 2:
         return False
-    
+
     # Simple linear regression to get slope
     n = len(x)
     sum_x = sum(x)
     sum_y = sum(recent_losses)
     sum_xy = sum(x[i] * recent_losses[i] for i in range(n))
     sum_x2 = sum(xi * xi for xi in x)
-    
+
     denominator = n * sum_x2 - sum_x * sum_x
     if abs(denominator) < 1e-10:
         return False
-    
+
     slope = (n * sum_xy - sum_x * sum_y) / denominator
-    
-    # Check if slope exceeds threshold (positive = rising loss)
-    return slope > divergence_threshold
+    recent_mean = sum_y / n
+
+    # Scale-aware threshold: slope must exceed threshold * recent_mean
+    # (with floor 0.01 so we don't divide by near-zero)
+    scaled_threshold = divergence_threshold * max(recent_mean, 0.01)
+    return slope > scaled_threshold
 
 
 def selfPlayTraining(
@@ -790,6 +836,7 @@ def selfPlayTraining(
     initial_total_time: float = 0.0,
     early_stopping_config: Optional[Dict[str, Any]] = None,
     reward_mode: str = "binary",
+    optimize_every_n_episodes: Optional[int] = None,
 ) -> Tuple[int, int, int]:
     """
     Execute self-play training between two players.
@@ -807,6 +854,8 @@ def selfPlayTraining(
         model_id: Optional model identifier for log files (e.g., "round_3", "checkpoint_5")
         initial_steps: Starting step count for epsilon decay (for resuming training)
         round_number: Optional round number to display in episode output
+        optimize_every_n_episodes: If set (e.g. 50), call optimize() only every N episodes and on
+            the last episode, so trajectory is batched (for PPO). If None, optimize every episode.
         initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
         early_stopping_config: Configuration dict for early stopping
         reward_mode: "binary" (WIN=1, LOSS=-1, DRAW=0) or "normalized_score_diff" (reward = (my_score - opp_score) / 21, clamped to [-1, 1])
@@ -844,7 +893,9 @@ def selfPlayTraining(
     
     # Track total time from start of training (including previous sessions if resuming)
     session_start_time = time.time()
-    
+    # Carry forward last PPO metrics so every episode log line has the same keys (for plotting)
+    last_ppo_metrics: Dict[str, Any] = {}
+
     for episode in range(episodes):
         episode_start_time = time.time()
         env.reset()
@@ -1042,23 +1093,34 @@ def selfPlayTraining(
             p1_states = []
             p1_actions = []
         
-        # End of episode - optimize if training (only the Agent has optimize(); rule-based players do not)
+        # End of episode - optimize if training (only the Agent has optimize(); rule-based players do not).
+        # When optimize_every_n_episodes is set (e.g. PPO batching), only optimize every N episodes and on last episode.
         loss = None
         if not validating:
-            if hasattr(p1, "optimize") and callable(getattr(p1, "optimize")):
-                loss = p1.optimize()
-            elif hasattr(p2, "optimize") and callable(getattr(p2, "optimize")):
-                loss = p2.optimize()
+            should_optimize = (
+                optimize_every_n_episodes is None
+                or (episode + 1) % optimize_every_n_episodes == 0
+                or episode == episodes - 1
+            )
+            if should_optimize:
+                if hasattr(p1, "optimize") and callable(getattr(p1, "optimize")):
+                    loss = p1.optimize()
+                elif hasattr(p2, "optimize") and callable(getattr(p2, "optimize")):
+                    loss = p2.optimize()
         
+        # Scalar loss for early stopping (PPO returns a dict with "loss" and extra metrics)
+        loss_scalar = loss.get("loss", loss) if isinstance(loss, dict) else loss
+        if isinstance(loss, dict):
+            last_ppo_metrics = {k: v for k, v in loss.items() if (v is None or isinstance(v, (int, float, bool)))}
         # Track loss for early stopping
-        if loss is not None and early_stopping_enabled:
-            loss_history.append(loss)
+        if loss_scalar is not None and early_stopping_enabled:
+            loss_history.append(loss_scalar)
             
             if early_stopping_enabled:
                 # Check for maximum loss threshold
-                if loss > max_loss:
+                if loss_scalar > max_loss:
                     print(f"\n{'!'*60}")
-                    print(f"EARLY STOPPING: Loss exceeded maximum threshold ({loss:.2f} > {max_loss})")
+                    print(f"EARLY STOPPING: Loss exceeded maximum threshold ({loss_scalar:.2f} > {max_loss})")
                     print(f"Stopping training at episode {episode + 1}/{episodes}")
                     print(f"This indicates hyperparameters may be causing divergence.")
                     print(f"{'!'*60}\n")
@@ -1083,7 +1145,7 @@ def selfPlayTraining(
         
         log_episode_metrics(
             episode, p1, p2, p1_wins, p2_wins, draws, steps, turns,
-            p1_score, p2_score, validating, loss, metrics_logger
+            p1_score, p2_score, validating, loss, metrics_logger, last_ppo_metrics
         )
         
         # Print episode summary
@@ -1094,7 +1156,13 @@ def selfPlayTraining(
         print(f"{round_str}Episode {episode}: {p1.name}: {p1_score} {p2.name}: {p2_score}")
         print(f"{p1.name}: {p1_win_rate:.3f} {p2.name}: {p2_win_rate:.3f} Draws: {draw_rate:.3f}")
         if not validating and loss is not None:
-            print(f"Loss: {loss:.6f}")
+            print(f"Loss: {loss_scalar:.6f}")
+            if isinstance(loss, dict):
+                if "ppo_policy_loss" in loss:
+                    print(f"  PPO: policy={loss.get('ppo_policy_loss', 0):.4f} value={loss.get('ppo_value_loss', 0):.4f} entropy={loss.get('ppo_entropy', 0):.4f} steps={loss.get('ppo_n_steps', 0)} "
+                          f"ratio mean={loss.get('ppo_ratio_mean', 0):.3f} min={loss.get('ppo_ratio_min', 0):.3f} max={loss.get('ppo_ratio_max', 0):.3f} clip_frac={loss.get('ppo_clip_fraction', 0):.3f}")
+                elif "dqn_q_mean" in loss:
+                    print(f"  DQN: q=[{loss.get('dqn_q_mean', 0):.3f}±{loss.get('dqn_q_std', 0):.3f}] td_abs={loss.get('dqn_td_abs_mean', 0):.4f} grad_norm={loss.get('dqn_grad_norm', 0):.2f} clipped={loss.get('dqn_grad_clipped', False)}")
         print(f"Time: {episode_elapsed_time:.2f}s | Total: {total_elapsed_time:.2f}s")
         
         # Brief pause between episodes to reduce sustained AVX load and CPU thermal stress
@@ -1110,6 +1178,8 @@ def validate_both_positions(
     model_id_prefix: Optional[str] = None,
     round_number: Optional[int] = None,
     initial_total_time: float = 0.0,
+    log_actions: bool = True,
+    log_metrics: bool = True,
 ) -> Tuple[int, int]:
     """
     Run validation with trainee in both positions (first and second player) for fair evaluation.
@@ -1126,7 +1196,8 @@ def validate_both_positions(
         initial_total_time: Accumulated time from previous training sessions (for checkpoint resumption)
         
     Returns:
-        Tuple of (trainee_wins, opponent_wins) across both positions
+        Tuple of (trainee_wins, opponent_wins, trainee_wins_as_p1, trainee_wins_as_p2).
+        Callers that only need overall counts can use the first two values.
     """
     # Track time for first validation run
     validation_start_time = time.time()
@@ -1135,6 +1206,8 @@ def validate_both_positions(
     p1w_as_p1, p2w_as_p1, _ = selfPlayTraining(
         trainee, opponent, episodes_per_position,
         validating=True,
+        log_actions=log_actions,
+        log_metrics=log_metrics,
         model_id=f"{model_id_prefix}_trainee_first" if model_id_prefix else None,
         initial_steps=0,
         round_number=round_number,
@@ -1149,6 +1222,8 @@ def validate_both_positions(
     p2w_as_p2, p1w_as_p2, _ = selfPlayTraining(
         opponent, trainee, episodes_per_position,
         validating=True,
+        log_actions=log_actions,
+        log_metrics=log_metrics,
         model_id=f"{model_id_prefix}_trainee_second" if model_id_prefix else None,
         initial_steps=0,
         round_number=round_number,
@@ -1158,5 +1233,7 @@ def validate_both_positions(
     # Combine results: trainee wins = wins when trainee was P1 + wins when trainee was P2
     trainee_wins = p1w_as_p1 + p1w_as_p2
     opponent_wins = p2w_as_p1 + p2w_as_p2
-    
-    return trainee_wins, opponent_wins
+    trainee_wins_as_p1 = p1w_as_p1
+    trainee_wins_as_p2 = p1w_as_p2
+
+    return trainee_wins, opponent_wins, trainee_wins_as_p1, trainee_wins_as_p2
