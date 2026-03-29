@@ -1,7 +1,7 @@
 numpy
 gymnasium
 torch
-matplotlib
+matplotlib>=3.5.0
 seaborn
 scipy
 pandas
