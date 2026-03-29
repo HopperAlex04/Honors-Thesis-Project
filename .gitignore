@@ -11,6 +11,7 @@ p2log.txt
 *.png
 *.tar.gz
 ThesisExpStroage/
+experiments/.current_experiment
 #generated test models
 *.pt
 *.pth

@@ -22,8 +22,8 @@ from typing import List, Optional
 
 import numpy as np
 
-# Project root
-project_root = Path(__file__).parent
+# Project root (this file lives in archive/experiment_creation_scripts/)
+project_root = Path(__file__).resolve().parent.parent
 experiments_dir = project_root / "experiments"
 
 # Scale 11 game_based (wide→narrow): [52*11, 13*11, 15*11]

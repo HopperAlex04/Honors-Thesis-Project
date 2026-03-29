@@ -515,7 +515,7 @@ Scaling experiments (original `[52k, 13k, 15k]` and reversed `[15k, 13k, 52k]`) 
 
 1. **Screening phase**: One run per scale per input type
 2. **Decision rules**: If a scale falls within a specified margin of the large_hidden baseline → run smaller-scale follow-up for significance. If no scale meets the threshold → run the largest scale for parameter-matched comparison.
-3. **Scripts**: `create_scaling_experiment.py` (original, ascending scales), `create_reversed_scaling_experiment.py` (reversed, descending from match)
+3. **Scripts** (archived under `archive/experiment_creation_scripts/`): `create_scaling_experiment.py` (original, ascending scales), `create_reversed_scaling_experiment.py` (reversed, descending from match)
 
 See [[Methods Section Outline#2.4 Architecture Scaling Experiment]] for thesis methodology details.
 

@@ -107,43 +107,16 @@ python experiment_manager.py run --force
 
 This will re-run all runs (including completed ones). To re-run only failed runs, edit `runs_status.json` to set their status back to "pending".
 
-## Scaling Experiments
+## Experiment creation scripts
 
-### Original Scaling (create_scaling_experiment.py)
+**Active (project root):** `create_double_dqn_peak_conditions.py`, `create_ppo_experiment.py`, and `experiment_manager.py`.
 
-Creates experiments scaling game_based `[52k, 13k, 15k]` from k=1 upward:
-
-```bash
-python create_scaling_experiment.py --name "game_based_scaling" [--baseline-experiment EXPERIMENT]
-```
-
-### Reversed Scaling (create_reversed_scaling_experiment.py)
-
-Creates experiments with **reversed** layer order `[15k, 13k, 52k]` (narrow→wide). Scales **down** from the parameter count that matches large_hidden (k≈11):
+**Archived** generators (scaling, scale-11 vs large hidden, self-play, gapmaximizer-focused Double DQN, etc.) live in `archive/experiment_creation_scripts/`. See that folder’s `README.txt`. Run them with an explicit path, for example:
 
 ```bash
-python create_reversed_scaling_experiment.py --name "game_based_reversed_scaling" [--baseline-experiment EXPERIMENT]
-```
-
-- Layer order: `[15k, 13k, 52k]` (reversed from original)
-- Scales: k=11 down to k=1 (descending from large_hidden match)
-- Both boolean and embedding inputs
-- 1 run per config (screening)
-
-### Scale-11 vs Large Hidden (create_scale11_vs_large_hidden_experiment.py)
-
-Creates a **comparison experiment** with two runs (10 rounds each), **alternating** which model runs:
-
-1. **scale_11_embedding_run_01** — game_based `[572, 143, 165]`, 10 rounds  
-2. **large_hidden_embedding_run_01** — large_hidden `[512]`, 10 rounds  
-
-```bash
-python create_scale11_vs_large_hidden_experiment.py [--name "scale11_vs_large_hidden_10rounds"]
+python archive/experiment_creation_scripts/create_scale11_vs_large_hidden_experiment.py
 python experiment_manager.py run
 ```
-
-- Run order is fixed (scale_11 first, then large_hidden) via `run_order` in metadata.
-- Each run uses **round checkpointing** (see below).
 
 ## Round checkpointing
 

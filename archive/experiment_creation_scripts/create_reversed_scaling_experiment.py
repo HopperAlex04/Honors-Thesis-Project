@@ -24,7 +24,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 # Project root
-project_root = Path(__file__).parent
+project_root = Path(__file__).resolve().parent.parent
 experiments_dir = project_root / "experiments"
 
 # Constants
