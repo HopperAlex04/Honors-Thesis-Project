@@ -1,0 +1,178 @@
+{
+  "ppo_scale11_run_01": {
+    "run_id": "ppo_scale11_run_01",
+    "network_type": "game_based",
+    "input_type": "embedding",
+    "run_number": 1,
+    "seed": 15796,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      572,
+      143,
+      165
+    ],
+    "status": "completed",
+    "created_at": "2026-03-24T07:46:41.627595",
+    "started_at": "2026-03-24T07:46:41.627601",
+    "completed_at": "2026-03-24T08:58:32.865006",
+    "duration_seconds": 4311.237419,
+    "final_metrics": {
+      "final_win_rate": 0.5589999999999999,
+      "final_episode": 499
+    },
+    "error_message": null
+  },
+  "ppo_scale11_run_02": {
+    "run_id": "ppo_scale11_run_02",
+    "network_type": "game_based",
+    "input_type": "embedding",
+    "run_number": 2,
+    "seed": 76821,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      572,
+      143,
+      165
+    ],
+    "status": "completed",
+    "created_at": "2026-03-24T08:58:32.866765",
+    "started_at": "2026-03-24T08:58:32.866769",
+    "completed_at": "2026-03-24T10:04:31.718264",
+    "duration_seconds": 3958.851507,
+    "final_metrics": {
+      "final_win_rate": 0.5529999999999999,
+      "final_episode": 499
+    },
+    "error_message": null
+  },
+  "ppo_scale11_run_03": {
+    "run_id": "ppo_scale11_run_03",
+    "network_type": "game_based",
+    "input_type": "embedding",
+    "run_number": 3,
+    "seed": 6266,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      572,
+      143,
+      165
+    ],
+    "status": "completed",
+    "created_at": "2026-03-24T10:04:31.720133",
+    "started_at": "2026-03-24T10:04:31.720138",
+    "completed_at": "2026-03-24T11:13:25.874626",
+    "duration_seconds": 4134.154499,
+    "final_metrics": {
+      "final_win_rate": 0.618,
+      "final_episode": 499
+    },
+    "error_message": null
+  },
+  "ppo_scale11_run_04": {
+    "run_id": "ppo_scale11_run_04",
+    "network_type": "game_based",
+    "input_type": "embedding",
+    "run_number": 4,
+    "seed": 37195,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      572,
+      143,
+      165
+    ],
+    "status": "completed",
+    "created_at": "2026-03-24T11:13:25.876480",
+    "started_at": "2026-03-24T11:13:25.876484",
+    "completed_at": "2026-03-24T12:22:27.840329",
+    "duration_seconds": 4141.963855,
+    "final_metrics": {
+      "final_win_rate": 0.563,
+      "final_episode": 499
+    },
+    "error_message": null
+  },
+  "ppo_large_hidden_run_01": {
+    "run_id": "ppo_large_hidden_run_01",
+    "network_type": "large_hidden",
+    "input_type": "embedding",
+    "run_number": 5,
+    "seed": 861,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      512
+    ],
+    "status": "completed",
+    "created_at": "2026-03-24T12:22:27.842382",
+    "started_at": "2026-03-24T12:22:27.842387",
+    "completed_at": "2026-03-24T13:29:13.939199",
+    "duration_seconds": 4006.096822,
+    "final_metrics": {
+      "final_win_rate": 0.593,
+      "final_episode": 499
+    },
+    "error_message": null
+  },
+  "ppo_large_hidden_run_02": {
+    "run_id": "ppo_large_hidden_run_02",
+    "network_type": "large_hidden",
+    "input_type": "embedding",
+    "run_number": 6,
+    "seed": 54887,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      512
+    ],
+    "status": "completed",
+    "created_at": "2026-03-24T13:29:13.978394",
+    "started_at": "2026-03-24T13:29:13.978398",
+    "completed_at": "2026-03-24T14:36:19.495630",
+    "duration_seconds": 4025.517242,
+    "final_metrics": {
+      "final_win_rate": 0.5920000000000001,
+      "final_episode": 499
+    },
+    "error_message": null
+  },
+  "ppo_large_hidden_run_03": {
+    "run_id": "ppo_large_hidden_run_03",
+    "network_type": "large_hidden",
+    "input_type": "embedding",
+    "run_number": 7,
+    "seed": 82387,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      512
+    ],
+    "status": "completed",
+    "created_at": "2026-03-24T14:36:19.497574",
+    "started_at": "2026-03-24T14:36:19.497578",
+    "completed_at": "2026-03-24T15:39:57.431988",
+    "duration_seconds": 3817.934421,
+    "final_metrics": {
+      "final_win_rate": 0.5840000000000001,
+      "final_episode": 499
+    },
+    "error_message": null
+  },
+  "ppo_large_hidden_run_04": {
+    "run_id": "ppo_large_hidden_run_04",
+    "network_type": "large_hidden",
+    "input_type": "embedding",
+    "run_number": 8,
+    "seed": 87499,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      512
+    ],
+    "status": "completed",
+    "created_at": "2026-03-24T15:39:57.433831",
+    "started_at": "2026-03-24T15:39:57.433836",
+    "completed_at": "2026-03-24T16:47:34.543541",
+    "duration_seconds": 4057.109716,
+    "final_metrics": {
+      "final_win_rate": 0.5900000000000001,
+      "final_episode": 499
+    },
+    "error_message": null
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "experiment_name": "experiment_20260326_091129_ppo",
+  "display_name": "ppo",
+  "description": "PPO training: large_hidden backbone, 1 runs. Reward mode: binary. Training: self-play. Validation: on (Randomized + GapMaximizer).",
+  "experiment_type": "ppo",
+  "algorithm": "ppo",
+  "reward_mode": "binary",
+  "rounds_per_run": 40,
+  "train_vs_gapmaximizer": false,
+  "skip_validation": false,
+  "backbones": "large_hidden",
+  "ppo_hidden_layers": "[512]",
+  "created_at": "2026-03-26T09:11:29.288842",
+  "git_commit": "fba06f99b792",
+  "run_order": [
+    "ppo_large_hidden_run_01"
+  ],
+  "total_runs": 1,
+  "seeds": [
+    15796
+  ]
+}

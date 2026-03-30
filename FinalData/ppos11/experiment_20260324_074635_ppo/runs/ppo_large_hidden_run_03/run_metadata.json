@@ -1,0 +1,13 @@
+{
+  "run_id": "ppo_large_hidden_run_03",
+  "network_type": "large_hidden",
+  "input_type": "embedding",
+  "run_number": 7,
+  "seed": 82387,
+  "experiment_name": "experiment_20260324_074635_ppo",
+  "created_at": "2026-03-24T14:36:19.496440",
+  "git_commit": "fba06f99b792",
+  "ppo_hidden_layers": [
+    512
+  ]
+}

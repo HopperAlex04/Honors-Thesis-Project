@@ -1,0 +1,10 @@
+{
+  "run_id": "scale_11_embedding_run_01",
+  "network_type": "game_based",
+  "input_type": "embedding",
+  "run_number": 1,
+  "seed": 1222253554,
+  "experiment_name": "experiment_20260322_143345_double_dqn_peak_conditions",
+  "created_at": "2026-03-22T14:33:47.371751",
+  "git_commit": "fba06f99b792"
+}

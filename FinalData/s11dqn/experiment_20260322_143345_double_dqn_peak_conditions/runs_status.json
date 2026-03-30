@@ -1,0 +1,26 @@
+{
+  "scale_11_embedding_run_01": {
+    "run_id": "scale_11_embedding_run_01",
+    "network_type": "game_based",
+    "input_type": "embedding",
+    "scale": 11,
+    "hidden_layers": [
+      572,
+      143,
+      165
+    ],
+    "rounds": 20,
+    "run_number": 1,
+    "seed": 1222253554,
+    "status": "completed",
+    "created_at": "2026-03-22T14:33:47.373036",
+    "started_at": "2026-03-22T14:33:47.373043",
+    "completed_at": "2026-03-22T16:35:41.858170",
+    "duration_seconds": 7314.485137,
+    "final_metrics": {
+      "final_win_rate": 0.16099999999999998,
+      "final_episode": 499
+    },
+    "error_message": null
+  }
+}

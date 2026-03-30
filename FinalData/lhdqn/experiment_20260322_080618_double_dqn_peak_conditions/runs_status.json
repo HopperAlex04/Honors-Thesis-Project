@@ -1,0 +1,24 @@
+{
+  "large_hidden_embedding_run_01": {
+    "run_id": "large_hidden_embedding_run_01",
+    "network_type": "large_hidden",
+    "input_type": "embedding",
+    "scale": null,
+    "hidden_layers": [
+      512
+    ],
+    "rounds": 20,
+    "run_number": 1,
+    "seed": 363460169,
+    "status": "completed",
+    "created_at": "2026-03-22T08:06:24.881115",
+    "started_at": "2026-03-22T08:06:24.881123",
+    "completed_at": "2026-03-22T09:43:56.200028",
+    "duration_seconds": 5851.318916,
+    "final_metrics": {
+      "final_win_rate": 0.544,
+      "final_episode": 499
+    },
+    "error_message": null
+  }
+}

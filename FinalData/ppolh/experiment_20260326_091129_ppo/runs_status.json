@@ -1,0 +1,23 @@
+{
+  "ppo_large_hidden_run_01": {
+    "run_id": "ppo_large_hidden_run_01",
+    "network_type": "large_hidden",
+    "input_type": "embedding",
+    "run_number": 1,
+    "seed": 15796,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      512
+    ],
+    "status": "completed",
+    "created_at": "2026-03-26T09:11:44.806976",
+    "started_at": "2026-03-26T09:11:44.806981",
+    "completed_at": "2026-03-26T10:19:44.132101",
+    "duration_seconds": 4079.325131,
+    "final_metrics": {
+      "final_win_rate": 0.5820000000000001,
+      "final_episode": 499
+    },
+    "error_message": null
+  }
+}

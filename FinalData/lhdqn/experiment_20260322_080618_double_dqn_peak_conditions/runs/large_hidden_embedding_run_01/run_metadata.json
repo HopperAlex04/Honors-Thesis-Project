@@ -1,0 +1,10 @@
+{
+  "run_id": "large_hidden_embedding_run_01",
+  "network_type": "large_hidden",
+  "input_type": "embedding",
+  "run_number": 1,
+  "seed": 363460169,
+  "experiment_name": "experiment_20260322_080618_double_dqn_peak_conditions",
+  "created_at": "2026-03-22T08:06:24.879314",
+  "git_commit": "fba06f99b792"
+}

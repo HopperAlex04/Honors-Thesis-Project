@@ -1,0 +1,18 @@
+{
+  "experiment_name": "experiment_20260323_082155_double_dqn_peak_conditions",
+  "display_name": "double_dqn_peak_conditions",
+  "description": "Double DQN under same base hyperparams as peak normal DQN experiment: scale_11 game_based + embedding [572, 143, 165], random seed (or --seed), 20 rounds, 250 eps/round, validation_opponent both. Only change vs that setup: use_double_dqn=True.",
+  "created_at": "2026-03-23T08:21:55.602872",
+  "git_commit": "fba06f99b792",
+  "experiment_type": "double_dqn_peak_conditions",
+  "network": "scale_11",
+  "run_order": [
+    "scale_11_embedding_run_01"
+  ],
+  "rounds_per_run": 20,
+  "total_runs": 1,
+  "seeds": [
+    834271479
+  ],
+  "source_experiment": "experiment_20260202_101706_scale11_vs_large_hidden_10rounds"
+}

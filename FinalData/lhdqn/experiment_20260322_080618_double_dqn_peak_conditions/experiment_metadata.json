@@ -1,0 +1,17 @@
+{
+  "experiment_name": "experiment_20260322_080618_double_dqn_peak_conditions",
+  "display_name": "double_dqn_peak_conditions",
+  "description": "Double DQN under same conditions as peak normal DQN run: large_hidden + embedding, random seed (or --seed), 10 rounds, 250 eps/round, validation_opponent both. Only change: use_double_dqn=True.",
+  "created_at": "2026-03-22T08:06:18.096214",
+  "git_commit": "fba06f99b792",
+  "experiment_type": "double_dqn_peak_conditions",
+  "run_order": [
+    "large_hidden_embedding_run_01"
+  ],
+  "rounds_per_run": 20,
+  "total_runs": 1,
+  "seeds": [
+    363460169
+  ],
+  "source_experiment": "experiment_20260202_101706_scale11_vs_large_hidden_10rounds"
+}

@@ -1,0 +1,25 @@
+{
+  "ppo_scale_11_run_01": {
+    "run_id": "ppo_scale_11_run_01",
+    "network_type": "game_based",
+    "input_type": "embedding",
+    "run_number": 1,
+    "seed": 36844,
+    "rounds": 40,
+    "ppo_hidden_layers": [
+      572,
+      143,
+      165
+    ],
+    "status": "completed",
+    "created_at": "2026-03-26T10:37:06.267989",
+    "started_at": "2026-03-26T10:37:06.267995",
+    "completed_at": "2026-03-26T11:46:22.655109",
+    "duration_seconds": 4156.387142,
+    "final_metrics": {
+      "final_win_rate": 0.577,
+      "final_episode": 499
+    },
+    "error_message": null
+  }
+}
